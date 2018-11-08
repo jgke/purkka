@@ -1,175 +1,91 @@
-use tokenizer::Operator::*;
+use std::str::Chars;
+use tokentype::*;
 
-#[derive(Debug)]
-pub enum Operator {
-    OpenBracket, CloseBracket,
-    OpenParen, CloseParen,
-    Dot, Arrow,
-    Increment, Decrement, BitAnd, Times, Plus, Minus, BitNot, Not, Sizeof,
-    Divide, Mod, BitShiftLeft, BitShiftRight,
-    LessThan, MoreThan, LessEqThan, MoreEqThan, Equals, NotEquals, BitXor, BitOr, And, Or,
-    Terniary, TerniaryAlternative,
-    Assign, TimesAssign, DivAssign, ModAssign, PlusAssign, MinusAssign,
-    BitShiftLeftAssign, BitShiftRightAssign, BitAndAssign, BitXorAssign, BitOrAssign,
-    Comma, Macro, MacroPaste
+fn peek_str(s: &Chars) -> Option<char> {
+    s.as_str().chars().next()
 }
 
-#[derive(Debug)]
-pub enum Punctuation {
-}
+pub fn read_number(c: char, s: &mut Chars) -> TokenType {
+    let mut number = c.to_string();
 
-#[derive(Debug)]
-pub enum Constant {
-    Integer(String)
-}
-
-#[derive(Debug)]
-pub enum TokenType {
-    Keyword(String),
-    Identifier(String),
-    Constant(Constant),
-    StringLiteral(String),
-    Operator(&'static Operator),
-    Punctuator(String),
-    Whitespace()
-}
-
-pub fn read_number(s: String) -> (TokenType, String) {
-    let mut number = String::from("");
-    let mut s_iter = s.chars().peekable();
-
-    while let Some(c) = s_iter.peek().cloned() {
+    while let Some(c) = peek_str(s) {
         match c {
             '0' ..= '9' => {
                 number.push(c);
-                s_iter.next();
+                s.next();
             },
             _ => break
         }
 
     }
 
-    let len = number.len();
-    unsafe {
-        (TokenType::Constant(Constant::Integer(number)), s.get_unchecked(len..).to_string())
-    }
+    TokenType::Constant(Constant::Integer(number))
 }
 
-pub fn read_identifier(s: String) -> (TokenType, String) {
-    let mut identifier = String::from("");
-    let mut s_iter = s.chars().peekable();
+pub fn read_identifier(c: char, s: &mut Chars) -> TokenType {
+    let mut identifier = c.to_string();
 
-    while let Some(c) = s_iter.peek().cloned() {
+    while let Some(c) = peek_str(s) {
         match c {
             '0' ..= '9' | 'a' ..= 'z' | 'A' ..= 'Z' => {
                 identifier.push(c);
-                s_iter.next();
+                s.next();
             }
             _ => break
         };
     }
 
-    let len = identifier.len();
-    unsafe {
-        (TokenType::Identifier(identifier), s.get_unchecked(len..).to_string())
+    for (keyword, kw) in KEYWORDS.iter() {
+        if keyword.to_string() == identifier {
+            return TokenType::Keyword(kw);
+        }
     }
+
+
+    TokenType::Identifier(identifier)
 }
 
-pub fn read_whitespace(s: String) -> (TokenType, String) {
-    let mut len = 0;
-    let mut s_iter = s.chars().peekable();
-
-    while let Some(c) = s_iter.peek().cloned() {
+pub fn read_whitespace(s: &mut Chars) -> TokenType {
+    while let Some(c) = peek_str(s) {
         match c {
             ' ' | '\t' | '\n' => {
-                s_iter.next();
-                len += 1;
+                s.next();
             }
             _ => break
         };
     }
 
-    unsafe {
-        (TokenType::Whitespace(), s.get_unchecked(len..).to_string())
-    }
+    TokenType::Whitespace
 }
 
-static OPERATORS: &'static [(&'static str, &'static Operator)] = &[
-    ("<<=", &BitShiftLeftAssign),
-    (">>=", &BitShiftRightAssign),
-    ("%=", &ModAssign),
-    ("&=", &BitAndAssign),
-    ("*=", &TimesAssign),
-    ("+=", &PlusAssign),
-    ("-=", &MinusAssign),
-    ("/=", &DivAssign),
-    ("^=", &BitXorAssign),
-    ("|=", &BitOrAssign),
-
-    ("++", &Increment),
-    ("--", &Decrement),
-    ("<<", &BitShiftLeft),
-    (">>", &BitShiftRight),
-    ("->", &Arrow),
-
-    ("!=", &NotEquals),
-    ("&&", &And),
-    ("<=", &LessEqThan),
-    ("==", &Equals),
-    (">=", &MoreEqThan),
-    ("||", &Or),
-    ("##", &MacroPaste),
-
-    ("+", &Plus),
-    ("%", &Mod),
-    ("&", &BitAnd),
-    ("*", &Times),
-    ("/", &Divide),
-    ("-", &Minus),
-    ("|", &BitOr),
-    ("^", &BitXor),
-
-    ("~", &BitNot),
-    ("!", &Not),
-
-    ("(", &OpenParen),
-    (")", &CloseParen),
-    ("[", &OpenBracket),
-    ("]", &CloseBracket),
-
-    ("?", &Terniary),
-    (":", &TerniaryAlternative),
-
-    (".", &Dot),
-    (",", &Comma),
-
-    ("#", &Macro),
-
-    (">", &MoreThan),
-    ("<", &LessThan),
-
-    ("=", &Assign)
-];
-
-fn match_operator(s: String) -> Option<(TokenType, String)> {
+fn match_operator(c: char, s: &mut Chars) -> Option<TokenType> {
     for (operator, op) in OPERATORS.iter() {
-        if s.starts_with(operator) {
-            unsafe {
-                return Some((TokenType::Operator(op), s.get_unchecked(operator.len()..).to_string()));
+        if operator.starts_with(c) && s.as_str().starts_with(&operator[1..]) {
+            for _ in 1..operator.len() {
+                s.next();
             }
+            return Some(TokenType::Operator(op));
+        }
+    }
+    for (punctuation, p) in PUNCTUATION.iter() {
+        if punctuation.starts_with(c) && s.as_str().starts_with(&punctuation[1..]) {
+            for _ in 1..punctuation.len() {
+                s.next();
+            }
+            return Some(TokenType::Punctuation(p));
         }
     }
     None
 }
 
-pub fn read_token(s: String) -> Option<(TokenType, String)> {
-    match s.chars().next() {
+pub fn read_token(s: &mut Chars) -> Option<TokenType> {
+    match s.next() {
         Some(c) => {
             match c {
-                '0' ..= '9' => Some(read_number(s)),
-                'a' ..= 'z' | 'A' ..= 'Z' => Some(read_identifier(s)),
+                '0' ..= '9' => Some(read_number(c, s)),
+                'a' ..= 'z' | 'A' ..= 'Z' => Some(read_identifier(c, s)),
                 ' ' | '\t' | '\n' => Some(read_whitespace(s)),
-                _ => match_operator(s)
+                _ => match_operator(c, s)
             }
         }
         None => None

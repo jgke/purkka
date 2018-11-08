@@ -1,10 +1,13 @@
 mod tokenizer;
+mod tokentype;
 
 fn main() {
-    let mut str = String::from("1+++++1");
+    let mut str = "if(1 + 1 >= 2) { foo(); }".chars();
 
-    while let Some((token, next_str)) = tokenizer::read_token(str) {
-        println!("{:?}", token);
-        str = next_str;
+    while let Some(token) = tokenizer::read_token(&mut str) {
+        match token {
+            tokentype::TokenType::Whitespace => {}
+            _ => println!("{:?}", token)
+        }
     }
 }
