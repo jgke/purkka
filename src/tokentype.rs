@@ -1,18 +1,24 @@
 use tokentype::Operator::*;
 use tokentype::Keyword::*;
+use tokentype::Macro::*;
 
 #[derive(Debug)]
 pub enum Operator {
     OpenBracket, CloseBracket,
     OpenParen, CloseParen,
     Dot, Arrow,
-    Increment, Decrement, BitAnd, Times, Plus, Minus, BitNot, Not, SizeofOp,
+    Increment, Decrement, BitAnd, Times, Plus, Minus, BitNot, Not, /* SizeofOp, */
     Divide, Mod, BitShiftLeft, BitShiftRight,
     LessThan, MoreThan, LessEqThan, MoreEqThan, Equals, NotEquals, BitXor, BitOr, And, Or,
     Terniary, TerniaryAlternative,
     Assign, TimesAssign, DivAssign, ModAssign, PlusAssign, MinusAssign,
     BitShiftLeftAssign, BitShiftRightAssign, BitAndAssign, BitXorAssign, BitOrAssign,
     Comma, Macro, MacroPaste
+}
+
+#[derive(Debug)]
+pub enum UnaryOperator {
+    BitNot, Not, Dereference, AddressOf, UnaryPlus, UnaryMinus
 }
 
 #[derive(Debug)]
@@ -28,6 +34,18 @@ pub enum Keyword {
 }
 
 #[derive(Debug)]
+pub enum StorageClass {
+    Auto, Extern, Register, Static, Typedef
+}
+
+#[derive(Debug)]
+pub enum TypeSpecifier {
+    Char, Double, Float, Int, Long, Short, Void,
+    Enum, Struct, Union,
+    Signed, Unsigned
+}
+
+#[derive(Debug)]
 pub enum Punctuation {
     OpenBracket, CloseBracket,
     OpenParen, CloseParen,
@@ -37,18 +55,41 @@ pub enum Punctuation {
 }
 
 #[derive(Debug)]
+pub enum Macro {
+    MacroIf,
+    MacroIfdef,
+    MacroIfndef,
+    MacroElif,
+    MacroEndif,
+    Define, Undef,
+    Line, Error, Pragma
+}
+
+#[derive(Debug)]
+pub enum MacroInclude {
+    IncludeSystem(String),
+    IncludeLocal(String),
+}
+
+#[derive(Debug)]
 pub enum Constant {
     Integer(String)
 }
 
+pub type Identifier = String;
+pub type StringLiteral = String;
+
 #[derive(Debug)]
 pub enum TokenType {
     Keyword(&'static Keyword),
-    Identifier(String),
+    Identifier(Identifier),
     Constant(Constant),
-    StringLiteral(String),
+    StringLiteral(StringLiteral),
     Operator(&'static Operator),
+    UnaryOperator(UnaryOperator),
     Punctuation(&'static Punctuation),
+    Macro(&'static Macro),
+    MacroInclude(MacroInclude),
     Whitespace
 }
 
@@ -158,4 +199,17 @@ pub static KEYWORDS: &'static [(&'static str, &'static Keyword)] = &[
     ("void", &Void),
     ("volatile", &Volatile),
     ("while", &While)
+];
+
+pub static SIMPLE_MACROS: &'static [(&'static str, &'static Macro)] = &[
+    ("if ", &MacroIf),
+    ("ifdef ", &MacroIfdef),
+    ("ifndef ", &MacroIfndef),
+    ("elif ", &MacroElif),
+    ("endif ", &MacroEndif),
+    ("define ", &Define),
+    ("undef ", &Undef),
+    ("line ", &Line),
+    ("error ", &Error),
+    ("pragma ", &Pragma)
 ];
