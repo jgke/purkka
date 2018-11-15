@@ -1,3 +1,6 @@
+#![feature(plugin)]
+#![plugin(lalr)]
+
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
@@ -29,3 +32,8 @@ fn main() {
     }
     println!("{:?}", parser::parse_tokens(&mut vec.iter()));
 }
+
+lalr! {
+    Foo -> Bar Baz;
+}
+

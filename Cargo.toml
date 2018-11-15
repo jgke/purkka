@@ -1,6 +1,5 @@
-[package]
-name = "kieli"
-version = "0.1.0"
-authors = ["Jaakko Hannikainen <jaakko.hannikainen@solita.fi>"]
-
-[dependencies]
+[workspace]
+members = [
+    "src/core",
+    "src/lalr"
+]
