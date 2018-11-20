@@ -2,9 +2,15 @@
 #![plugin(lalr)]
 #![allow(dead_code)]
 
+enum Token {
+    Foo, Bar
+}
+
 lalr! {
-    Foo -> Bar Baz;
+    Baz -> #Token::Bar;
+    Foo -> Bar;
     Boo -> Bar Baz;
+    Bar -> &Foo;
 }
 
 #[test]
