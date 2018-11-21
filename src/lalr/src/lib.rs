@@ -7,20 +7,21 @@ extern crate smallvec;
 extern crate syntax;
 extern crate syntax_pos;
 
+use std::iter::Peekable;
+use std::slice::Iter;
+
+use generator::{compute_lalr, Rule, RuleData, RuleTranslationMap};
 use rustc_plugin::Registry;
 use smallvec::SmallVec;
 use syntax::ast;
-use syntax::ext::base::{DummyResult, ExtCtxt, MacEager, MacResult};
+use syntax::ext::base::{DummyResult, ExtCtxt, MacResult};
 use syntax::ext::build::AstBuilder;
 use syntax::ext::quote::rt::Span;
 use syntax::parse::token;
 use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
 
-use std::collections::HashMap;
-use std::iter::Peekable;
-use std::rc::Rc;
-use std::slice::Iter;
+mod generator;
 
 fn is_semi_r(tree: Option<&TokenTree>) -> bool {
     match tree {
@@ -36,39 +37,9 @@ fn is_semi(tree: Option<&&TokenTree>) -> bool {
     }
 }
 
-#[derive(Default)]
-struct RuleTranslationMap {
-    rule_to_number: HashMap<Rc<String>, i64>,
-    number_to_rule: HashMap<i64, Rc<String>>,
-    rule_number: i64
-}
-
-impl RuleTranslationMap {
-    fn push_rule(&mut self, rule: String) -> bool {
-        if(self.rule_to_number.get(&rule).is_some()) {
-            return false;
-        }
-
-        let num = self.rule_number;
-        let r = Rc::new(rule);
-        self.rule_number += 1;
-        self.rule_to_number.insert(Rc::clone(&r), num);
-        self.number_to_rule.insert(num, r);
-        return true;
-    }
-}
-
-struct Rule {
-    identifier: String,
-    components: Vec<(String, String, Span)>,
-    terminal: bool,
-    indirect: bool,
-    span: Span
-}
-
 enum ParseResult {
     Success(Rule),
-    Failure(Option<Span>)
+    Failure(Option<Span>),
 }
 
 fn parse_failure(cx: &mut ExtCtxt, outer_span: Span, tt: Option<&TokenTree>) -> ParseResult {
@@ -128,12 +99,12 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
                             let right = tt.name.to_string();
                             c.push_str("::");
                             c.push_str(&right);
-                            components.push((right, c, *s));
+                            components.push((right, c, cs.to(*s)));
                         }
                         tt => return parse_failure(cx, s.to(rsp), tt)
                     }
                 } else {
-                    return parse_failure(cx, s.to(rsp), None)
+                    return parse_failure(cx, s.to(rsp), None);
                 }
             }
             Some(TokenTree::Token(s, token::Pound)) => {
@@ -151,35 +122,56 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
     assert!(is_semi_r(iter.next()));
 
     let identifier = t.name.to_string();
+    let span = s.to(rsp);
 
-    if !tm.push_rule(identifier.clone()) {
+    let rule = if terminal {
+        Rule {
+            identifier,
+            span,
+            data: RuleData::Terminal,
+        }
+    } else {
+        Rule {
+            identifier,
+            span,
+            data: RuleData::Nonterminal {
+                components,
+                indirect,
+            },
+        }
+    };
+
+    if tm.push_rule(rule.identifier.clone(), rule.clone()).is_none() {
         cx.span_err(s.to(rsp), "Duplicate rule");
         return ParseResult::Failure(Some(s.to(rsp)));
     }
 
-    ParseResult::Success(Rule {
-        identifier,
-        components,
-        terminal,
-        indirect,
-        span: s.to(rsp) })
+    ParseResult::Success(rule)
 }
 
 fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
              -> Box<MacResult + 'static> {
-    let mut tm = RuleTranslationMap { ..Default::default() } ;
+    let mut tm = RuleTranslationMap { ..Default::default() };
 
     let mut iter = args.iter().peekable();
 
     let mut items = SmallVec::<[P<ast::Item>; 1]>::new();
+    let mut parser_items = Vec::new();
 
     while iter.peek().is_some() {
-
         match parse_item(cx, sp, &mut iter, &mut tm) {
             ParseResult::Success(item) => {
-                let indirect = item.indirect;
+                parser_items.push(item.clone());
+                let indirect = match item.data {
+                    RuleData::Nonterminal {indirect, ..}  => indirect,
+                    RuleData::Terminal => false
+                };
+                let components = match item.data {
+                    RuleData::Nonterminal {components, ..}  => components,
+                    RuleData::Terminal => Vec::new()
+                };
                 let enumdef = ast::EnumDef {
-                    variants: item.components
+                    variants: components
                         .into_iter()
                         .map(|item| {
                             let (n, x, s) = item;
@@ -190,11 +182,10 @@ fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
                             let ty;
                             if indirect {
                                 ty = cx.ty_path(
-                                    cx.path_all(s,
-                                                  true,
-                                                  cx.std_path(&["boxed", "Box"]),
-                                                  vec![ast::GenericArg::Type(ident_ty)],
-                                                  Vec::new()));
+                                    cx.path_all(s, true,
+                                                cx.std_path(&["boxed", "Box"]),
+                                                vec![ast::GenericArg::Type(ident_ty)],
+                                                Vec::new()));
                             } else {
                                 ty = ident_ty;
                             }
@@ -210,10 +201,7 @@ fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
         }
     }
 
-    println!("{:?}", tm.rule_to_number);
-    println!("{:?}", tm.number_to_rule);
-
-    MacEager::items(items)
+    return compute_lalr(tm, parser_items, items);
 }
 
 #[plugin_registrar]
