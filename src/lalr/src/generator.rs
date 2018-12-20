@@ -21,7 +21,7 @@ pub struct RuleData {
 pub struct Rule {
     pub identifier: String,
     pub span: Span,
-    pub data: Vec<Vec<RuleData>>
+    pub data: Vec<(String, Vec<RuleData>)>
 }
 
 #[derive(Default)]

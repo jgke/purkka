@@ -81,7 +81,8 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
         tt => return parse_failure(cx, s.to(rsp), tt)
     }
 
-    let mut components: Vec<Vec<RuleData>> = Vec::new();
+    let mut components: Vec<(String, Vec<RuleData>)> = Vec::new();
+    let mut real_name: Option<String> = None;
     let mut current_components: Vec<RuleData> = Vec::new();
 
     while !is_semi(iter.peek()) {
@@ -128,14 +129,26 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
             }
             Some(TokenTree::Token(s, token::BinOp(token::BinOpToken::Or))) => {
                 rsp = *s;
-                components.push(current_components);
+                let real_real_name = real_name.unwrap_or_else(|| current_components.get(0).unwrap().identifier.clone());
+                real_name = None;
+                components.push((real_real_name, current_components));
                 current_components = vec![];
+            }
+            Some(TokenTree::Token(s, token::Dot)) => {
+                rsp = *s;
+                if let Some(data) = current_components.pop() {
+                    real_name = Some(data.identifier);
+                } else {
+                    return parse_failure(cx, s.to(rsp), None);
+                }
             }
             tt => return parse_failure(cx, s.to(rsp), tt)
         }
     }
     if current_components.len() > 0 {
-        components.push(current_components);
+        let real_real_name = real_name.unwrap_or_else(|| current_components.get(0).unwrap().identifier.clone());
+        real_name = None;
+        components.push((real_real_name, current_components));
     }
 
     assert!(is_semi_r(iter.next()));
@@ -171,9 +184,8 @@ fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
             ParseResult::Success(item) => {
                 parser_items.push(item.clone());
                 let enumdef = ast::EnumDef {
-                    variants: item.data.into_iter().map(|components| {
+                    variants: item.data.into_iter().map(|(variant_identifier, components)| {
                         let mut total_span = components.get(0).unwrap().span;
-                        let variant_identifier = &components.get(0).unwrap().identifier.clone();
                         let vals = components.into_iter().map(|item| {
                             total_span = total_span.to(item.span);
                             //let (n, x, s) = item;
@@ -192,7 +204,7 @@ fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
                             }
                             ty
                         }).collect();
-                        cx.variant(total_span, cx.ident_of(variant_identifier), vals)
+                        cx.variant(total_span, cx.ident_of(&variant_identifier), vals)
                     }).collect()
                 };
 
