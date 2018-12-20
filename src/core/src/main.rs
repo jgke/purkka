@@ -32,8 +32,3 @@ fn main() {
     }
     println!("{:?}", parser::parse_tokens(&mut vec.iter()));
 }
-
-lalr! {
-    Foo -> Bar Baz;
-}
-

@@ -9,19 +9,19 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
-pub enum RuleData {
-    Terminal,
-    Nonterminal {
-        components: Vec<(String, String, Span)>,
-        indirect: bool,
-    }
+pub struct RuleData {
+    pub identifier: String,
+    pub full_path: String,
+    pub span: Span,
+    pub terminal: bool,
+    pub indirect: bool
 }
 
 #[derive(Debug, Clone)]
 pub struct Rule {
     pub identifier: String,
     pub span: Span,
-    pub data: RuleData
+    pub data: Vec<Vec<RuleData>>
 }
 
 #[derive(Default)]

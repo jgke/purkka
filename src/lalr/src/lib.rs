@@ -81,25 +81,36 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
         tt => return parse_failure(cx, s.to(rsp), tt)
     }
 
-    let mut components: Vec<(String, String, Span)> = Vec::new();
+    let mut components: Vec<Vec<RuleData>> = Vec::new();
+    let mut current_components: Vec<RuleData> = Vec::new();
 
     while !is_semi(iter.peek()) {
         match iter.next() {
             Some(TokenTree::Token(s, token::Ident(t, _))) => {
                 rsp = *s;
                 let name = t.name.to_string();
-                components.push((name.clone(), name, *s));
+                current_components.push(RuleData {
+                    identifier: name.clone(),
+                    full_path: name,
+                    span: rsp,
+                    terminal,
+                    indirect,
+                });
+                terminal = false;
+                indirect = false;
             }
             Some(TokenTree::Token(s, token::ModSep)) => {
                 rsp = *s;
-                if let Some((_, mut c, cs)) = components.pop() {
+                if let Some(mut data) = current_components.pop() {
                     match iter.next() {
                         Some(TokenTree::Token(s, token::Ident(tt, _))) => {
                             rsp = *s;
                             let right = tt.name.to_string();
-                            c.push_str("::");
-                            c.push_str(&right);
-                            components.push((right, c, cs.to(*s)));
+                            data.full_path.push_str("::");
+                            data.full_path.push_str(&right);
+                            data.identifier = right;
+                            data.span = data.span.to(*s);
+                            current_components.push(data);
                         }
                         tt => return parse_failure(cx, s.to(rsp), tt)
                     }
@@ -115,8 +126,16 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
                 rsp = *s;
                 indirect = true;
             }
+            Some(TokenTree::Token(s, token::BinOp(token::BinOpToken::Or))) => {
+                rsp = *s;
+                components.push(current_components);
+                current_components = vec![];
+            }
             tt => return parse_failure(cx, s.to(rsp), tt)
         }
+    }
+    if current_components.len() > 0 {
+        components.push(current_components);
     }
 
     assert!(is_semi_r(iter.next()));
@@ -124,21 +143,10 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
     let identifier = t.name.to_string();
     let span = s.to(rsp);
 
-    let rule = if terminal {
-        Rule {
-            identifier,
-            span,
-            data: RuleData::Terminal,
-        }
-    } else {
-        Rule {
-            identifier,
-            span,
-            data: RuleData::Nonterminal {
-                components,
-                indirect,
-            },
-        }
+    let rule = Rule {
+        identifier: identifier.clone(),
+        span,
+        data: components,
     };
 
     if tm.push_rule(rule.identifier.clone(), rule.clone()).is_none() {
@@ -162,38 +170,32 @@ fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
         match parse_item(cx, sp, &mut iter, &mut tm) {
             ParseResult::Success(item) => {
                 parser_items.push(item.clone());
-                let indirect = match item.data {
-                    RuleData::Nonterminal {indirect, ..}  => indirect,
-                    RuleData::Terminal => false
-                };
-                let components = match item.data {
-                    RuleData::Nonterminal {components, ..}  => components,
-                    RuleData::Terminal => Vec::new()
-                };
                 let enumdef = ast::EnumDef {
-                    variants: components
-                        .into_iter()
-                        .map(|item| {
-                            let (n, x, s) = item;
-                            let mut vals = Vec::new();
-                            let ident_arr = x.rsplitn(2, "::");
+                    variants: item.data.into_iter().map(|components| {
+                        let mut total_span = components.get(0).unwrap().span;
+                        let variant_identifier = &components.get(0).unwrap().identifier.clone();
+                        let vals = components.into_iter().map(|item| {
+                            total_span = total_span.to(item.span);
+                            //let (n, x, s) = item;
+                            let ident_arr = item.full_path.rsplitn(2, "::");
                             // .unwrap() here is always safe
-                            let ident_ty = cx.ty_ident(s, cx.ident_of(ident_arr.last().unwrap()));
+                            let ident_ty = cx.ty_ident(item.span, cx.ident_of(ident_arr.last().unwrap()));
                             let ty;
-                            if indirect {
+                            if item.indirect {
                                 ty = cx.ty_path(
-                                    cx.path_all(s, true,
+                                    cx.path_all(item.span, true,
                                                 cx.std_path(&["boxed", "Box"]),
                                                 vec![ast::GenericArg::Type(ident_ty)],
                                                 Vec::new()));
                             } else {
                                 ty = ident_ty;
                             }
-                            vals.push(ty);
-                            cx.variant(sp, cx.ident_of(&n), vals)
-                        })
-                        .collect()
+                            ty
+                        }).collect();
+                        cx.variant(total_span, cx.ident_of(variant_identifier), vals)
+                    }).collect()
                 };
+
                 let ident = cx.ident_of(&item.identifier);
                 items.push(cx.item_enum(item.span, ident, enumdef));
             }
