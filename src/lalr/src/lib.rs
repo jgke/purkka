@@ -20,6 +20,7 @@ use syntax::ext::quote::rt::Span;
 use syntax::parse::token;
 use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
+use syntax_pos::symbol::LocalInternedString;
 
 mod generator;
 
@@ -89,10 +90,9 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
         match iter.next() {
             Some(TokenTree::Token(s, token::Ident(t, _))) => {
                 rsp = *s;
-                let name = t.name.to_string();
                 current_components.push(RuleData {
-                    identifier: name.clone(),
-                    full_path: name,
+                    identifier: t.name.to_string(),
+                    full_path: t.name.to_string(),
                     span: rsp,
                     terminal,
                     indirect,
@@ -153,11 +153,11 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
 
     assert!(is_semi_r(iter.next()));
 
-    let identifier = t.name.to_string();
+    let identifier = t.name.as_str();
     let span = s.to(rsp);
 
     let rule = Rule {
-        identifier: identifier.clone(),
+        identifier: identifier.to_string(),
         span,
         data: components,
     };
@@ -178,11 +178,20 @@ fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
 
     let mut items = SmallVec::<[P<ast::Item>; 1]>::new();
     let mut parser_items = Vec::new();
+    parser_items.push(Rule {
+        identifier: "Epsilon".to_string(),
+        span: sp,
+        data: vec![]
+    });
+    items.push(cx.item_enum(sp, cx.ident_of("Epsilon"), ast::EnumDef {
+        variants: vec![cx.variant(sp, cx.ident_of("E"), vec![])]
+    }));
 
     while iter.peek().is_some() {
         match parse_item(cx, sp, &mut iter, &mut tm) {
             ParseResult::Success(item) => {
                 parser_items.push(item.clone());
+                let enum_name = &item.identifier;
                 let enumdef = ast::EnumDef {
                     variants: item.data.into_iter().map(|(variant_identifier, components)| {
                         let mut total_span = components.get(0).unwrap().span;
@@ -193,7 +202,7 @@ fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
                             // .unwrap() here is always safe
                             let ident_ty = cx.ty_ident(item.span, cx.ident_of(ident_arr.last().unwrap()));
                             let ty;
-                            if item.indirect {
+                            if item.indirect || &item.identifier == enum_name {
                                 ty = cx.ty_path(
                                     cx.path_all(item.span, true,
                                                 cx.std_path(&["boxed", "Box"]),
@@ -208,7 +217,7 @@ fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
                     }).collect()
                 };
 
-                let ident = cx.ident_of(&item.identifier);
+                let ident = cx.ident_of(enum_name);
                 items.push(cx.item_enum(item.span, ident, enumdef));
             }
             ParseResult::Failure(span) => return DummyResult::any(span.unwrap_or(sp))

@@ -11,11 +11,11 @@ enum Token {
 lalr! {
     S -> PlusExpr;
     PlusExpr -> TimesExpr
-              | Plus. &PlusExpr #Token::Plus TimesExpr
-              | Minus. &PlusExpr #Token::Minus TimesExpr;
+              | Plus. PlusExpr #Token::Plus TimesExpr
+              | Minus. PlusExpr #Token::Minus TimesExpr;
     TimesExpr -> PrimaryExpr
-               | Times. &TimesExpr #Token::Times PrimaryExpr
-               | Divide. &TimesExpr #Token::Divide PrimaryExpr;
+               | Times. TimesExpr #Token::Times PrimaryExpr
+               | Divide. TimesExpr #Token::Divide PrimaryExpr;
     PrimaryExpr -> #Token::Constant
                  | #Token::OpenParen &PlusExpr #Token::CloseParen;
 }
