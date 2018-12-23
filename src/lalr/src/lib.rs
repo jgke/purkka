@@ -20,7 +20,6 @@ use syntax::ext::quote::rt::Span;
 use syntax::parse::token;
 use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
-use syntax_pos::symbol::LocalInternedString;
 
 mod generator;
 
@@ -147,7 +146,6 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
     }
     if current_components.len() > 0 {
         let real_real_name = real_name.unwrap_or_else(|| current_components.get(0).unwrap().identifier.clone());
-        real_name = None;
         components.push((real_real_name, current_components));
     }
 
