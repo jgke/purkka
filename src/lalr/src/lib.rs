@@ -7,10 +7,6 @@ extern crate smallvec;
 extern crate syntax;
 extern crate syntax_pos;
 
-use std::iter::Peekable;
-use std::slice::Iter;
-
-use generator::{compute_lalr, Rule, RuleData, RuleTranslationMap};
 use rustc_plugin::Registry;
 use smallvec::SmallVec;
 use syntax::ast;
@@ -22,8 +18,14 @@ use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
 
 use std::collections::HashSet;
+use std::iter::Peekable;
+use std::slice::Iter;
 
 mod generator;
+mod types;
+
+use generator::{compute_lalr};
+use types::{Rule, RuleData, RuleTranslationMap};
 
 fn is_semi_r(tree: Option<&TokenTree>) -> bool {
     match tree {
