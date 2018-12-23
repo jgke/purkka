@@ -204,7 +204,7 @@ fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
                             let ident_ty = cx.ty_ident(item.span, cx.ident_of(ident_arr.last().unwrap()));
                             let ty;
                             if item.terminal {
-                                terminals.insert(item.full_path.clone());
+                                terminals.insert((item.identifier.clone(), item.full_path.clone()));
                             }
                             if item.indirect || &item.identifier == enum_name {
                                 ty = cx.ty_path(
