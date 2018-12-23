@@ -26,15 +26,13 @@ pub struct Rule {
 
 #[derive(Default)]
 pub struct RuleTranslationMap {
-    pub rule_to_number: HashMap<String, usize>,
-    pub number_to_rule: HashMap<usize, String>,
-    pub rules: Vec<Rule>,
-    pub rule_number: usize
+    pub rules: HashMap<String, Rule>,
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Item {
-    pub rule: (usize, usize),
+    pub index: String,
+    pub subindex: usize,
     pub position: usize,
     pub lookahead: String
 }
@@ -69,17 +67,13 @@ impl fmt::Display for Rule {
 }
 
 impl RuleTranslationMap {
-    pub fn push_rule(&mut self, rule: String, data: Rule) -> Option<usize> {
-        if self.rule_to_number.get(&rule).is_some() {
+    pub fn push_rule(&mut self, rule: String, data: Rule) -> Option<()> {
+        if self.rules.get(&rule).is_some() {
             return None;
         }
 
-        let num = self.rule_number;
-        self.rule_number += 1;
-        self.rule_to_number.insert(rule.clone(), num);
-        self.number_to_rule.insert(num, rule.clone());
-        self.rules.push(data);
-        return Some(num);
+        self.rules.insert(rule, data);
+        return Some(());
     }
 }
 
@@ -89,8 +83,7 @@ impl<'a> fmt::Display for ItemWithTr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut output = String::new();
         let ItemWithTr(tm, item) = self;
-        let (rule_index, rule_subindex) = item.rule;
-        let (ref name, ref symbols) = tm.rules[rule_index].data[rule_subindex];
+        let (ref _name, ref symbols) = tm.rules[&item.index].data[item.subindex];
         for (i, symbol) in symbols.iter().enumerate() {
             if i == item.position {
                 output.push_str(" . ");
@@ -100,32 +93,32 @@ impl<'a> fmt::Display for ItemWithTr<'a> {
             }
             output.push_str(&symbol.identifier);
         }
-        write!(f, "[{} -> {}({}), {}]", tm.number_to_rule[&rule_index], name, output, item.lookahead)
+        write!(f, "[{} -> {}, {}]", item.index, output, item.lookahead)
     }
 }
 
-fn first(tm: &RuleTranslationMap, set: &mut HashSet<String>, rule_index: usize) -> bool {
+fn first(tm: &RuleTranslationMap, set: &mut HashSet<String>, rule_index: &str) -> bool {
     let mut cache = HashSet::new();
     _first(tm, set, &mut cache, rule_index)
 }
 
-fn _first(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut HashSet<usize>, rule_index: usize) -> bool {
+fn _first(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut HashSet<String>, rule_index: &str) -> bool {
+    if cache.get(rule_index).is_some() {
+        return false;
+    }
+    cache.insert(rule_index.to_string());
     let rule = &tm.rules[rule_index];
     let mut has_e = false;
     // E -> A | B
     for (i, _) in rule.data.iter().enumerate() {
-        has_e |= _first_all(tm, set, cache, (rule_index, i, 0));
+        has_e |= _first_all(tm, set, cache, (&rule_index, i, 0));
     }
     has_e
 }
 
-fn _first_all(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut HashSet<usize>,
-          rule: (usize, usize, usize)) -> bool {
+fn _first_all(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut HashSet<String>,
+          rule: (&str, usize, usize)) -> bool {
     let (rule_index, rule_subindex, position) = rule;
-    if cache.get(&rule_index).is_some() {
-        return false;
-    }
-    cache.insert(rule_index);
     let rule = &tm.rules[rule_index];
     let (_, symbols) = &rule.data[rule_subindex];
     let mut has_e = true;
@@ -143,7 +136,7 @@ fn _first_all(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut Ha
             has_e = false;
             break;
         } else {
-            let sub_has_e = _first(tm, set, cache, tm.rule_to_number[&ruledata.identifier]);
+            let sub_has_e = _first(tm, set, cache, ruledata.identifier.as_str());
             if !sub_has_e {
                 has_e = false;
                 break;
@@ -156,34 +149,39 @@ fn _first_all(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut Ha
 pub fn closure(tm: &RuleTranslationMap, items: &mut HashSet<Item>) {
     let mut added: HashSet<Item> = HashSet::new();
     let mut added_next: HashSet<Item> = HashSet::new();
-    let mut prevsize = items.len() + 1;
+    let mut prevsize = items.len() - 1;
     for item in items.iter() {
         added.insert(item.clone());
     }
 
-    while prevsize > items.len() {
+    while prevsize < items.len() {
         prevsize = items.len();
         // for each item [A -> a.Bb, a] in I
         for item in &added {
-            let (rule_index, _) = item.rule;
-            // for each production [B -> g] in G
-            for (i, (_, rule)) in tm.rules[rule_index].data.iter().enumerate() {
-                if rule[item.position].terminal {
-                    // ???
-                } else {
+            let (_, production_rules) = &tm.rules[&item.index].data[item.subindex];
+            let current_production = &production_rules[item.position];
+            if current_production.terminal {
+                // ???
+            } else {
+                let inner_production = &tm.rules[&current_production.identifier];
+                // for each production [B -> g] in G
+                for (i, _) in inner_production.data.iter().enumerate() {
                     let mut set = HashSet::new();
-                    let production_number  = tm.rule_to_number[&rule[item.position].identifier];
-                    if first(tm, &mut set, production_number) {
-                        //added.insert(Item {
-                        //    rule: (rule_index, i),
-                        //    position: 0,
-                        //    lookahead: item.
-                        //});
-                    }
+                    let mut cache = HashSet::new();
                     // for each terminal b in First(Ba)
+                    if _first_all(tm, &mut set, &mut cache,
+                                  (&item.index, item.subindex, item.position + 1)) {
+                        added_next.insert(Item {
+                            index: inner_production.identifier.clone(),
+                            subindex: i,
+                            position: 0,
+                            lookahead: item.lookahead.to_string()
+                        });
+                    }
                     for terminal in set {
                         added_next.insert(Item {
-                            rule: (rule_index, i),
+                            index: inner_production.identifier.clone(),
+                            subindex: i,
                             position: 0,
                             lookahead: terminal
                         });
@@ -203,23 +201,24 @@ pub fn closure(tm: &RuleTranslationMap, items: &mut HashSet<Item>) {
 
 pub fn compute_lalr(tm: RuleTranslationMap, parser_items: Vec<Rule>, output: SmallVec<[P<ast::Item>; 1]>)
         -> Box<(dyn MacResult + 'static)> {
-    println!("{:?}", tm.rule_to_number);
-    println!("{:?}", tm.number_to_rule);
     for item in parser_items {
         println!("{}", item);
     }
 
+    println!("\nFirst S:");
     let mut set = HashSet::new();
-    first(&tm, &mut set, 0);
+    first(&tm, &mut set, "S");
     println!("{:?}", set);
 
     let mut items = HashSet::new();
     items.insert(Item {
-        rule: (0, 0),
+        index: "S".to_string(),
+        subindex: 0,
         position: 0,
         lookahead: "$".to_string()
     });
     closure(&tm, &mut items);
+    println!("\nClosure:");
     for item in items {
         println!("{}", ItemWithTr(&tm, &item));
     }
@@ -227,10 +226,10 @@ pub fn compute_lalr(tm: RuleTranslationMap, parser_items: Vec<Rule>, output: Sma
     return MacEager::items(output)
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn first() {
-
-    }
-}
+//#[cfg(test)]
+//mod tests {
+//    #[test]
+//    fn first() {
+//        println!("First");
+//    }
+//}
