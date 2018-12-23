@@ -5,6 +5,7 @@ use syntax::ext::base::{MacEager, MacResult};
 use syntax::ptr::P;
 use syntax::ext::quote::rt::Span;
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -35,6 +36,35 @@ pub struct Item {
     pub subindex: usize,
     pub position: usize,
     pub lookahead: String
+}
+
+fn rule_name_compare(this: &String, that: &String) -> Ordering {
+    if this == "S" {
+        Ordering::Less
+    } else if that == "S" {
+        Ordering::Greater
+    } else if this == "SS" {
+        Ordering::Less
+    } else if that == "SS" {
+        Ordering::Greater
+    } else {
+        this.cmp(that)
+    }
+}
+
+impl Ord for Item {
+    fn cmp(&self, other: &Item) -> Ordering {
+        rule_name_compare(&self.index, &other.index)
+            .then(self.subindex.cmp(&other.subindex))
+            .then(self.position.cmp(&other.position))
+            .then(self.lookahead.cmp(&other.lookahead))
+    }
+}
+
+impl PartialOrd for Item {
+    fn partial_cmp(&self, other: &Item) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl fmt::Display for Rule {
@@ -87,13 +117,18 @@ impl<'a> fmt::Display for ItemWithTr<'a> {
         for (i, symbol) in symbols.iter().enumerate() {
             if i == item.position {
                 output.push_str(" . ");
+            } else {
+                output.push_str(" ");
             }
             if symbol.terminal {
                 output.push_str("#");
             }
             output.push_str(&symbol.identifier);
         }
-        write!(f, "[{} -> {}, {}]", item.index, output, item.lookahead)
+        if item.position == symbols.len() {
+                output.push_str(" . ");
+        }
+        write!(f, "[{} ->{}, {}]", item.index, output, item.lookahead)
     }
 }
 
@@ -149,20 +184,20 @@ fn _first_all(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut Ha
 pub fn closure(tm: &RuleTranslationMap, items: &mut HashSet<Item>) {
     let mut added: HashSet<Item> = HashSet::new();
     let mut added_next: HashSet<Item> = HashSet::new();
-    let mut prevsize = items.len() - 1;
+    let mut prevsize = items.len();
     for item in items.iter() {
         added.insert(item.clone());
     }
 
-    while prevsize < items.len() {
-        prevsize = items.len();
+    while prevsize < items.len() + 1 {
+        prevsize = items.len() + 1;
         // for each item [A -> a.Bb, a] in I
         for item in &added {
             let (_, production_rules) = &tm.rules[&item.index].data[item.subindex];
-            let current_production = &production_rules[item.position];
-            if current_production.terminal {
-                // ???
-            } else {
+            match &production_rules.get(item.position) {
+                None => {},
+                Some(RuleData { terminal: true, .. }) => {},
+                Some(current_production) => {
                 let inner_production = &tm.rules[&current_production.identifier];
                 // for each production [B -> g] in G
                 for (i, _) in inner_production.data.iter().enumerate() {
@@ -189,6 +224,7 @@ pub fn closure(tm: &RuleTranslationMap, items: &mut HashSet<Item>) {
                 }
             }
         }
+        }
 
         for item in &added_next {
             items.insert(item.clone());
@@ -199,7 +235,56 @@ pub fn closure(tm: &RuleTranslationMap, items: &mut HashSet<Item>) {
     }
 }
 
-pub fn compute_lalr(tm: RuleTranslationMap, parser_items: Vec<Rule>, output: SmallVec<[P<ast::Item>; 1]>)
+pub fn goto(tm: &RuleTranslationMap, goto_items: &mut HashSet<Item>, items: &HashSet<Item>, rule: String) {
+    for item in items {
+        let (_, ruledata) = &tm.rules[&item.index].data[item.subindex];
+        if ruledata.len() > item.position && ruledata[item.position].full_path == rule {
+            let mut goto_item = item.clone();
+            goto_item.position += 1;
+            goto_items.insert(goto_item);
+        }
+    }
+    closure(tm, goto_items);
+}
+
+pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: Vec<String>) {
+    let mut initial = HashSet::new();
+    println!("{:?}", symbols);
+    initial.insert(Item {
+        index: "S".to_string(),
+        subindex: 0,
+        position: 0,
+        lookahead: "$".to_string()
+    });
+    closure(&tm, &mut initial);
+    items.push(initial.clone());
+    let mut added = Vec::new();
+    let mut added_next: Vec<HashSet<Item>> = Vec::new();
+    added.push(initial);
+    let mut prevsize = 0;
+
+    while prevsize < items.len() {
+        prevsize = items.len();
+        for set in &added {
+            println!("{:?}", set);
+            for symbol in &symbols {
+                let mut goto_items = HashSet::new();
+                goto(tm, &mut goto_items, set, symbol.to_string());
+                println!("{:?}", goto_items);
+                if goto_items.len() > 0 && !items.contains(&goto_items) && !added_next.contains(&goto_items) {
+                    added_next.push(goto_items);
+                }
+            }
+        }
+        for item in &added_next {
+            items.push(item.clone());
+        }
+        added = added_next;
+        added_next = Vec::new();
+    }
+}
+
+pub fn compute_lalr(tm: RuleTranslationMap, parser_items: Vec<Rule>, terminals: HashSet<String>, output: SmallVec<[P<ast::Item>; 1]>)
         -> Box<(dyn MacResult + 'static)> {
     for item in parser_items {
         println!("{}", item);
@@ -210,17 +295,58 @@ pub fn compute_lalr(tm: RuleTranslationMap, parser_items: Vec<Rule>, output: Sma
     first(&tm, &mut set, "S");
     println!("{:?}", set);
 
-    let mut items = HashSet::new();
-    items.insert(Item {
+    let mut closure_items = HashSet::new();
+    closure_items.insert(Item {
         index: "S".to_string(),
         subindex: 0,
         position: 0,
         lookahead: "$".to_string()
     });
-    closure(&tm, &mut items);
+    closure(&tm, &mut closure_items);
     println!("\nClosure:");
-    for item in items {
-        println!("{}", ItemWithTr(&tm, &item));
+    for item in &closure_items {
+        println!("{}", ItemWithTr(&tm, item));
+    }
+
+    let mut rule_names: Vec<String> = tm.rules.iter().map(|(x, _)| x.clone()).collect();
+    rule_names.sort_unstable_by(rule_name_compare);
+
+    for rule in &rule_names {
+        println!("\nGoto {}:", rule);
+        let mut goto_items = HashSet::new();
+        goto(&tm, &mut goto_items, &closure_items, rule.to_string());
+        let mut goto_items_vec: Vec<&Item> = goto_items.iter().collect();
+        goto_items_vec.sort_unstable();
+        for item in goto_items_vec {
+            println!("{}", ItemWithTr(&tm, &item));
+        }
+    }
+
+    let mut terminal_names: Vec<String> = terminals.iter().map(|x| x.clone()).collect();
+    terminal_names.sort_unstable_by(rule_name_compare);
+
+    for terminal in &terminal_names {
+        println!("\nGoto {}:", terminal);
+        let mut goto_items = HashSet::new();
+        goto(&tm, &mut goto_items, &closure_items, terminal.to_string());
+        for item in goto_items {
+            println!("{}", ItemWithTr(&tm, &item));
+        }
+    }
+
+    let mut lr_items = Vec::new();
+    let mut symbols: Vec<String> = rule_names.iter().chain(terminal_names.iter()).map(|x| x.clone()).collect();
+    symbols.sort_unstable_by(rule_name_compare);
+    items(&tm, &mut lr_items, symbols);
+
+    println!("LR(1) items:");
+    for set in &lr_items {
+        let mapped_set: Vec<ItemWithTr> = set.iter().map(|value| ItemWithTr(&tm, &value)).collect();
+        println!("[");
+        for item in &mapped_set {
+            println!("  {}", item);
+        }
+        println!("]");
     }
 
     return MacEager::items(output)

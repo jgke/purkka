@@ -1,17 +1,19 @@
 #![feature(plugin)]
 #![plugin(lalr)]
 #![allow(dead_code)]
+#![allow(non_camel_case_types)]
 
 enum Token {
     Constant,
     Plus, Minus, Times, Divide,
-    OpenParen, CloseParen
+    OpenParen, CloseParen,
+    c, d
 }
 
 lalr! {
     S -> SS;
     SS -> C C;
-    C -> #Token::Plus C | #Token::Minus;
+    C -> #Token::c C | #Token::d;
 }
 
 //lalr! {

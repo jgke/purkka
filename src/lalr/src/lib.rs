@@ -21,6 +21,8 @@ use syntax::parse::token;
 use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
 
+use std::collections::HashSet;
+
 mod generator;
 
 fn is_semi_r(tree: Option<&TokenTree>) -> bool {
@@ -171,6 +173,7 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
 fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
              -> Box<MacResult + 'static> {
     let mut tm = RuleTranslationMap { ..Default::default() };
+    let mut terminals = HashSet::new();
 
     let mut iter = args.iter().peekable();
 
@@ -200,6 +203,9 @@ fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
                             // .unwrap() here is always safe
                             let ident_ty = cx.ty_ident(item.span, cx.ident_of(ident_arr.last().unwrap()));
                             let ty;
+                            if item.terminal {
+                                terminals.insert(item.full_path.clone());
+                            }
                             if item.indirect || &item.identifier == enum_name {
                                 ty = cx.ty_path(
                                     cx.path_all(item.span, true,
@@ -222,7 +228,7 @@ fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
         }
     }
 
-    return compute_lalr(tm, parser_items, items);
+    return compute_lalr(tm, parser_items, terminals, items);
 }
 
 #[plugin_registrar]
