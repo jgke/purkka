@@ -8,22 +8,20 @@ extern crate syntax;
 extern crate syntax_pos;
 
 use rustc_plugin::Registry;
-use smallvec::SmallVec;
-use syntax::ast;
 use syntax::ext::base::{DummyResult, ExtCtxt, MacResult};
-use syntax::ext::build::AstBuilder;
 use syntax::ext::quote::rt::Span;
 use syntax::parse::token;
-use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
 
 use std::collections::HashSet;
 use std::iter::Peekable;
 use std::slice::Iter;
 
+mod ast_output;
 mod generator;
 mod types;
 
+use ast_output::{output_parser};
 use generator::{compute_lalr};
 use types::{Rule, RuleData, RuleTranslationMap};
 
@@ -172,68 +170,41 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
     ParseResult::Success(rule)
 }
 
-fn expand_rn(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
+fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
              -> Box<MacResult + 'static> {
     let mut tm = RuleTranslationMap { ..Default::default() };
     let mut terminals = HashSet::new();
 
     let mut iter = args.iter().peekable();
 
-    let mut items = SmallVec::<[P<ast::Item>; 1]>::new();
-    let mut parser_items = Vec::new();
-    parser_items.push(Rule {
+    let mut items = Vec::new();
+    items.push(Rule {
         identifier: "Epsilon".to_string(),
         span: sp,
         data: vec![]
     });
-    items.push(cx.item_enum(sp, cx.ident_of("Epsilon"), ast::EnumDef {
-        variants: vec![cx.variant(sp, cx.ident_of("E"), vec![])]
-    }));
 
     while iter.peek().is_some() {
         match parse_item(cx, sp, &mut iter, &mut tm) {
             ParseResult::Success(item) => {
-                parser_items.push(item.clone());
-                let enum_name = &item.identifier;
-                let enumdef = ast::EnumDef {
-                    variants: item.data.into_iter().map(|(variant_identifier, components)| {
-                        let mut total_span = components.get(0).unwrap().span;
-                        let vals = components.into_iter().map(|item| {
-                            total_span = total_span.to(item.span);
-                            //let (n, x, s) = item;
-                            let ident_arr = item.full_path.rsplitn(2, "::");
-                            // .unwrap() here is always safe
-                            let ident_ty = cx.ty_ident(item.span, cx.ident_of(ident_arr.last().unwrap()));
-                            let ty;
-                            if item.terminal {
-                                terminals.insert((item.identifier.clone(), item.full_path.clone()));
-                            }
-                            if item.indirect || &item.identifier == enum_name {
-                                ty = cx.ty_path(
-                                    cx.path_all(item.span, true,
-                                                cx.std_path(&["boxed", "Box"]),
-                                                vec![ast::GenericArg::Type(ident_ty)],
-                                                Vec::new()));
-                            } else {
-                                ty = ident_ty;
-                            }
-                            ty
-                        }).collect();
-                        cx.variant(total_span, cx.ident_of(&variant_identifier), vals)
-                    }).collect()
-                };
+                item.data.iter().for_each(|rules| rules.1.iter()
+                                         .filter(|x| x.terminal)
+                                         .for_each(|x| {
+                                             terminals.insert((x.identifier.clone(), x.full_path.clone()));
+                                         }));
 
-                let ident = cx.ident_of(enum_name);
-                items.push(cx.item_enum(item.span, ident, enumdef));
+
+                items.push(item);
             }
             ParseResult::Failure(span) => return DummyResult::any(span.unwrap_or(sp))
         }
     }
 
-    return compute_lalr(tm, parser_items, terminals, items);
+    let lalr_table = compute_lalr(&tm, &items, &terminals);
+    return output_parser(cx, sp, &tm, &items, &terminals, &lalr_table);
 }
 
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
-    reg.register_macro("lalr", expand_rn);
+    reg.register_macro("lalr", expand_lalr);
 }

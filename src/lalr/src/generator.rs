@@ -1,8 +1,3 @@
-use syntax::ast;
-use smallvec::SmallVec;
-use syntax::ext::base::{MacEager, MacResult};
-use syntax::ptr::P;
-
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -217,15 +212,15 @@ pub fn lr_parsing_table(tm: &RuleTranslationMap, lr_items: &Vec<HashSet<Item>>,
     return table;
 }
 
-pub fn compute_lalr(tm: RuleTranslationMap, parser_items: Vec<Rule>, terminals: HashSet<(String, String)>, output: SmallVec<[P<ast::Item>; 1]>)
-        -> Box<(dyn MacResult + 'static)> {
+pub fn compute_lalr(tm: &RuleTranslationMap, parser_items: &Vec<Rule>, terminals: &HashSet<(String, String)>)
+        -> Box<LRTable> {
     for item in parser_items {
         println!("{}", item);
     }
 
     println!("\nFirst S:");
     let mut set = HashSet::new();
-    first(&tm, &mut set, "S");
+    first(tm, &mut set, "S");
     println!("{:?}", set);
 
     let mut closure_items = HashSet::new();
@@ -235,10 +230,10 @@ pub fn compute_lalr(tm: RuleTranslationMap, parser_items: Vec<Rule>, terminals: 
         position: 0,
         lookahead: "$".to_string()
     });
-    closure(&tm, &mut closure_items);
+    closure(tm, &mut closure_items);
     println!("\nClosure:");
     for item in &closure_items {
-        println!("{}", ItemWithTr(&tm, item));
+        println!("{}", ItemWithTr(tm, item));
     }
 
     let mut rule_names: Vec<String> = tm.rules.iter().map(|(x, _)| x.clone()).collect();
@@ -247,11 +242,11 @@ pub fn compute_lalr(tm: RuleTranslationMap, parser_items: Vec<Rule>, terminals: 
     for rule in &rule_names {
         println!("\nGoto {}:", rule);
         let mut goto_items = HashSet::new();
-        goto(&tm, &mut goto_items, &closure_items, rule.to_string());
+        goto(tm, &mut goto_items, &closure_items, rule.to_string());
         let mut goto_items_vec: Vec<&Item> = goto_items.iter().collect();
         goto_items_vec.sort_unstable();
         for item in goto_items_vec {
-            println!("{}", ItemWithTr(&tm, &item));
+            println!("{}", ItemWithTr(tm, &item));
         }
     }
 
@@ -263,20 +258,20 @@ pub fn compute_lalr(tm: RuleTranslationMap, parser_items: Vec<Rule>, terminals: 
     for terminal in &terminal_names {
         println!("\nGoto {}:", terminal);
         let mut goto_items = HashSet::new();
-        goto(&tm, &mut goto_items, &closure_items, terminal.to_string());
+        goto(tm, &mut goto_items, &closure_items, terminal.to_string());
         for item in goto_items {
-            println!("{}", ItemWithTr(&tm, &item));
+            println!("{}", ItemWithTr(tm, &item));
         }
     }
 
     let mut lr_items = Vec::new();
     let mut symbols: Vec<String> = rule_names.iter().chain(terminal_full_names.iter()).map(|x| x.clone()).collect();
     symbols.sort_unstable_by(rule_name_compare);
-    items(&tm, &mut lr_items, &symbols);
+    items(tm, &mut lr_items, &symbols);
 
     println!("LR(1) items:");
     for set in &lr_items {
-        let mapped_set: Vec<ItemWithTr> = set.iter().map(|value| ItemWithTr(&tm, &value)).collect();
+        let mapped_set: Vec<ItemWithTr> = set.iter().map(|value| ItemWithTr(tm, &value)).collect();
         println!("[");
         for item in &mapped_set {
             println!("  {}", item);
@@ -284,7 +279,7 @@ pub fn compute_lalr(tm: RuleTranslationMap, parser_items: Vec<Rule>, terminals: 
         println!("]");
     }
 
-    let table = lr_parsing_table(&tm, &lr_items, &rule_names);
+    let table = lr_parsing_table(tm, &lr_items, &rule_names);
     print!("   ");
     for symbol in terminal_names.iter().chain(vec!["$".to_string()].iter()).chain(rule_names.iter()) {
         print!("{: >5}", &symbol[symbol.len().saturating_sub(3)..symbol.len()]);
@@ -303,7 +298,7 @@ pub fn compute_lalr(tm: RuleTranslationMap, parser_items: Vec<Rule>, terminals: 
         println!("");
     }
 
-    return MacEager::items(output)
+    return table;
 }
 
 //#[cfg(test)]
