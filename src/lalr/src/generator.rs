@@ -214,89 +214,89 @@ pub fn lr_parsing_table(tm: &RuleTranslationMap, lr_items: &Vec<HashSet<Item>>,
 
 pub fn compute_lalr(tm: &RuleTranslationMap, parser_items: &Vec<Rule>, terminals: &HashSet<(String, String)>)
         -> Box<LRTable> {
-    for item in parser_items {
-        println!("{}", item);
-    }
+    //for item in parser_items {
+    //    println!("{}", item);
+    //}
 
-    println!("\nFirst S:");
-    let mut set = HashSet::new();
-    first(tm, &mut set, "S");
-    println!("{:?}", set);
+    //println!("\nFirst S:");
+    //let mut set = HashSet::new();
+    //first(tm, &mut set, "S");
+    //println!("{:?}", set);
 
-    let mut closure_items = HashSet::new();
-    closure_items.insert(Item {
-        index: "S".to_string(),
-        subindex: 0,
-        position: 0,
-        lookahead: "$".to_string()
-    });
-    closure(tm, &mut closure_items);
-    println!("\nClosure:");
-    for item in &closure_items {
-        println!("{}", ItemWithTr(tm, item));
-    }
+    //let mut closure_items = HashSet::new();
+    //closure_items.insert(Item {
+    //    index: "S".to_string(),
+    //    subindex: 0,
+    //    position: 0,
+    //    lookahead: "$".to_string()
+    //});
+    //closure(tm, &mut closure_items);
+    //println!("\nClosure:");
+    //for item in &closure_items {
+    //    println!("{}", ItemWithTr(tm, item));
+    //}
 
     let mut rule_names: Vec<String> = tm.rules.iter().map(|(x, _)| x.clone()).collect();
     rule_names.sort_unstable_by(rule_name_compare);
 
-    for rule in &rule_names {
-        println!("\nGoto {}:", rule);
-        let mut goto_items = HashSet::new();
-        goto(tm, &mut goto_items, &closure_items, rule.to_string());
-        let mut goto_items_vec: Vec<&Item> = goto_items.iter().collect();
-        goto_items_vec.sort_unstable();
-        for item in goto_items_vec {
-            println!("{}", ItemWithTr(tm, &item));
-        }
-    }
+    //for rule in &rule_names {
+    //    println!("\nGoto {}:", rule);
+    //    let mut goto_items = HashSet::new();
+    //    goto(tm, &mut goto_items, &closure_items, rule.to_string());
+    //    let mut goto_items_vec: Vec<&Item> = goto_items.iter().collect();
+    //    goto_items_vec.sort_unstable();
+    //    for item in goto_items_vec {
+    //        println!("{}", ItemWithTr(tm, &item));
+    //    }
+    //}
 
-    let mut terminal_names: Vec<String> = terminals.iter().map(|(x, _)| x.clone()).collect();
-    let mut terminal_full_names: Vec<String> = terminals.iter().map(|(_, x)| x.clone()).collect();
-    terminal_names.sort_unstable_by(rule_name_compare);
-    terminal_full_names.sort_unstable_by(rule_name_compare);
+    //let mut terminal_names: Vec<String> = terminals.iter().map(|(x, _)| x.clone()).collect();
+    //let mut terminal_full_names: Vec<String> = terminals.iter().map(|(_, x)| x.clone()).collect();
+    //terminal_names.sort_unstable_by(rule_name_compare);
+    //terminal_full_names.sort_unstable_by(rule_name_compare);
 
-    for terminal in &terminal_names {
-        println!("\nGoto {}:", terminal);
-        let mut goto_items = HashSet::new();
-        goto(tm, &mut goto_items, &closure_items, terminal.to_string());
-        for item in goto_items {
-            println!("{}", ItemWithTr(tm, &item));
-        }
-    }
+    //for terminal in &terminal_names {
+    //    println!("\nGoto {}:", terminal);
+    //    let mut goto_items = HashSet::new();
+    //    goto(tm, &mut goto_items, &closure_items, terminal.to_string());
+    //    for item in goto_items {
+    //        println!("{}", ItemWithTr(tm, &item));
+    //    }
+    //}
 
     let mut lr_items = Vec::new();
-    let mut symbols: Vec<String> = rule_names.iter().chain(terminal_full_names.iter()).map(|x| x.clone()).collect();
-    symbols.sort_unstable_by(rule_name_compare);
-    items(tm, &mut lr_items, &symbols);
+    //let mut symbols: Vec<String> = rule_names.iter().chain(terminal_full_names.iter()).map(|x| x.clone()).collect();
+    //symbols.sort_unstable_by(rule_name_compare);
+    //items(tm, &mut lr_items, &symbols);
 
-    println!("LR(1) items:");
-    for set in &lr_items {
-        let mapped_set: Vec<ItemWithTr> = set.iter().map(|value| ItemWithTr(tm, &value)).collect();
-        println!("[");
-        for item in &mapped_set {
-            println!("  {}", item);
-        }
-        println!("]");
-    }
+    //println!("LR(1) items:");
+    //for set in &lr_items {
+    //    let mapped_set: Vec<ItemWithTr> = set.iter().map(|value| ItemWithTr(tm, &value)).collect();
+    //    println!("[");
+    //    for item in &mapped_set {
+    //        println!("  {}", item);
+    //    }
+    //    println!("]");
+    //}
 
     let table = lr_parsing_table(tm, &lr_items, &rule_names);
-    print!("   ");
-    for symbol in terminal_names.iter().chain(vec!["$".to_string()].iter()).chain(rule_names.iter()) {
-        print!("{: >5}", &symbol[symbol.len().saturating_sub(3)..symbol.len()]);
-    }
-    println!("");
-    for (i, row) in table.actions.iter().enumerate() {
-        print!("{: <3}", i);
-        for symbol in terminal_full_names.iter()
-                .chain(vec!["$".to_string()].iter())
-                .chain(rule_names.iter()) {
-            match row.get(symbol) {
-                Some(action) => print!("{}", action),
-                None => print!("{}", Action::Error),
-            }
-        }
-        println!("");
-    }
+    //print!("   ");
+    //for symbol in terminal_names.iter().chain(vec!["$".to_string()].iter()).chain(rule_names.iter()) {
+    //    print!("{: >5}", &symbol[symbol.len().saturating_sub(3)..symbol.len()]);
+    //}
+    //println!("");
+    //for (i, row) in table.actions.iter().enumerate() {
+    //    print!("{: <3}", i);
+    //    for symbol in terminal_full_names.iter()
+    //            .chain(vec!["$".to_string()].iter())
+    //            .chain(rule_names.iter()) {
+    //        match row.get(symbol) {
+    //            Some(action) => print!("{}", action),
+    //            None => print!("{}", Action::Error),
+    //        }
+    //    }
+    //    println!("");
+    //}
 
     return table;
 }

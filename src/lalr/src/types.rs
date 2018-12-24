@@ -22,7 +22,10 @@ pub struct Rule {
 
 #[derive(Default)]
 pub struct RuleTranslationMap {
-    pub rules: HashMap<String, Rule>
+    pub rules: HashMap<String, Rule>,
+    pub indices: HashMap<String, usize>,
+
+    pub current_index: usize
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
@@ -94,13 +97,26 @@ impl fmt::Display for Rule {
 }
 
 impl RuleTranslationMap {
-    pub fn push_rule(&mut self, rule: String, data: Rule) -> Option<()> {
-        if self.rules.get(&rule).is_some() {
+    pub fn push_rule(&mut self, name: String, rule: Rule) -> Option<()> {
+        if self.rules.get(&name).is_some() {
             return None;
         }
 
-        self.rules.insert(rule, data);
+        rule.data.iter().for_each(
+            |(_, rules)| rules.iter().for_each(
+                |ruledata| self.push_symbol(&ruledata.full_path)));
+
+        self.rules.insert(name, rule);
         return Some(());
+    }
+
+    fn push_symbol(&mut self, symbol: &str) {
+        if self.indices.get(symbol).is_some() {
+            return;
+        }
+
+        self.current_index += 1;
+        self.indices.insert(symbol.to_string(), self.current_index);
     }
 }
 
