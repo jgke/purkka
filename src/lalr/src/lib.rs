@@ -21,21 +21,21 @@ mod ast_output;
 mod generator;
 mod types;
 
-use ast_output::{output_parser};
-use generator::{compute_lalr};
+use ast_output::output_parser;
+use generator::compute_lalr;
 use types::{Rule, RuleData, RuleTranslationMap};
 
 fn is_semi_r(tree: Option<&TokenTree>) -> bool {
     match tree {
         Some(TokenTree::Token(_, token::Semi)) => true,
-        _ => false
+        _ => false,
     }
 }
 
 fn is_semi(tree: Option<&&TokenTree>) -> bool {
     match tree {
         Some(TokenTree::Token(_, token::Semi)) => true,
-        _ => false
+        _ => false,
     }
 }
 
@@ -63,15 +63,18 @@ fn parse_failure(cx: &mut ExtCtxt, outer_span: Span, tt: Option<&TokenTree>) -> 
     }
 }
 
-fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
-              iter: &mut Peekable<Iter<'_, TokenTree>>,
-              tm: &mut RuleTranslationMap) -> ParseResult {
+fn parse_item(
+    cx: &mut ExtCtxt,
+    outer_span: Span,
+    iter: &mut Peekable<Iter<'_, TokenTree>>,
+    tm: &mut RuleTranslationMap,
+) -> ParseResult {
     let mut rsp = outer_span;
     let mut terminal = false;
     let mut indirect = false;
     let (s, t) = match iter.next() {
         Some(TokenTree::Token(s, token::Ident(t, _))) => (s, t),
-        tt => return parse_failure(cx, outer_span, tt)
+        tt => return parse_failure(cx, outer_span, tt),
     };
     match iter.next() {
         Some(TokenTree::Token(_, token::RArrow)) => {}
@@ -80,7 +83,7 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
             cx.span_err(s, "Rule name must be followed by ->");
             return ParseResult::Failure(Some(s));
         }
-        tt => return parse_failure(cx, s.to(rsp), tt)
+        tt => return parse_failure(cx, s.to(rsp), tt),
     }
 
     let mut components: Vec<(String, Vec<RuleData>)> = Vec::new();
@@ -114,7 +117,7 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
                             data.span = data.span.to(*s);
                             current_components.push(data);
                         }
-                        tt => return parse_failure(cx, s.to(rsp), tt)
+                        tt => return parse_failure(cx, s.to(rsp), tt),
                     }
                 } else {
                     return parse_failure(cx, s.to(rsp), None);
@@ -130,7 +133,8 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
             }
             Some(TokenTree::Token(s, token::BinOp(token::BinOpToken::Or))) => {
                 rsp = *s;
-                let real_real_name = real_name.unwrap_or_else(|| current_components.get(0).unwrap().identifier.clone());
+                let real_real_name = real_name
+                    .unwrap_or_else(|| current_components.get(0).unwrap().identifier.clone());
                 real_name = None;
                 components.push((real_real_name, current_components));
                 current_components = vec![];
@@ -143,11 +147,12 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
                     return parse_failure(cx, s.to(rsp), None);
                 }
             }
-            tt => return parse_failure(cx, s.to(rsp), tt)
+            tt => return parse_failure(cx, s.to(rsp), tt),
         }
     }
     if current_components.len() > 0 {
-        let real_real_name = real_name.unwrap_or_else(|| current_components.get(0).unwrap().identifier.clone());
+        let real_real_name =
+            real_name.unwrap_or_else(|| current_components.get(0).unwrap().identifier.clone());
         components.push((real_real_name, current_components));
     }
 
@@ -162,7 +167,10 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
         data: components,
     };
 
-    if tm.push_rule(rule.identifier.clone(), rule.clone()).is_none() {
+    if tm
+        .push_rule(rule.identifier.clone(), rule.clone())
+        .is_none()
+    {
         cx.span_err(s.to(rsp), "Duplicate rule");
         return ParseResult::Failure(Some(s.to(rsp)));
     }
@@ -170,9 +178,10 @@ fn parse_item(cx: &mut ExtCtxt, outer_span: Span,
     ParseResult::Success(rule)
 }
 
-fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
-             -> Box<MacResult + 'static> {
-    let mut tm = RuleTranslationMap { ..Default::default() };
+fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult + 'static> {
+    let mut tm = RuleTranslationMap {
+        ..Default::default()
+    };
     let mut terminals = HashSet::new();
 
     let mut iter = args.iter().peekable();
@@ -181,22 +190,21 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
     items.push(Rule {
         identifier: "Epsilon".to_string(),
         span: sp,
-        data: vec![]
+        data: vec![],
     });
 
     while iter.peek().is_some() {
         match parse_item(cx, sp, &mut iter, &mut tm) {
             ParseResult::Success(item) => {
-                item.data.iter().for_each(|rules| rules.1.iter()
-                                         .filter(|x| x.terminal)
-                                         .for_each(|x| {
-                                             terminals.insert((x.identifier.clone(), x.full_path.clone()));
-                                         }));
-
+                item.data.iter().for_each(|rules| {
+                    rules.1.iter().filter(|x| x.terminal).for_each(|x| {
+                        terminals.insert((x.identifier.clone(), x.full_path.clone()));
+                    })
+                });
 
                 items.push(item);
             }
-            ParseResult::Failure(span) => return DummyResult::any(span.unwrap_or(sp))
+            ParseResult::Failure(span) => return DummyResult::any(span.unwrap_or(sp)),
         }
     }
 

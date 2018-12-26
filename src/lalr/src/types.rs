@@ -12,14 +12,14 @@ pub struct RuleData {
     pub full_path: String,
     pub span: Span,
     pub terminal: bool,
-    pub indirect: bool
+    pub indirect: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct Rule {
     pub identifier: String,
     pub span: Span,
-    pub data: Vec<(String, Vec<RuleData>)>
+    pub data: Vec<(String, Vec<RuleData>)>,
 }
 
 #[derive(Default)]
@@ -27,7 +27,7 @@ pub struct RuleTranslationMap {
     pub rules: HashMap<String, Rule>,
     pub indices: HashMap<String, usize>,
 
-    pub current_index: usize
+    pub current_index: usize,
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
@@ -35,7 +35,7 @@ pub struct Item {
     pub index: String,
     pub subindex: usize,
     pub position: usize,
-    pub lookahead: String
+    pub lookahead: String,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -44,12 +44,12 @@ pub enum Action {
     Shift(usize),
     Reduce(String, usize),
     Accept,
-    Goto(usize)
+    Goto(usize),
 }
 
 #[derive(Debug)]
 pub struct LRTable {
-    pub actions: Vec<HashMap<String, Action>>
+    pub actions: Vec<HashMap<String, Action>>,
 }
 
 pub struct ItemWithTr<'a>(pub &'a RuleTranslationMap, pub &'a Item);
@@ -104,9 +104,11 @@ impl RuleTranslationMap {
             return None;
         }
 
-        rule.data.iter().for_each(
-            |(_, rules)| rules.iter().for_each(
-                |ruledata| self.push_symbol(&ruledata.full_path)));
+        rule.data.iter().for_each(|(_, rules)| {
+            rules
+                .iter()
+                .for_each(|ruledata| self.push_symbol(&ruledata.full_path))
+        });
 
         self.rules.insert(name, rule);
         return Some(());
@@ -127,7 +129,9 @@ impl fmt::Display for Action {
         match self {
             Action::Error => write!(f, "{: >5}", ""),
             Action::Shift(to) => write!(f, "{: >5}", String::from("s") + &to.to_string()),
-            Action::Reduce(rule, subrule) => write!(f, "{: >5}", String::from("r") + rule + &subrule.to_string()),
+            Action::Reduce(rule, subrule) => {
+                write!(f, "{: >5}", String::from("r") + rule + &subrule.to_string())
+            }
             Action::Accept => write!(f, "{: >5}", "acc"),
             Action::Goto(to) => write!(f, "{: >5}", to),
         }
@@ -151,7 +155,7 @@ impl<'a> fmt::Display for ItemWithTr<'a> {
             output.push_str(&symbol.identifier);
         }
         if item.position == symbols.len() {
-                output.push_str(" . ");
+            output.push_str(" . ");
         }
         write!(f, "[{} ->{}, {}]", item.index, output, item.lookahead)
     }

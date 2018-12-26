@@ -1,9 +1,14 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use types::{Action, RuleData, RuleTranslationMap, Item, LRTable, rule_name_compare};
+use types::{rule_name_compare, Action, Item, LRTable, RuleData, RuleTranslationMap};
 
-fn first(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut HashSet<String>, rule_index: &str) -> bool {
+fn first(
+    tm: &RuleTranslationMap,
+    set: &mut HashSet<String>,
+    cache: &mut HashSet<String>,
+    rule_index: &str,
+) -> bool {
     if cache.get(rule_index).is_some() {
         return false;
     }
@@ -17,13 +22,17 @@ fn first(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut HashSet
     has_e
 }
 
-fn first_loop(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut HashSet<String>,
-          rule: (&str, usize, usize)) -> bool {
+fn first_loop(
+    tm: &RuleTranslationMap,
+    set: &mut HashSet<String>,
+    cache: &mut HashSet<String>,
+    rule: (&str, usize, usize),
+) -> bool {
     let (rule_index, rule_subindex, position) = rule;
     let rule = &tm.rules[rule_index];
     let (_, symbols) = &rule.data[rule_subindex];
     let mut has_e = true;
-        // E -> A
+    // E -> A
     for (i, ruledata) in symbols.iter().enumerate() {
         if i < position {
             continue;
@@ -61,35 +70,39 @@ pub fn closure(tm: &RuleTranslationMap, items: &mut HashSet<Item>) {
         for item in &added {
             let (_, production_rules) = &tm.rules[&item.index].data[item.subindex];
             match &production_rules.get(item.position) {
-                None => {},
-                Some(RuleData { terminal: true, .. }) => {},
+                None => {}
+                Some(RuleData { terminal: true, .. }) => {}
                 Some(current_production) => {
-                let inner_production = &tm.rules[&current_production.identifier];
-                // for each production [B -> g] in G
-                for (i, _) in inner_production.data.iter().enumerate() {
-                    let mut set = HashSet::new();
-                    let mut cache = HashSet::new();
-                    // for each terminal b in First(Ba)
-                    if first_loop(tm, &mut set, &mut cache,
-                                  (&item.index, item.subindex, item.position + 1)) {
-                        added_next.insert(Item {
-                            index: inner_production.identifier.clone(),
-                            subindex: i,
-                            position: 0,
-                            lookahead: item.lookahead.to_string()
-                        });
-                    }
-                    for terminal in set {
-                        added_next.insert(Item {
-                            index: inner_production.identifier.clone(),
-                            subindex: i,
-                            position: 0,
-                            lookahead: terminal
-                        });
+                    let inner_production = &tm.rules[&current_production.identifier];
+                    // for each production [B -> g] in G
+                    for (i, _) in inner_production.data.iter().enumerate() {
+                        let mut set = HashSet::new();
+                        let mut cache = HashSet::new();
+                        // for each terminal b in First(Ba)
+                        if first_loop(
+                            tm,
+                            &mut set,
+                            &mut cache,
+                            (&item.index, item.subindex, item.position + 1),
+                        ) {
+                            added_next.insert(Item {
+                                index: inner_production.identifier.clone(),
+                                subindex: i,
+                                position: 0,
+                                lookahead: item.lookahead.to_string(),
+                            });
+                        }
+                        for terminal in set {
+                            added_next.insert(Item {
+                                index: inner_production.identifier.clone(),
+                                subindex: i,
+                                position: 0,
+                                lookahead: terminal,
+                            });
+                        }
                     }
                 }
             }
-        }
         }
 
         for item in &added_next {
@@ -101,7 +114,12 @@ pub fn closure(tm: &RuleTranslationMap, items: &mut HashSet<Item>) {
     }
 }
 
-pub fn goto(tm: &RuleTranslationMap, goto_items: &mut HashSet<Item>, items: &HashSet<Item>, rule: String) {
+pub fn goto(
+    tm: &RuleTranslationMap,
+    goto_items: &mut HashSet<Item>,
+    items: &HashSet<Item>,
+    rule: String,
+) {
     for item in items {
         let (_, ruledata) = &tm.rules[&item.index].data[item.subindex];
         if ruledata.len() > item.position && ruledata[item.position].full_path == rule {
@@ -119,7 +137,7 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
         index: "S".to_string(),
         subindex: 0,
         position: 0,
-        lookahead: "$".to_string()
+        lookahead: "$".to_string(),
     });
     closure(&tm, &mut initial);
     items.push(initial.clone());
@@ -134,7 +152,10 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
             for symbol in symbols {
                 let mut goto_items = HashSet::new();
                 goto(tm, &mut goto_items, set, symbol.to_string());
-                if goto_items.len() > 0 && !items.contains(&goto_items) && !added_next.contains(&goto_items) {
+                if goto_items.len() > 0
+                    && !items.contains(&goto_items)
+                    && !added_next.contains(&goto_items)
+                {
                     added_next.push(goto_items);
                 }
             }
@@ -156,11 +177,12 @@ pub fn panic_insert(map: &mut HashMap<String, Action>, identifier: String, actio
     map.insert(identifier, action);
 }
 
-pub fn lr_parsing_table(tm: &RuleTranslationMap, lr_items: &Vec<HashSet<Item>>,
-                        nonterminals: &Vec<String>) -> Box<LRTable> {
-    let mut table = Box::new(LRTable {
-        actions: vec![]
-    });
+pub fn lr_parsing_table(
+    tm: &RuleTranslationMap,
+    lr_items: &Vec<HashSet<Item>>,
+    nonterminals: &Vec<String>,
+) -> Box<LRTable> {
+    let mut table = Box::new(LRTable { actions: vec![] });
 
     for (i, ref items) in lr_items.iter().enumerate() {
         table.actions.push(HashMap::new());
@@ -172,20 +194,28 @@ pub fn lr_parsing_table(tm: &RuleTranslationMap, lr_items: &Vec<HashSet<Item>>,
                     continue;
                 }
                 let mut goto_items = HashSet::new();
-                goto(&tm, &mut goto_items, &items,
-                     rule[item.position].full_path.to_string());
+                goto(
+                    &tm,
+                    &mut goto_items,
+                    &items,
+                    rule[item.position].full_path.to_string(),
+                );
                 if let Some(pos) = lr_items.iter().position(|ref x| x == &&goto_items) {
-                    panic_insert(&mut table.actions[i],
-                                 rule[item.position].full_path.to_string(),
-                                 Action::Shift(pos));
+                    panic_insert(
+                        &mut table.actions[i],
+                        rule[item.position].full_path.to_string(),
+                        Action::Shift(pos),
+                    );
                 }
             } else {
                 if item.index == "S" {
                     panic_insert(&mut table.actions[i], "$".to_string(), Action::Accept);
                 } else {
-                    panic_insert(&mut table.actions[i],
-                                 item.lookahead.to_string(),
-                                 Action::Reduce(item.index.to_string(), item.subindex));
+                    panic_insert(
+                        &mut table.actions[i],
+                        item.lookahead.to_string(),
+                        Action::Reduce(item.index.to_string(), item.subindex),
+                    );
                 }
             }
         }
@@ -203,7 +233,10 @@ pub fn lr_parsing_table(tm: &RuleTranslationMap, lr_items: &Vec<HashSet<Item>>,
     return table;
 }
 
-pub fn compute_lalr(tm: &RuleTranslationMap, terminals: &HashSet<(String, String)>) -> Box<LRTable> {
+pub fn compute_lalr(
+    tm: &RuleTranslationMap,
+    terminals: &HashSet<(String, String)>,
+) -> Box<LRTable> {
     //for item in parser_items {
     //    println!("{}", item);
     //}
@@ -255,7 +288,11 @@ pub fn compute_lalr(tm: &RuleTranslationMap, terminals: &HashSet<(String, String
     //}
 
     let mut lr_items = Vec::new();
-    let mut symbols: Vec<String> = rule_names.iter().chain(terminal_full_names.iter()).map(|x| x.clone()).collect();
+    let mut symbols: Vec<String> = rule_names
+        .iter()
+        .chain(terminal_full_names.iter())
+        .map(|x| x.clone())
+        .collect();
     symbols.sort_unstable_by(rule_name_compare);
     items(tm, &mut lr_items, &symbols);
 

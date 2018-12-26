@@ -5,8 +5,12 @@
 
 enum Token {
     Constant(),
-    Plus(), Minus(), Times(), Divide(),
-    OpenParen(), CloseParen(),
+    Plus(),
+    Minus(),
+    Times(),
+    Divide(),
+    OpenParen(),
+    CloseParen(),
     //c(), d()
 }
 
@@ -33,5 +37,4 @@ lalr! {
 //}
 
 #[test]
-fn it_compiles() {
-}
+fn it_compiles() {}
