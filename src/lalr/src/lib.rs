@@ -51,7 +51,7 @@ fn parse_failure(cx: &mut ExtCtxt, outer_span: Span, tt: Option<&TokenTree>) -> 
             cx.span_err(s, &format!("Unexpected token: {:?}", t));
             return ParseResult::Failure(Some(s));
         }
-        Some(TokenTree::Delimited(span, t)) => {
+        Some(TokenTree::Delimited(span, _, t)) => {
             let s: Span = span.entire();
             cx.span_err(s, &format!("Unexpected span: {:?}", t));
             return ParseResult::Failure(Some(s));
@@ -200,7 +200,7 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
         }
     }
 
-    let lalr_table = compute_lalr(&tm, &items, &terminals);
+    let lalr_table = compute_lalr(&tm, &terminals);
     return output_parser(cx, sp, &tm, &items, &terminals, &lalr_table);
 }
 

@@ -1,14 +1,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use types::{Action, RuleData, Rule, RuleTranslationMap, Item, LRTable, ItemWithTr, rule_name_compare};
+use types::{Action, RuleData, RuleTranslationMap, Item, LRTable, rule_name_compare};
 
-fn first(tm: &RuleTranslationMap, set: &mut HashSet<String>, rule_index: &str) -> bool {
-    let mut cache = HashSet::new();
-    _first(tm, set, &mut cache, rule_index)
-}
-
-fn _first(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut HashSet<String>, rule_index: &str) -> bool {
+fn first(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut HashSet<String>, rule_index: &str) -> bool {
     if cache.get(rule_index).is_some() {
         return false;
     }
@@ -17,12 +12,12 @@ fn _first(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut HashSe
     let mut has_e = false;
     // E -> A | B
     for (i, _) in rule.data.iter().enumerate() {
-        has_e |= _first_all(tm, set, cache, (&rule_index, i, 0));
+        has_e |= first_loop(tm, set, cache, (&rule_index, i, 0));
     }
     has_e
 }
 
-fn _first_all(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut HashSet<String>,
+fn first_loop(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut HashSet<String>,
           rule: (&str, usize, usize)) -> bool {
     let (rule_index, rule_subindex, position) = rule;
     let rule = &tm.rules[rule_index];
@@ -42,7 +37,7 @@ fn _first_all(tm: &RuleTranslationMap, set: &mut HashSet<String>, cache: &mut Ha
             has_e = false;
             break;
         } else {
-            let sub_has_e = _first(tm, set, cache, ruledata.identifier.as_str());
+            let sub_has_e = first(tm, set, cache, ruledata.identifier.as_str());
             if !sub_has_e {
                 has_e = false;
                 break;
@@ -75,7 +70,7 @@ pub fn closure(tm: &RuleTranslationMap, items: &mut HashSet<Item>) {
                     let mut set = HashSet::new();
                     let mut cache = HashSet::new();
                     // for each terminal b in First(Ba)
-                    if _first_all(tm, &mut set, &mut cache,
+                    if first_loop(tm, &mut set, &mut cache,
                                   (&item.index, item.subindex, item.position + 1)) {
                         added_next.insert(Item {
                             index: inner_production.identifier.clone(),
@@ -120,7 +115,6 @@ pub fn goto(tm: &RuleTranslationMap, goto_items: &mut HashSet<Item>, items: &Has
 
 pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &Vec<String>) {
     let mut initial = HashSet::new();
-    println!("{:?}", symbols);
     initial.insert(Item {
         index: "S".to_string(),
         subindex: 0,
@@ -137,11 +131,9 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
     while prevsize < items.len() {
         prevsize = items.len();
         for set in &added {
-            println!("{:?}", set);
             for symbol in symbols {
                 let mut goto_items = HashSet::new();
                 goto(tm, &mut goto_items, set, symbol.to_string());
-                println!("{:?}", goto_items);
                 if goto_items.len() > 0 && !items.contains(&goto_items) && !added_next.contains(&goto_items) {
                     added_next.push(goto_items);
                 }
@@ -158,7 +150,7 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
 pub fn panic_insert(map: &mut HashMap<String, Action>, identifier: String, action: Action) {
     if let Some(act) = map.get(&identifier) {
         if act != &action {
-            println!("Conflict, not LR: tried to replace {} with {}", act, action);
+            panic!("Conflict, not LR: tried to replace {} with {}", act, action);
         }
     }
     map.insert(identifier, action);
@@ -174,7 +166,6 @@ pub fn lr_parsing_table(tm: &RuleTranslationMap, lr_items: &Vec<HashSet<Item>>,
         table.actions.push(HashMap::new());
 
         for item in *items {
-            println!("{} {}", i, ItemWithTr(&tm, &item));
             let rule = &tm.rules[&item.index].data[item.subindex].1;
             if rule.len() > item.position {
                 if !rule[item.position].terminal {
@@ -212,8 +203,7 @@ pub fn lr_parsing_table(tm: &RuleTranslationMap, lr_items: &Vec<HashSet<Item>>,
     return table;
 }
 
-pub fn compute_lalr(tm: &RuleTranslationMap, parser_items: &Vec<Rule>, terminals: &HashSet<(String, String)>)
-        -> Box<LRTable> {
+pub fn compute_lalr(tm: &RuleTranslationMap, terminals: &HashSet<(String, String)>) -> Box<LRTable> {
     //for item in parser_items {
     //    println!("{}", item);
     //}
@@ -251,9 +241,9 @@ pub fn compute_lalr(tm: &RuleTranslationMap, parser_items: &Vec<Rule>, terminals
     //}
 
     //let mut terminal_names: Vec<String> = terminals.iter().map(|(x, _)| x.clone()).collect();
-    //let mut terminal_full_names: Vec<String> = terminals.iter().map(|(_, x)| x.clone()).collect();
+    let mut terminal_full_names: Vec<String> = terminals.iter().map(|(_, x)| x.clone()).collect();
     //terminal_names.sort_unstable_by(rule_name_compare);
-    //terminal_full_names.sort_unstable_by(rule_name_compare);
+    terminal_full_names.sort_unstable_by(rule_name_compare);
 
     //for terminal in &terminal_names {
     //    println!("\nGoto {}:", terminal);
@@ -265,9 +255,9 @@ pub fn compute_lalr(tm: &RuleTranslationMap, parser_items: &Vec<Rule>, terminals
     //}
 
     let mut lr_items = Vec::new();
-    //let mut symbols: Vec<String> = rule_names.iter().chain(terminal_full_names.iter()).map(|x| x.clone()).collect();
-    //symbols.sort_unstable_by(rule_name_compare);
-    //items(tm, &mut lr_items, &symbols);
+    let mut symbols: Vec<String> = rule_names.iter().chain(terminal_full_names.iter()).map(|x| x.clone()).collect();
+    symbols.sort_unstable_by(rule_name_compare);
+    items(tm, &mut lr_items, &symbols);
 
     //println!("LR(1) items:");
     //for set in &lr_items {
@@ -300,11 +290,3 @@ pub fn compute_lalr(tm: &RuleTranslationMap, parser_items: &Vec<Rule>, terminals
 
     return table;
 }
-
-//#[cfg(test)]
-//mod tests {
-//    #[test]
-//    fn first() {
-//        println!("First");
-//    }
-//}

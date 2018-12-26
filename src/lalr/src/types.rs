@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use syntax::ext::quote::rt::Span;
 
 use std::cmp::Ordering;
@@ -36,7 +38,7 @@ pub struct Item {
     pub lookahead: String
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Action {
     Error,
     Shift(usize),
