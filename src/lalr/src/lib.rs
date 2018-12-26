@@ -192,6 +192,14 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult 
         span: sp,
         data: vec![],
     });
+    items.push(Rule {
+        identifier: "$".to_string(),
+        span: sp,
+        data: vec![],
+    });
+    for rule in &items {
+        tm.push_rule(rule.identifier.clone(), rule.clone());
+    }
 
     while iter.peek().is_some() {
         match parse_item(cx, sp, &mut iter, &mut tm) {
@@ -207,6 +215,8 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult 
             ParseResult::Failure(span) => return DummyResult::any(span.unwrap_or(sp)),
         }
     }
+
+    println!("{:?}", tm.indices);
 
     let lalr_table = compute_lalr(&tm, &terminals);
     return output_parser(cx, sp, &tm, &items, &terminals, &lalr_table);

@@ -46,7 +46,14 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         )
     }
 
-    fn get_enum_item(&self, rule: &Rule) -> Vec<P<ast::Item>> {
+    fn get_plain_variant(&self, span: Span, ty: &str) -> ast::Variant {
+        self.cx.variant(
+            span,
+            self.cx.ident_of(ty),
+            vec![self.ty_ident(ty)])
+    }
+
+    fn get_enum_item(&self, all_struct_names: &mut Vec<String>, rule: &Rule) -> Vec<P<ast::Item>> {
         let enum_name = &rule.identifier;
         let mut enum_items: Vec<P<ast::Item>> = rule
             .data
@@ -78,12 +85,14 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                         }
                     })
                     .collect();
-                self.cx.item_struct(
+                let struct_name = format!("{}_{}", rule.identifier, variant_identifier);
+                let item = self.cx.item_struct(
                     total_span,
-                    self.cx
-                        .ident_of(&format!("{}_{}", rule.identifier, variant_identifier)),
+                    self.cx.ident_of(&struct_name),
                     ast::VariantData::Tuple(vals, ast::DUMMY_NODE_ID),
-                )
+                );
+                all_struct_names.push(struct_name);
+                item
             })
             .collect();
         let enumdef = ast::EnumDef {
@@ -123,12 +132,31 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
     }
 
     fn get_translation_fn_body(&self) -> P<ast::Block> {
+        let dollar_id = self.usize_expr(self.tm.indices["$"]);
+        let token_unwrap = self.cx.expr_method_call(
+            self.span,
+            self.cx.expr_ident(self.span, self.cx.ident_of("token")),
+            self.cx.ident_of("unwrap"),
+            vec![]);
+
         self.cx.block(
             self.span,
-            vec![self.cx.stmt_expr(
+            vec![
+            self.cx.stmt_expr(
+                //if token.is_none() { return token id for $ }
+                self.cx.expr_if(
+                    self.span,
+                    self.cx.expr_method_call(
+                        self.span,
+                        self.cx.expr_ident(self.span, self.cx.ident_of("token")),
+                        self.cx.ident_of("is_none"),
+                        vec![]),
+                    self.cx.expr(self.span, ast::ExprKind::Ret(Some(dollar_id))),
+                    None)),
+            self.cx.stmt_expr(
                 self.cx.expr_match(
                     self.span,
-                    self.cx.expr_ident(self.span, self.cx.ident_of("token")),
+                    token_unwrap,
                     self.terminals
                         .iter()
                         .map(|(_, terminal)| {
@@ -165,7 +193,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         self.cx.item_fn(
             self.span,
             self.cx.ident_of("_convert_token_to_index"),
-            vec![self.cx.arg(self.span, self.cx.ident_of("token"), ty_return)],
+            vec![self.cx.arg(self.span, self.cx.ident_of("token"), self.cx.ty_option(ty_return))],
             ty_usize,
             body,
         )
@@ -208,11 +236,11 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
     pub fn get_action_enum(&self) -> P<ast::Item> {
         let enumdef = ast::EnumDef {
             variants: vec![
-                self.enum_variant("E", vec![]),
-                self.enum_variant("S", vec!["usize"]),
-                self.enum_variant("R", vec!["usize", "usize"]),
-                self.enum_variant("A", vec![]),
-                self.enum_variant("G", vec!["usize"]),
+                self.enum_variant("Error", vec![]),
+                self.enum_variant("Shift", vec!["usize"]),
+                self.enum_variant("Reduce", vec!["usize", "usize"]),
+                self.enum_variant("Accept", vec![]),
+                self.enum_variant("Goto", vec!["usize"]),
             ],
         };
 
@@ -240,18 +268,17 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
 
     fn lalr_action_call(&self, action: &Action) -> P<ast::Expr> {
         self.action_expr(match action {
-            Action::Error => ("E", None),
-            Action::Shift(pat) => ("S", Some(vec![self.usize_expr(*pat)])),
-            Action::Reduce(ident, a) => (
-                "R",
+            Action::Error => ("Error", None),
+            Action::Shift(pat) => ("Shift", Some(vec![self.usize_expr(*pat)])),
+            Action::Reduce(ident, _subrule, count) => (
+                "Reduce",
                 Some(vec![
                     self.usize_expr(self.tm.indices[ident]),
-                    self.usize_expr(*a),
+                    self.usize_expr(*count),
                 ]),
             ),
-            Action::Accept => ("A", None),
-            Action::Goto(pat) => ("G", Some(vec![self.usize_expr(*pat)])),
-            //  => ("Error", vec![])
+            Action::Accept => ("Accept", None),
+            Action::Goto(pat) => ("Goto", Some(vec![self.usize_expr(*pat)])),
         })
     }
 
@@ -310,6 +337,16 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             ),
         )
     }
+    pub fn get_starter_var(&self) -> P<ast::Item> {
+        let ty_var = self.ty_ident("usize");
+        self.cx.item_static(
+            self.span,
+            self.cx.ident_of("_STARTER_VALUE"),
+            ty_var,
+            ast::Mutability::Immutable,
+            self.usize_expr(0)
+        )
+    }
 }
 
 pub fn output_parser(
@@ -327,24 +364,40 @@ pub fn output_parser(
         lalr_table,
         terminals,
     };
+    
+    let mut all_struct_names = Vec::new();
 
     let mut items: SmallVec<[P<ast::Item>; 1]> = items
         .iter()
         .filter(|item| !(item.identifier == "Epsilon"))
-        .flat_map(|item| builder.get_enum_item(item))
+        .flat_map(|item| builder.get_enum_item(&mut all_struct_names, item))
         .collect();
+
+    let all_structs_enum = ast::EnumDef {
+        variants: all_struct_names.iter().map(|name|
+            builder.get_plain_variant(span, name)
+        ).collect()
+    };
+
     items.push(cx.item_enum(
         span,
         cx.ident_of("Epsilon"),
         ast::EnumDef {
-            variants: vec![cx.variant(span, cx.ident_of("E"), vec![])],
+            variants: vec![cx.variant(span, cx.ident_of("Error"), vec![])],
         },
     ));
 
+    items.push(cx.item_enum(
+        span,
+        cx.ident_of("_Data"),
+        all_structs_enum
+    ));
+
+    items.push(builder.get_lalr_table_fn());
     items.push(builder.get_translation_fn());
     items.push(builder.get_translation_enum());
     items.push(builder.get_action_enum());
-    items.push(builder.get_lalr_table_fn());
+    items.push(builder.get_starter_var());
 
     return MacEager::items(items);
 }

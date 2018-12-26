@@ -214,7 +214,9 @@ pub fn lr_parsing_table(
                     panic_insert(
                         &mut table.actions[i],
                         item.lookahead.to_string(),
-                        Action::Reduce(item.index.to_string(), item.subindex),
+                        Action::Reduce(
+                            item.index.to_string(), item.subindex,
+                            tm.rules[&item.index].data[item.subindex].1.len()),
                     );
                 }
             }
@@ -273,9 +275,9 @@ pub fn compute_lalr(
     //    }
     //}
 
-    //let mut terminal_names: Vec<String> = terminals.iter().map(|(x, _)| x.clone()).collect();
+    let mut terminal_names: Vec<String> = terminals.iter().map(|(x, _)| x.clone()).collect();
     let mut terminal_full_names: Vec<String> = terminals.iter().map(|(_, x)| x.clone()).collect();
-    //terminal_names.sort_unstable_by(rule_name_compare);
+    terminal_names.sort_unstable_by(rule_name_compare);
     terminal_full_names.sort_unstable_by(rule_name_compare);
 
     //for terminal in &terminal_names {
@@ -307,23 +309,24 @@ pub fn compute_lalr(
     //}
 
     let table = lr_parsing_table(tm, &lr_items, &rule_names);
-    //print!("   ");
-    //for symbol in terminal_names.iter().chain(vec!["$".to_string()].iter()).chain(rule_names.iter()) {
-    //    print!("{: >5}", &symbol[symbol.len().saturating_sub(3)..symbol.len()]);
-    //}
-    //println!("");
-    //for (i, row) in table.actions.iter().enumerate() {
-    //    print!("{: <3}", i);
-    //    for symbol in terminal_full_names.iter()
-    //            .chain(vec!["$".to_string()].iter())
-    //            .chain(rule_names.iter()) {
-    //        match row.get(symbol) {
-    //            Some(action) => print!("{}", action),
-    //            None => print!("{}", Action::Error),
-    //        }
-    //    }
-    //    println!("");
-    //}
+    println!("S: {}", tm.indices["S"]);
+    println!("$: {}", tm.indices["$"]);
+    print!("   ");
+    for symbol in terminal_names.iter().chain(rule_names.iter()) {
+        print!("{: >7.5}", &symbol);
+    }
+    println!("");
+    for (i, row) in table.actions.iter().enumerate() {
+        print!("{: <3}", i);
+        for symbol in terminal_full_names.iter()
+                .chain(rule_names.iter()) {
+            match row.get(symbol) {
+                Some(action) => print!("{}", action),
+                None => print!("{}", Action::Error),
+            }
+        }
+        println!("");
+    }
 
     return table;
 }

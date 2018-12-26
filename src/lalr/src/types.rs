@@ -42,7 +42,7 @@ pub struct Item {
 pub enum Action {
     Error,
     Shift(usize),
-    Reduce(String, usize),
+    Reduce(String, usize, usize),
     Accept,
     Goto(usize),
 }
@@ -104,6 +104,7 @@ impl RuleTranslationMap {
             return None;
         }
 
+        self.push_symbol(&name);
         rule.data.iter().for_each(|(_, rules)| {
             rules
                 .iter()
@@ -119,21 +120,21 @@ impl RuleTranslationMap {
             return;
         }
 
-        self.current_index += 1;
         self.indices.insert(symbol.to_string(), self.current_index);
+        self.current_index += 1;
     }
 }
 
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Action::Error => write!(f, "{: >5}", ""),
-            Action::Shift(to) => write!(f, "{: >5}", String::from("s") + &to.to_string()),
-            Action::Reduce(rule, subrule) => {
-                write!(f, "{: >5}", String::from("r") + rule + &subrule.to_string())
+            Action::Error => write!(f, "{: >7.5}", ""),
+            Action::Shift(to) => write!(f, "{: >7.5}", String::from("s") + &to.to_string()),
+            Action::Reduce(rule, subrule, _length) => {
+                write!(f, "{: >7.5}", String::from("r") + rule + &subrule.to_string())
             }
-            Action::Accept => write!(f, "{: >5}", "acc"),
-            Action::Goto(to) => write!(f, "{: >5}", to),
+            Action::Accept => write!(f, "{: >7.5}", "acc"),
+            Action::Goto(to) => write!(f, "g{: >6.4}", to),
         }
     }
 }
