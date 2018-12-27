@@ -5,10 +5,12 @@ use syntax::ext::build::AstBuilder;
 use syntax::ext::quote::rt::Span;
 use syntax::ptr::P;
 use syntax::source_map::{respan, Spanned};
+use syntax_pos::symbol;
 
 use std::collections::HashSet;
+use std::iter;
 
-use types::{Action, LRTable, Rule, RuleTranslationMap};
+use types::{Action, LRTable, Rule, RuleData, RuleTranslationMap};
 
 struct AstBuilderCx<'a, 'c> {
     cx: &'a ExtCtxt<'c>,
@@ -21,6 +23,31 @@ struct AstBuilderCx<'a, 'c> {
 impl<'a, 'c> AstBuilderCx<'a, 'c> {
     fn ty_ident(&self, s: &str) -> P<ast::Ty> {
         self.cx.ty_ident(self.span, self.cx.ident_of(s))
+    }
+
+    fn item_derive(&self, span: Span, ident: ast::Ident, kind: ast::ItemKind) -> P<ast::Item> {
+        let derive = self.cx.attribute(
+            span,
+            self.cx.meta_list(
+                span,
+                symbol::Symbol::intern("derive"),
+                vec![
+                self.cx.meta_list_item_word(span, symbol::Symbol::intern("Clone")),
+                self.cx.meta_list_item_word(span, symbol::Symbol::intern("Debug"))
+                ]));
+        self.cx.item(span, ident, vec![derive], kind)
+    }
+    fn item_enum_derive(&self, span: Span, ident: ast::Ident, enumdef: ast::EnumDef) -> P<ast::Item> {
+        self.item_derive(
+            span,
+            ident,
+            ast::ItemKind::Enum(enumdef, ast::Generics::default()))
+    }
+    fn item_struct_derive(&self, span: Span, ident: ast::Ident, structdef: ast::VariantData) -> P<ast::Item> {
+        self.item_derive(
+            span,
+            ident,
+            ast::ItemKind::Struct(structdef, ast::Generics::default()))
     }
 
     fn boxed(&self, ty: P<ast::Ty>) -> P<ast::Ty> {
@@ -47,13 +74,11 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
     }
 
     fn get_plain_variant(&self, span: Span, ty: &str) -> ast::Variant {
-        self.cx.variant(
-            span,
-            self.cx.ident_of(ty),
-            vec![self.ty_ident(ty)])
+        self.cx
+            .variant(span, self.cx.ident_of(ty), vec![self.ty_ident(ty)])
     }
 
-    fn get_enum_item(&self, all_struct_names: &mut Vec<String>, rule: &Rule) -> Vec<P<ast::Item>> {
+    fn get_enum_item(&self, rule: &Rule) -> Vec<P<ast::Item>> {
         let enum_name = &rule.identifier;
         let mut enum_items: Vec<P<ast::Item>> = rule
             .data
@@ -86,12 +111,11 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                     })
                     .collect();
                 let struct_name = format!("{}_{}", rule.identifier, variant_identifier);
-                let item = self.cx.item_struct(
+                let item = self.item_struct_derive(
                     total_span,
                     self.cx.ident_of(&struct_name),
                     ast::VariantData::Tuple(vals, ast::DUMMY_NODE_ID),
                 );
-                all_struct_names.push(struct_name);
                 item
             })
             .collect();
@@ -113,7 +137,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         };
 
         let ident = self.cx.ident_of(enum_name);
-        enum_items.push(self.cx.item_enum(rule.span, ident, enumdef));
+        enum_items.push(self.item_enum_derive(rule.span, ident, enumdef));
         enum_items
     }
 
@@ -137,38 +161,43 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             self.span,
             self.cx.expr_ident(self.span, self.cx.ident_of("token")),
             self.cx.ident_of("unwrap"),
-            vec![]);
+            vec![],
+        );
 
         self.cx.block(
             self.span,
             vec![
-            self.cx.stmt_expr(
-                //if token.is_none() { return token id for $ }
-                self.cx.expr_if(
-                    self.span,
-                    self.cx.expr_method_call(
+                self.cx.stmt_expr(
+                    //if token.is_none() { return token id for $ }
+                    self.cx.expr_if(
                         self.span,
-                        self.cx.expr_ident(self.span, self.cx.ident_of("token")),
-                        self.cx.ident_of("is_none"),
-                        vec![]),
-                    self.cx.expr(self.span, ast::ExprKind::Ret(Some(dollar_id))),
-                    None)),
-            self.cx.stmt_expr(
-                self.cx.expr_match(
-                    self.span,
-                    token_unwrap,
-                    self.terminals
-                        .iter()
-                        .map(|(_, terminal)| {
-                            self.cx.arm(
-                                self.span,
-                                vec![self.terminal_pattern(&terminal)],
-                                self.cx.expr_usize(self.span, self.tm.indices[terminal]),
-                            )
-                        })
-                        .collect(),
+                        self.cx.expr_method_call(
+                            self.span,
+                            self.cx.expr_ident(self.span, self.cx.ident_of("token")),
+                            self.cx.ident_of("is_none"),
+                            vec![],
+                        ),
+                        self.cx.expr(self.span, ast::ExprKind::Ret(Some(dollar_id))),
+                        None,
+                    ),
                 ),
-            )],
+                self.cx.stmt_expr(
+                    self.cx.expr_match(
+                        self.span,
+                        token_unwrap,
+                        self.terminals
+                            .iter()
+                            .map(|(_, terminal)| {
+                                self.cx.arm(
+                                    self.span,
+                                    vec![self.terminal_pattern(&terminal)],
+                                    self.cx.expr_usize(self.span, self.tm.indices[terminal]),
+                                )
+                            })
+                            .collect(),
+                    ),
+                ),
+            ],
         )
     }
 
@@ -193,7 +222,11 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         self.cx.item_fn(
             self.span,
             self.cx.ident_of("_convert_token_to_index"),
-            vec![self.cx.arg(self.span, self.cx.ident_of("token"), self.cx.ty_option(ty_return))],
+            vec![self.cx.arg(
+                self.span,
+                self.cx.ident_of("token"),
+                self.cx.ty_option(ty_return),
+            )],
             ty_usize,
             body,
         )
@@ -222,7 +255,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         };
 
         let ident = self.cx.ident_of("_lalr_symbols");
-        self.cx.item_enum(self.span, ident, enumdef)
+        self.item_enum_derive(self.span, ident, enumdef)
     }
 
     pub fn enum_variant(&self, name: &str, args: Vec<&str>) -> Spanned<ast::Variant_> {
@@ -238,14 +271,14 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             variants: vec![
                 self.enum_variant("Error", vec![]),
                 self.enum_variant("Shift", vec!["usize"]),
-                self.enum_variant("Reduce", vec!["usize", "usize"]),
+                self.enum_variant("Reduce", vec!["usize", "usize", "usize"]),
                 self.enum_variant("Accept", vec![]),
                 self.enum_variant("Goto", vec!["usize"]),
             ],
         };
 
         let ident = self.cx.ident_of("_Act");
-        self.cx.item_enum(self.span, ident, enumdef)
+        self.item_enum_derive(self.span, ident, enumdef)
     }
 
     fn action_expr(&self, args: (&str, Option<Vec<P<ast::Expr>>>)) -> P<ast::Expr> {
@@ -270,10 +303,11 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         self.action_expr(match action {
             Action::Error => ("Error", None),
             Action::Shift(pat) => ("Shift", Some(vec![self.usize_expr(*pat)])),
-            Action::Reduce(ident, _subrule, count) => (
+            Action::Reduce(ident, subrule, count) => (
                 "Reduce",
                 Some(vec![
                     self.usize_expr(self.tm.indices[ident]),
+                    self.usize_expr(*subrule),
                     self.usize_expr(*count),
                 ]),
             ),
@@ -321,7 +355,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             .collect()
     }
 
-    pub fn get_lalr_table_fn(&self) -> P<ast::Item> {
+    pub fn get_lalr_table(&self) -> P<ast::Item> {
         let act_ty = self.ty_ident("_Act");
         let count = self.tm.indices.len();
         let ty_return = self.sliced(self.sliced(act_ty, count), self.lalr_table.actions.len());
@@ -344,7 +378,258 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             self.cx.ident_of("_STARTER_VALUE"),
             ty_var,
             ast::Mutability::Immutable,
-            self.usize_expr(0)
+            self.usize_expr(0),
+        )
+    }
+
+    fn get_wrapper_fn_body(&self, terminals: &HashSet<(String, String)>) -> P<ast::Block> {
+        self.cx.block(
+            self.span,
+            vec![self.cx.stmt_expr(
+                // match index {
+                self.cx.expr_match(
+                    self.span,
+                    self.cx.expr_ident(self.span, self.cx.ident_of("index")),
+                    terminals
+                        .iter()
+                        .map(|(name, p)| {
+                            // 3 => reduction_match_body
+                            self.cx.arm(
+                                self.span,
+                                vec![self
+                                    .cx
+                                    .pat_lit(self.span, self.usize_expr(self.tm.indices[p]))],
+                                self.box_expr(self.cx.expr_call(
+                                    self.span,
+                                    self.cx.expr_path(self.cx.path(
+                                        self.span,
+                                        vec![self.cx.ident_of("_Data"), self.cx.ident_of(name)],
+                                    )),
+                                    vec![
+                                    self.box_or_star(false,
+                                    self.cx.expr_ident(self.span, self.cx.ident_of("token")))],
+                                )),
+                            )
+                        })
+                        .chain(iter::once(self.wild_arm_fail()))
+                        .collect(),
+                ),
+                // }
+            )],
+        )
+    }
+    pub fn get_wrapper_fn(&self, terminals: &HashSet<(String, String)>) -> P<ast::Item> {
+        let ty_return = self.boxed(self.ty_ident("_Data"));
+        let body = self.get_wrapper_fn_body(terminals);
+        self.cx.item_fn(
+            self.span,
+            self.cx.ident_of("_token_to_data"),
+            vec![
+                self.cx
+                    .arg(self.span, self.cx.ident_of("index"), self.ty_ident("usize")),
+                self.cx
+                    .arg(self.span, self.cx.ident_of("token"),
+                    self.cx.ty_rptr(self.span, self.ty_ident("Token"), None, ast::Mutability::Immutable)),
+            ],
+            ty_return,
+            body,
+        )
+    }
+
+    fn reduction_match_pat(&self, identifier: &str, index: usize) -> P<ast::Pat> {
+        self.cx.pat_tuple_struct(
+            self.span,
+            self.cx.path(
+                self.span,
+                vec![self.cx.ident_of("_Data"), self.cx.ident_of(identifier)],
+            ),
+            vec![self
+                .cx
+                .pat_ident(self.span, self.cx.ident_of(&format!("pat_{}", index)))],
+        )
+    }
+
+    fn reduction_match_data(
+        &self,
+        name: &str,
+        subindex: usize,
+        data: &Vec<RuleData>,
+    ) -> P<ast::Pat> {
+        let slice_pat: P<ast::Pat> = self.cx.pat(
+            self.span,
+            ast::PatKind::Slice(
+                data.iter()
+                    .enumerate()
+                    .map(|(i, ruledata)| {
+                        self.cx.pat(
+                            self.span,
+                            ast::PatKind::Box(self.reduction_match_pat(&ruledata.identifier, i)),
+                        )
+                    })
+                    .collect(),
+                None,
+                vec![],
+            ),
+        );
+        self.cx.pat_tuple(
+            self.span,
+            vec![
+                self.cx.pat_lit(self.span, self.usize_expr(subindex)),
+                slice_pat,
+            ],
+        )
+        /*
+         * let a = match (subindex, data) {
+         *    1, [_Data::A(a), _Data::B(b)] => _Data::C(a, b),
+         *    ...,
+         *    _ => panic!("Unreachable")
+         * }
+         */
+    }
+    fn wild_arm_fail(&self) -> ast::Arm {
+        self.cx.arm(
+            self.span,
+            vec![self.cx.pat_wild(self.span)],
+            self.cx.expr_call_global(
+                self.span,
+                vec![
+                    self.cx.ident_of("lalr_runtime"),
+                    self.cx.ident_of("coerce_panic"),
+                ],
+                vec![],
+            ),
+        )
+    }
+    fn box_expr(&self, expr: P<ast::Expr>) -> P<ast::Expr> {
+        self.cx.expr_call_global(
+            self.span,
+            self.cx.std_path(&["boxed", "Box", "new"]),
+            vec![expr],
+        )
+    }
+    fn box_or_star(&self, boxed: bool, expr: P<ast::Expr>) -> P<ast::Expr> {
+        let starred = self.cx.expr_method_call(
+            self.span,
+            expr,
+            self.cx.ident_of("clone"),
+            vec![],
+        );
+        if boxed {
+            self.box_expr(starred)
+        } else {
+            starred
+        }
+    }
+    fn reduction_match_body(
+        &self,
+        name: &str,
+        data: &Vec<(String, Vec<RuleData>)>,
+    ) -> P<ast::Expr> {
+        let bodies = data
+            .iter()
+            .enumerate()
+            .map(|(subindex, (variant_name, ruledata))| {
+                self.cx.arm(
+                    self.span,
+                    vec![self.reduction_match_data(name, subindex, ruledata)],
+                    self.box_expr(self.cx.expr_call(
+                        self.span,
+                        self.cx.expr_path(self.cx.path(
+                            self.span,
+                            vec![self.cx.ident_of("_Data"), self.cx.ident_of(name)],
+                        )),
+                        vec![
+                        self.cx.expr_call(
+                            self.span,
+                            self.cx.expr_path(self.cx.path(
+                                    self.span,
+                                    vec![self.cx.ident_of(name),
+                                    self.cx.ident_of(variant_name)])),
+                                    vec![
+                        self.cx.expr_call(
+                            self.span,
+                            self.cx.expr_path(self.cx.path_ident(
+                                    self.span,
+                                    self.cx.ident_of(&format!("{}_{}", name, variant_name)))),
+                            ruledata.iter().enumerate()
+                            .map(|(i, data)|
+                                 self.box_or_star(
+                                     data.indirect,
+                                     self.cx.expr_ident(self.span,
+                                                        self.cx.ident_of(
+                                                            &format!("pat_{}", i)))))
+                            .collect())],
+                        )],
+                    )),
+                )
+            });
+        self.cx.expr_match(
+            self.span,
+            self.cx.expr_tuple(
+                self.span,
+                vec![
+                    self.cx.expr_ident(self.span, self.cx.ident_of("subindex")),
+                    self.cx.expr_ident(self.span, self.cx.ident_of("data")),
+                ],
+            ),
+            bodies.chain(iter::once(self.wild_arm_fail())).collect(),
+        )
+    }
+    fn get_reduction_fn_body(&self, rules: &Vec<Rule>) -> P<ast::Block> {
+        self.cx.block(
+            self.span,
+            vec![self.cx.stmt_expr(
+                // match index {
+                self.cx.expr_match(
+                    self.span,
+                    self.cx.expr_ident(self.span, self.cx.ident_of("index")),
+                    rules
+                        .iter()
+                        .map(|rule| {
+                            // 3 => reduction_match_body
+                            self.cx.arm(
+                                self.span,
+                                vec![self.cx.pat_lit(
+                                    self.span,
+                                    self.usize_expr(self.tm.indices[&rule.identifier]),
+                                )],
+                                self.reduction_match_body(&rule.identifier, &rule.data),
+                            )
+                        })
+                        .chain(iter::once(self.wild_arm_fail()))
+                        .collect(),
+                ),
+                // }
+            )],
+        )
+    }
+    pub fn get_reduction_fn(&self, rules: &Vec<Rule>) -> P<ast::Item> {
+        let ty_return = self.boxed(self.ty_ident("_Data"));
+        let body = self.get_reduction_fn_body(rules);
+        self.cx.item_fn(
+            self.span,
+            self.cx.ident_of("_reduce_to_ast"),
+            vec![
+                self.cx
+                    .arg(self.span, self.cx.ident_of("index"), self.ty_ident("usize")),
+                self.cx.arg(
+                    self.span,
+                    self.cx.ident_of("subindex"),
+                    self.ty_ident("usize"),
+                ),
+                self.cx.arg(
+                    self.span,
+                    self.cx.ident_of("data"),
+                    self.cx.ty_rptr(
+                        self.span,
+                        self.cx.ty(self.span, ast::TyKind::Slice(ty_return.clone())),
+                        None,
+                        ast::Mutability::Immutable,
+                    ),
+                ),
+            ],
+            ty_return,
+            body,
         )
     }
 }
@@ -353,7 +638,7 @@ pub fn output_parser(
     cx: &ExtCtxt,
     span: Span,
     tm: &RuleTranslationMap,
-    items: &Vec<Rule>,
+    rules: &Vec<Rule>,
     terminals: &HashSet<(String, String)>,
     lalr_table: &LRTable,
 ) -> Box<MacResult + 'static> {
@@ -364,40 +649,50 @@ pub fn output_parser(
         lalr_table,
         terminals,
     };
-    
-    let mut all_struct_names = Vec::new();
 
-    let mut items: SmallVec<[P<ast::Item>; 1]> = items
+    let mut items: SmallVec<[P<ast::Item>; 1]> = rules
         .iter()
         .filter(|item| !(item.identifier == "Epsilon"))
-        .flat_map(|item| builder.get_enum_item(&mut all_struct_names, item))
+        .flat_map(|item| builder.get_enum_item(item))
         .collect();
 
     let all_structs_enum = ast::EnumDef {
-        variants: all_struct_names.iter().map(|name|
-            builder.get_plain_variant(span, name)
-        ).collect()
+        variants: rules
+            .iter()
+            .map(|rule| builder.get_plain_variant(span, &rule.identifier))
+            .chain(terminals.iter().map(|(name, _)| {
+                cx.variant(
+                    span,
+                    cx.ident_of(name),
+                    vec![cx.ty_path(cx.path(
+                        span,
+                        vec![
+                            cx.ident_of("Token"),
+                            //cx.ident_of(name),
+                        ],
+                    ))],
+                )
+            }))
+            .collect(),
     };
 
-    items.push(cx.item_enum(
-        span,
-        cx.ident_of("Epsilon"),
-        ast::EnumDef {
-            variants: vec![cx.variant(span, cx.ident_of("Error"), vec![])],
-        },
-    ));
+    items.push(
+        builder.item_enum_derive(
+            span,
+            cx.ident_of("Epsilon"),
+                ast::EnumDef {
+                    variants: vec![cx.variant(span, cx.ident_of("Error"), vec![])],
+                }));
 
-    items.push(cx.item_enum(
-        span,
-        cx.ident_of("_Data"),
-        all_structs_enum
-    ));
+    items.push(builder.item_enum_derive(span, cx.ident_of("_Data"), all_structs_enum));
 
-    items.push(builder.get_lalr_table_fn());
+    items.push(builder.get_lalr_table());
     items.push(builder.get_translation_fn());
     items.push(builder.get_translation_enum());
     items.push(builder.get_action_enum());
     items.push(builder.get_starter_var());
+    items.push(builder.get_wrapper_fn(terminals));
+    items.push(builder.get_reduction_fn(rules));
 
     return MacEager::items(items);
 }

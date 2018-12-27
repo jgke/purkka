@@ -1,11 +1,14 @@
-#![feature(plugin)]
+#![feature(plugin, box_patterns)]
 #![plugin(lalr)]
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
-use std::fmt;
+extern crate lalr_runtime;
 
-#[derive(Debug)]
+use std::fmt;
+use std::vec::Drain;
+
+#[derive(Clone,Debug)]
 enum Token {
     Constant(),
     Plus(),
@@ -50,48 +53,61 @@ impl fmt::Display for _Act {
         match self {
             _Act::Error => write!(f, "e   "),
             _Act::Shift(to) => write!(f, "s{: <3}", &to.to_string()),
-            _Act::Reduce(rule, subrule) => {
-                write!(f, "r{},{}", rule, &subrule.to_string())
-            }
+            _Act::Reduce(rule, subrule, count) => write!(f, "r{},{}", rule, &subrule.to_string()),
             _Act::Accept => write!(f, "acc "),
             _Act::Goto(to) => write!(f, "g{: <3}", to),
         }
     }
 }
 
-fn driver(tokenstream: &mut Iterator<Item=&Token>) -> S {
+fn driver(tokenstream: &mut Iterator<Item = &Token>) -> S {
     let mut w = tokenstream.peekable();
-    let mut stack: Vec<usize> = vec![_STARTER_VALUE];
+    let mut stack: Vec<(usize, Box<_Data>)> =
+        vec![(_STARTER_VALUE, Box::new(_Data::Epsilon(Epsilon::Error)))];
     loop {
-        let s = stack[stack.len()-1];
+        println!("{:?}", stack);
+        let (s, _) = stack[stack.len() - 1];
+        let a_ = w.peek().map(|x| *x);
         let a = _convert_token_to_index(w.peek().map(|x| *x));
         let act_row = &_STATE_TABLE[s];
         let action = &act_row[a];
         match action {
             _Act::Error => panic!("Error"),
             _Act::Shift(t) => {
-                stack.push(*t);
+                stack.push((*t, _token_to_data(a, a_.unwrap())));
                 w.next();
             }
-            _Act::Reduce(goto, count) => {
-                let rem_range = stack.len()-count..;
-                stack.drain(rem_range);
-                let t = stack[stack.len()-1];
+            _Act::Reduce(goto, subrule, count) => {
+                let rem_range = stack.len() - count..;
+                let drain: Vec<Box<_Data>> = stack.drain(rem_range).map(|(_, t)| t).collect();
+                let (t, _) = stack[stack.len() - 1];
                 match _STATE_TABLE[t][*goto] {
-                    _Act::Goto(g) => stack.push(g),
-                    _ => panic!("Unreachable")
+                    _Act::Goto(g) => {
+                        println!("{:?} {:?} {:?}", *goto, *subrule, &drain);
+                        let result = _reduce_to_ast(*goto, *subrule, &drain);
+                        stack.push((g, result));
+                    }
+                    _ => panic!("Unreachable"),
                 }
                 println!("Reduce {} ({})", goto, count);
             }
             _Act::Accept => {
                 break;
-            },
+            }
             _Act::Goto(i) => panic!("Unreachable"),
         }
     }
 
     println!("Accept");
 
+    let t = stack.into_iter().last().unwrap().1;
+
+    if let box _Data::E(s) = t {
+        S::E(S_E(s))
+    } else {
+        println!("{:?}", t);
+        panic!("");
+    }
 }
 
 //pub fn parse_tokens<'a>(tokens: &mut Iterator<Item = &TokenType>) -> TranslationUnit<'a> {
@@ -116,7 +132,5 @@ fn token_parsing() {
         println!("{:?} {}", i, _convert_token_to_index(Some(i)));
     }
 
-    driver(&mut [
-           Constant(), Plus(), Constant()
-    ].iter());
+    println!("{:?}", driver(&mut [Constant(), Plus(), Constant()].iter()));
 }

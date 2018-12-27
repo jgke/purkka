@@ -8,4 +8,11 @@ dependencies = [
 [[package]]
 name = "lalr"
 version = "0.1.0"
+dependencies = [
+ "lalr_runtime 0.1.0",
+]
+
+[[package]]
+name = "lalr_runtime"
+version = "0.1.0"
 

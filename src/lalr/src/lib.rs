@@ -92,14 +92,14 @@ fn parse_item(
 
     while !is_semi(iter.peek()) {
         match iter.next() {
-            Some(TokenTree::Token(s, token::Ident(t, _))) => {
+            Some(TokenTree::Token(s, token::Ident(tt, _))) => {
                 rsp = *s;
                 current_components.push(RuleData {
-                    identifier: t.name.to_string(),
-                    full_path: t.name.to_string(),
+                    identifier: tt.name.to_string(),
+                    full_path: tt.name.to_string(),
                     span: rsp,
                     terminal,
-                    indirect,
+                    indirect: indirect || tt.name.as_str() == t.name.as_str(),
                 });
                 terminal = false;
                 indirect = false;

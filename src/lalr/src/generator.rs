@@ -215,8 +215,10 @@ pub fn lr_parsing_table(
                         &mut table.actions[i],
                         item.lookahead.to_string(),
                         Action::Reduce(
-                            item.index.to_string(), item.subindex,
-                            tm.rules[&item.index].data[item.subindex].1.len()),
+                            item.index.to_string(),
+                            item.subindex,
+                            tm.rules[&item.index].data[item.subindex].1.len(),
+                        ),
                     );
                 }
             }
@@ -318,8 +320,7 @@ pub fn compute_lalr(
     println!("");
     for (i, row) in table.actions.iter().enumerate() {
         print!("{: <3}", i);
-        for symbol in terminal_full_names.iter()
-                .chain(rule_names.iter()) {
+        for symbol in terminal_full_names.iter().chain(rule_names.iter()) {
             match row.get(symbol) {
                 Some(action) => print!("{}", action),
                 None => print!("{}", Action::Error),

@@ -1,11 +1,6 @@
 [package]
-name = "lalr"
+name = "lalr_runtime"
 version = "0.1.0"
 authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 
-[lib]
-crate-type = ["dylib"]
-
 [dependencies]
-lalr_runtime = { path="../lalr_runtime" }
-

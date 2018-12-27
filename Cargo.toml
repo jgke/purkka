@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "src/core",
-    "src/lalr"
+    "src/lalr",
+    "src/lalr_runtime"
 ]

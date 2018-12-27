@@ -130,9 +130,11 @@ impl fmt::Display for Action {
         match self {
             Action::Error => write!(f, "{: >7.5}", ""),
             Action::Shift(to) => write!(f, "{: >7.5}", String::from("s") + &to.to_string()),
-            Action::Reduce(rule, subrule, _length) => {
-                write!(f, "{: >7.5}", String::from("r") + rule + &subrule.to_string())
-            }
+            Action::Reduce(rule, subrule, _length) => write!(
+                f,
+                "{: >7.5}",
+                String::from("r") + rule + &subrule.to_string()
+            ),
             Action::Accept => write!(f, "{: >7.5}", "acc"),
             Action::Goto(to) => write!(f, "g{: >6.4}", to),
         }
