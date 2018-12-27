@@ -12,7 +12,7 @@ use std::vec::Drain;
 enum Token {
     Constant(),
     Plus(),
-    //Minus(),
+    Minus(),
     Times(),
     //Divide(),
     OpenParen(),
@@ -39,13 +39,10 @@ enum Token {
 //}
 
 lalr! {
-    S -> E;
-    E -> E #Token::Plus T
-       | T;
-    T -> T #Token::Times F
-       | F;
-    F -> #Token::OpenParen &E #Token::CloseParen
-       | #Token::Constant;
+    S -> SS;
+    SS -> L #Token::Plus R | R;
+    L -> #Token::Minus R | #Token::Constant;
+    R -> &L;
 }
 
 impl fmt::Display for _Act {
@@ -102,10 +99,9 @@ fn driver(tokenstream: &mut Iterator<Item = &Token>) -> S {
 
     let t = stack.into_iter().last().unwrap().1;
 
-    if let box _Data::E(s) = t {
-        S::E(S_E(s))
+    if let box _Data::SS(s) = t {
+        S::SS(S_SS(s))
     } else {
-        println!("{:?}", t);
         panic!("");
     }
 }

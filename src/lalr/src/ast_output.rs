@@ -194,6 +194,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                     self.cx.expr_usize(self.span, self.tm.indices[terminal]),
                                 )
                             })
+                            .chain(iter::once(self.wild_arm_fail("index_panic")))
                             .collect(),
                     ),
                 ),
@@ -411,7 +412,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                 )),
                             )
                         })
-                        .chain(iter::once(self.wild_arm_fail()))
+                        .chain(iter::once(self.wild_arm_fail("index_panic")))
                         .collect(),
                 ),
                 // }
@@ -486,7 +487,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
          * }
          */
     }
-    fn wild_arm_fail(&self) -> ast::Arm {
+    fn wild_arm_fail(&self, func: &str) -> ast::Arm {
         self.cx.arm(
             self.span,
             vec![self.cx.pat_wild(self.span)],
@@ -494,7 +495,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                 self.span,
                 vec![
                     self.cx.ident_of("lalr_runtime"),
-                    self.cx.ident_of("coerce_panic"),
+                    self.cx.ident_of(func),
                 ],
                 vec![],
             ),
@@ -572,7 +573,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                     self.cx.expr_ident(self.span, self.cx.ident_of("data")),
                 ],
             ),
-            bodies.chain(iter::once(self.wild_arm_fail())).collect(),
+            bodies.chain(iter::once(self.wild_arm_fail("coerce_panic"))).collect(),
         )
     }
     fn get_reduction_fn_body(&self, rules: &Vec<Rule>) -> P<ast::Block> {
@@ -596,7 +597,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                 self.reduction_match_body(&rule.identifier, &rule.data),
                             )
                         })
-                        .chain(iter::once(self.wild_arm_fail()))
+                        .chain(iter::once(self.wild_arm_fail("coerce_panic")))
                         .collect(),
                 ),
                 // }
