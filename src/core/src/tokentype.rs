@@ -82,7 +82,7 @@ pub type StringLiteral = String;
 #[derive(Debug)]
 pub enum TokenType {
     Keyword(&'static Keyword),
-    Identifier(Identifier),
+    Identifier(),
     Constant(Constant),
     StringLiteral(StringLiteral),
     Operator(&'static Operator),

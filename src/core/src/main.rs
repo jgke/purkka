@@ -15,6 +15,13 @@ fn main() {
         println!("Usage: kielic [filename]");
     } else {
         let result = tokenizer::parse(&args[1]);
-        println!("{:?}", result);
+        match result {
+            Ok(output) => {
+                for token in output.tokens {
+                    println!("{:?}", token)
+                }
+            }
+            Err(e) => panic!(e)
+        }
     }
 }
