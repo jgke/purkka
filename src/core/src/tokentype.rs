@@ -73,7 +73,7 @@ pub enum MacroInclude {
 
 #[derive(Debug)]
 pub enum Constant {
-    Integer(String)
+    Integer()
 }
 
 pub type Identifier = String;
