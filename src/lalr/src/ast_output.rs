@@ -5,7 +5,9 @@ use syntax::ext::build::AstBuilder;
 use syntax::ext::quote::rt::Span;
 use syntax::ptr::P;
 use syntax::source_map::{respan, Spanned};
+use syntax::parse;
 use syntax_pos::symbol;
+use syntax::ext::quote::rt::ExtParseUtils;
 
 use std::collections::HashSet;
 use std::iter;
@@ -33,7 +35,8 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                 symbol::Symbol::intern("derive"),
                 vec![
                 self.cx.meta_list_item_word(span, symbol::Symbol::intern("Clone")),
-                self.cx.meta_list_item_word(span, symbol::Symbol::intern("Debug"))
+                self.cx.meta_list_item_word(span, symbol::Symbol::intern("Debug")),
+                self.cx.meta_list_item_word(span, symbol::Symbol::intern("PartialEq")),
                 ]));
         self.cx.item(span, ident, vec![derive], kind)
     }
@@ -694,6 +697,55 @@ pub fn output_parser(
     items.push(builder.get_starter_var());
     items.push(builder.get_wrapper_fn(terminals));
     items.push(builder.get_reduction_fn(rules));
+
+    let mut driver_fn = r#"
+fn driver(tokenstream: &mut Iterator<Item = &Token>) -> Option<S> {
+    let mut tokens = tokenstream.peekable();
+    let mut stack: Vec<(usize, Box<_Data>)> =
+        vec![(_STARTER_VALUE, Box::new(_Data::Epsilon(Epsilon::Error)))];
+    loop {
+        let (s, _) = stack[stack.len() - 1];
+        let a_ = tokens.peek().map(|x| *x);
+        let a = _convert_token_to_index(a_);
+        let action = &_STATE_TABLE[s][a];
+        match action {
+            _Act::Error => panic!("Error"),
+            _Act::Shift(t) => {
+                stack.push((*t, _token_to_data(a, a_.unwrap())));
+                tokens.next();
+            }
+            _Act::Reduce(goto, subrule, count) => {
+                let rem_range = stack.len() - count..;
+                let drain: Vec<Box<_Data>> = stack.drain(rem_range).map(|(_, t)| t).collect();
+                let (t, _) = stack[stack.len() - 1];
+                match _STATE_TABLE[t][*goto] {
+                    _Act::Goto(g) => {
+                        let result = _reduce_to_ast(*goto, *subrule, &drain);
+                        stack.push((g, result));
+                    }
+                    _ => panic!("Unreachable"),
+                }
+            }
+            _Act::Accept => {
+                break;
+            }
+            _Act::Goto(i) => panic!("Unreachable"),
+        }
+    }
+
+    let t = stack.into_iter().last().unwrap().1;
+            "#.to_string();
+
+            driver_fn.push_str(&format!("
+    if let box _Data::{0}(s) = t {{
+        Some(S::{0}(S_{0}(s)))
+    }} else {{
+        None
+    }} }}", tm.rules["S"].data[0].1[0].identifier
+                    ));
+
+
+            items.push(cx.parse_item(driver_fn));
 
     return MacEager::items(items);
 }
