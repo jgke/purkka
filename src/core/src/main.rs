@@ -1,6 +1,8 @@
 #![feature(plugin)]
 #![plugin(lalr)]
 
+extern crate regex;
+
 use std::env;
 
 mod tokenizer;

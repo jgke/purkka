@@ -4,6 +4,8 @@ use std::io::prelude::*;
 use std::rc::Rc;
 use std::str::CharIndices;
 
+use regex::Regex;
+
 use tokentype::*;
 
 #[derive(Clone, Debug)]
@@ -48,6 +50,7 @@ enum MacroToken {
 #[derive(Debug, Default)]
 struct CTokenizer {
     macro_context: HashMap<String, Vec<MacroToken>>,
+    macro_if_stack: Vec<Vec<bool>>,
     macro_functions: HashMap<String, ()>,
     tokens: Vec<Token>
 }
@@ -111,9 +114,15 @@ impl CTokenizer {
         f.read_to_string(&mut contents)
             .expect("something went wrong reading the file");
 
+        self.macro_if_stack.push(Vec::new());
         let processed = self.preprocess(&contents);
+        let vec = self.macro_if_stack.pop().unwrap();
+        assert_eq!(vec.len(), 0);
         println!("contents: {:?}\nprocessed: {:?}", contents, processed);
         self.make_context(file.to_string(), processed)
+    }
+
+    fn pop_file(&mut self) {
     }
 
     fn make_context(&mut self, file: String, file_content: String) -> Context {
@@ -194,17 +203,19 @@ impl CTokenizer {
         }
     }
 
-    fn eval_macro(&mut self, mac: &str) -> String {
+    fn eval_macro(&mut self, mac: &str, iter: &mut CharIndices) -> String {
+        let else_regex = Regex::new(r"^\s*#\s*else([\s]|$)").unwrap();
+        let endif_regex = Regex::new(r"^\s*#\s*endif([\s]|$)").unwrap();
         let row = self.tokenize_macro_row(mac);
         println!("eval: {:?}", row);
         match row.get(0) {
             Some(MacroToken::Identifier(ident)) => {
-                match row.get(1) {
-                    Some(MacroToken::Whitespace) => {},
-                    _ => panic!("Expected whitespace")
-                };
                 match ident.as_ref() {
                     "define" => {
+                        match row.get(1) {
+                            Some(MacroToken::Whitespace) => {},
+                            _ => panic!("Expected whitespace")
+                        };
                         let name = match row.get(2) {
                             Some(MacroToken::Identifier(ident)) => {
                                 ident
@@ -215,9 +226,48 @@ impl CTokenizer {
                         if let Some(MacroToken::Other('(')) = row.get(3) {
                             panic!("Function macros not supported");
                         };
-                        let mut tokens = &row[4..];
+                        let mut tokens = &row[3..];
                         self.macro_context.insert(name.clone(), tokens.to_vec());
                         "\n".to_string()
+                    }
+                    t@"ifdef" | t@"ifndef" => {
+                        match row.get(1) {
+                            Some(MacroToken::Whitespace) => {},
+                            _ => panic!("Expected whitespace")
+                        };
+                        let name = match row.get(2) {
+                            Some(MacroToken::Identifier(ident)) => {
+                                ident
+                            },
+                            _ => panic!("Expected identifier")
+                        };
+                        assert!(else_regex.is_match("#else"));
+                        assert!(!else_regex.is_match("#endif"));
+                        let mut skip_section = self.macro_context.contains_key(name);
+                        if t == "ifdef" {
+                            skip_section = !skip_section;
+                        }
+                        self.macro_if_stack.last_mut().unwrap().push(skip_section);
+                        if skip_section {
+                            while CTokenizer::peek_str(iter).is_some() && !else_regex.is_match(iter.as_str()) && !endif_regex.is_match(iter.as_str()) {
+                                let s = self.preprosess_get_macro_line(iter);
+                                println!("removed: {}", s);
+                            }
+                        }
+                        " ".to_string()
+                    }
+                    "else" => {
+                        if !self.macro_if_stack.last().unwrap().last().unwrap() {
+                            while CTokenizer::peek_str(iter).is_some() && !endif_regex.is_match(iter.as_str()) {
+                                let s = self.preprosess_get_macro_line(iter);
+                                println!("removed: {}", s);
+                            }
+                        }
+                        " ".to_string()
+                    }
+                    "endif" => {
+                        self.macro_if_stack.last_mut().unwrap().pop();
+                        " ".to_string()
                     }
                     _ => panic!("Unknown macro")
                 }
@@ -261,7 +311,7 @@ impl CTokenizer {
                 (false, Some((_, '#')), _) => {
                     if can_parse_macro {
                         let row = &self.preprosess_get_macro_line(iter);
-                        out.push_str(&self.eval_macro(row));
+                        out.push_str(&self.eval_macro(row, iter));
                         //panic!("Cannot parse :(");
                     } else {
                         out.push('#');
@@ -347,7 +397,10 @@ impl CTokenizer {
         let context = self.push_file(file);
         let mut iter = context.file_content.char_indices();
 
-        self.parse(&mut iter, &context, &HashSet::new())
+        let result = self.parse(&mut iter, &context, &HashSet::new());
+
+        self.pop_file();
+        result
     }
 
     fn parse(&mut self, iter: &mut CharIndices, base_context: &Context,

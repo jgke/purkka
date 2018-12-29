@@ -1,6 +1,8 @@
 use tokentype::Operator::*;
 use tokentype::Keyword::*;
 //use tokentype::Macro::*;
+//
+#[allow(dead_code)]
 
 #[derive(Clone, Debug)]
 pub enum Operator {
