@@ -1,8 +1,8 @@
 use tokentype::Operator::*;
 use tokentype::Keyword::*;
-use tokentype::Macro::*;
+//use tokentype::Macro::*;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Operator {
     OpenBracket, CloseBracket,
     OpenParen, CloseParen,
@@ -13,15 +13,16 @@ pub enum Operator {
     Terniary, TerniaryAlternative,
     Assign, TimesAssign, DivAssign, ModAssign, PlusAssign, MinusAssign,
     BitShiftLeftAssign, BitShiftRightAssign, BitAndAssign, BitXorAssign, BitOrAssign,
-    Comma, Macro, MacroPaste
+    Comma,
+    //Macro, MacroPaste
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum UnaryOperator {
     BitNot, Not, Dereference, AddressOf, UnaryPlus, UnaryMinus
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Keyword {
     Auto, Break, Case, Char,
     Const, Continue, Default, Do,
@@ -33,45 +34,46 @@ pub enum Keyword {
     Unsigned, Void, Volatile, While
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum StorageClass {
     Auto, Extern, Register, Static, Typedef
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum TypeSpecifier {
     Char, Double, Float, Int, Long, Short, Void,
     Enum, Struct, Union,
     Signed, Unsigned
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Punctuation {
     OpenBracket, CloseBracket,
     OpenParen, CloseParen,
     OpenBrace, CloseBrace,
     Star, Comma, Colon, Assign,
-    Semicolon, Varargs, Macro
+    Semicolon, Varargs,
+    //Macro
 }
 
-#[derive(Debug)]
-pub enum Macro {
-    MacroIf,
-    MacroIfdef,
-    MacroIfndef,
-    MacroElif,
-    MacroEndif,
-    Define, Undef,
-    Line, Error, Pragma
-}
+//#[derive(Clone, Debug)]
+//pub enum Macro {
+//    MacroIf,
+//    MacroIfdef,
+//    MacroIfndef,
+//    MacroElif,
+//    MacroEndif,
+//    Define, Undef,
+//    Line, Error, Pragma
+//}
 
-#[derive(Debug)]
-pub enum MacroInclude {
-    IncludeSystem(String),
-    IncludeLocal(String),
-}
+//#[derive(Clone, Debug)]
+//pub enum MacroInclude {
+//    IncludeSystem(String),
+//    IncludeLocal(String),
+//}
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Constant {
     Integer()
 }
@@ -79,7 +81,7 @@ pub enum Constant {
 pub type Identifier = String;
 pub type StringLiteral = String;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum TokenType {
     Keyword(&'static Keyword),
     Identifier(),
@@ -88,8 +90,8 @@ pub enum TokenType {
     Operator(&'static Operator),
     UnaryOperator(UnaryOperator),
     Punctuation(&'static Punctuation),
-    Macro(&'static Macro),
-    MacroInclude(MacroInclude),
+    //Macro(&'static Macro),
+    //MacroInclude(MacroInclude),
     Whitespace
 }
 
@@ -117,7 +119,7 @@ pub static OPERATORS: &'static [(&'static str, &'static Operator)] = &[
     ("==", &Equals),
     (">=", &MoreEqThan),
     ("||", &Or),
-    ("##", &MacroPaste),
+    //("##", &MacroPaste),
 
     ("+", &Plus),
     ("%", &Mod),
@@ -142,7 +144,7 @@ pub static OPERATORS: &'static [(&'static str, &'static Operator)] = &[
     (".", &Dot),
     (",", &Comma),
 
-    ("#", &Macro),
+    //("#", &Macro),
 
     (">", &MoreThan),
     ("<", &LessThan),
@@ -163,7 +165,7 @@ pub static PUNCTUATION: &'static [(&'static str, &'static Punctuation)] = &[
     ("=", &Punctuation::Assign),
     (";", &Punctuation::Semicolon),
     ("...", &Punctuation::Varargs),
-    ("#", &Punctuation::Macro)
+    //("#", &Punctuation::Macro)
 ] ;
 
 pub static KEYWORDS: &'static [(&'static str, &'static Keyword)] = &[
@@ -201,15 +203,15 @@ pub static KEYWORDS: &'static [(&'static str, &'static Keyword)] = &[
     ("while", &While)
 ];
 
-pub static SIMPLE_MACROS: &'static [(&'static str, &'static Macro)] = &[
-    ("if ", &MacroIf),
-    ("ifdef ", &MacroIfdef),
-    ("ifndef ", &MacroIfndef),
-    ("elif ", &MacroElif),
-    ("endif ", &MacroEndif),
-    ("define ", &Define),
-    ("undef ", &Undef),
-    ("line ", &Line),
-    ("error ", &Error),
-    ("pragma ", &Pragma)
-];
+//pub static SIMPLE_MACROS: &'static [(&'static str, &'static Macro)] = &[
+//    ("if ", &MacroIf),
+//    ("ifdef ", &MacroIfdef),
+//    ("ifndef ", &MacroIfndef),
+//    ("elif ", &MacroElif),
+//    ("endif ", &MacroEndif),
+//    ("define ", &Define),
+//    ("undef ", &Undef),
+//    ("line ", &Line),
+//    ("error ", &Error),
+//    ("pragma ", &Pragma)
+//];
