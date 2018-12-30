@@ -34,6 +34,14 @@ enum MacroToken {
 type ParseResult<T> = Result<T, &'static str>;
 
 impl MacroContext {
+    fn new() -> MacroContext {
+        MacroContext {
+            symbols: HashMap::new(),
+            if_stack: Vec::new(),
+            functions: HashMap::new()
+        }
+    }
+
     fn preprocess_flush_until(&self, until: &str, iter: &mut CharIndices) -> String {
         let mut out = String::new();
         loop {
@@ -94,17 +102,41 @@ impl MacroContext {
                 },
                 (Some((_, c)), _) => match c {
                     'a' ... 'z' | 'A' ... 'Z' | '_' =>
-                        unimplemented!(),
-                        //out.push(MacroToken::Identifier(self.read_identifier(&mut Context {
-                        //    filename: Rc::new("".to_string()),
-                        //    file_content: "".to_string(),
-                        //    span: Span::new()
-                        //}, &mut iter, c).data)),
+                        out.push(MacroToken::Identifier(self.read_identifier(&mut iter, c))),
                     _ => out.push(MacroToken::Other(c))
                 }
                 (None, _) => return out
             }
         }
+    }
+
+    pub fn read(&self, iter: &mut CharIndices, c: char,
+                f: impl Fn(char) -> bool) -> String {
+        self.read_mut(iter, c,
+                      |x, _| if f(x) { Some(x) } else { None })
+    }
+
+    pub fn read_mut(&self, iter: &mut CharIndices, c: char,
+                    f: impl Fn(char, &mut CharIndices) -> Option<char>) -> String {
+        let mut content = c.to_string();
+        while let Some(c) = iter.peek() {
+            if let Some(c) = f(c, iter) {
+                content.push(c);
+                iter.next();
+            } else {
+                break
+            }
+        }
+
+        content
+    }
+
+    fn read_identifier(&self, iter: &mut CharIndices, c: char) -> String {
+        self.read(iter, c,
+                     |c| match c {
+                         '0' ... '9' | 'a' ... 'z' | 'A' ... 'Z' | '_' => true,
+                         _ => false
+                     })
     }
 
     fn eval_constexpr(&mut self, tokens: &[MacroToken]) -> bool {
@@ -213,7 +245,7 @@ impl MacroContext {
     }
 
     /// Divide src into 
-    fn preprocess(&mut self, src: &str) -> String {
+    fn preprocess(&mut self, filename: &str, src: &str) -> String {
         let iter = &mut src.char_indices();
         let mut out = String::new();
         let mut can_parse_macro = true;
@@ -256,7 +288,13 @@ impl MacroContext {
                 }
                 (_, Some((_, c)), _) => {
                     can_parse_macro = false;
-                    out.push(c);
+                    match c {
+                        'a' ... 'z' | 'A' ... 'Z' | '_' => {
+                            let ident = self.read_identifier(iter, c);
+                            out.push_str(&self.expand_macro(&ident, &mut HashSet::new()));
+                        }
+                        _ => out.push(c)
+                    }
                 }
                 (true, None, _) => panic!("Unexpected end of input"),
                 (_, None, _) => return out
@@ -268,6 +306,10 @@ impl MacroContext {
         let mut out = String::new();
         println!("expand: {:?}", tokens);
         let mut iter: VecDeque<MacroToken> = tokens.into_iter().collect();
+        while let Some(MacroToken::Whitespace) = iter.front() {
+                iter.pop_front(); // whitespace
+        }
+
         loop {
             println!("{:?}", iter);
             match (iter.pop_front(), iter.front(), iter.get(1)) {
@@ -331,6 +373,6 @@ impl MacroContext {
     }
 }
 
-pub fn preprocess(s: &str) -> ParseResult<String> {
-    Err("Not implemented")
+pub fn preprocess(filename: &str, content: &str) -> ParseResult<String> {
+    Ok(MacroContext::new().preprocess(filename, content))
 }
