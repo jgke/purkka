@@ -5,6 +5,7 @@ authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 
 [lib]
 crate-type = ["dylib"]
+plugin = true
 
 [dependencies]
 lalr_runtime = { path="../lalr_runtime" }

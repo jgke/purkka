@@ -1,0 +1,7 @@
+[package]
+name = "shared"
+version = "0.1.0"
+authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
+
+[dependencies]
+regex = "1.1.0"

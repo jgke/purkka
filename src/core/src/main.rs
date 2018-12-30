@@ -1,7 +1,8 @@
 #![feature(plugin)]
 #![plugin(lalr)]
 
-extern crate regex;
+extern crate preprocessor;
+extern crate shared;
 
 use std::env;
 

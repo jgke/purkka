@@ -1,29 +1,12 @@
-use std::collections::{HashMap,HashSet,VecDeque};
+use std::collections::{HashMap,HashSet};
 use std::fs::File;
 use std::io::prelude::*;
 use std::rc::Rc;
 use std::str::CharIndices;
 
-use regex::Regex;
-
 use tokentype::*;
-
-#[derive(Clone, Debug)]
-pub struct Span {
-    pub lo: usize,
-    pub hi: usize,
-    pub file: Rc<String>
-}
-
-impl Span {
-    pub fn new() -> Span {
-        Span {
-            lo: 0,
-            hi: 0,
-            file: Rc::new("".to_string())
-        }
-    }
-}
+use shared::*;
+use preprocessor::preprocess;
 
 #[derive(Clone, Debug)]
 pub struct Token {
@@ -38,20 +21,8 @@ impl Token {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-enum MacroToken {
-    Stringify,
-    TokenPaste,
-    Whitespace,
-    Identifier(String),
-    Other(char)
-}
-
 #[derive(Debug, Default)]
 struct CTokenizer {
-    macro_context: HashMap<String, Vec<MacroToken>>,
-    macro_if_stack: Vec<Vec<bool>>,
-    macro_functions: HashMap<String, ()>,
     tokens: Vec<Token>
 }
 
@@ -85,10 +56,10 @@ impl Context {
                     f: impl Fn(char, &mut CharIndices) -> Option<char>,
                     wrap: impl Fn(&str) -> TokenType) -> Token {
         let mut content = c.to_string();
-        while let Some(c) = CTokenizer::peek_str(iter) {
+        while let Some(c) = iter.peek() {
             if let Some(c) = f(c, iter) {
                 content.push(c);
-                self.span.hi = iter.next().unwrap().0;
+                //self.span.1 = iter.next().unwrap().0;
             } else {
                 break
             }
@@ -100,34 +71,16 @@ impl Context {
 
 #[derive(Debug)]
 pub struct Output {
-    pub macro_functions: HashMap<String, ()>,
+    //pub macro_functions: HashMap<String, ()>,
     pub tokens: Vec<Token>
 }
 
 type ParseResult<T> = Result<T, &'static str>;
 
 impl CTokenizer {
-    fn push_file(&mut self, file: &str) -> Context {
-        let mut contents = String::new();
-
-        let mut f = File::open(file).expect("file not found");
-        f.read_to_string(&mut contents)
-            .expect("something went wrong reading the file");
-
-        self.macro_if_stack.push(Vec::new());
-        let processed = self.preprocess(&contents);
-        let vec = self.macro_if_stack.pop().unwrap();
-        assert_eq!(vec.len(), 0);
-        println!("contents: {:?}\nprocessed: {:?}", contents, processed);
-        self.make_context(file.to_string(), processed)
-    }
-
-    fn pop_file(&mut self) {
-    }
-
-    fn make_context(&mut self, file: String, file_content: String) -> Context {
-        let filename = Rc::new(file);
-        let span = Span { lo: 0, hi: 0, file: filename.clone() };
+    fn make_context(&mut self, file_content: String) -> Context {
+        let filename = Rc::new("!!!".to_string());
+        let span = Span::Span(0, 0);
         Context { filename, file_content, span }
     }
 
@@ -151,7 +104,7 @@ impl CTokenizer {
     fn preprosess_get_macro_line(&self, iter: &mut CharIndices) -> String {
         let mut out = String::new();
         loop {
-            match (iter.next(), CTokenizer::peek_str(iter)) {
+            match (iter.next(), iter.peek()) {
                 (Some((_, '\\')), Some('\n')) => {
                     iter.next();
                     iter.next();
@@ -167,7 +120,7 @@ impl CTokenizer {
     }
 
     fn macro_eval_flush_whitespace(&self, iter: &mut CharIndices) {
-        while let Some(c) = CTokenizer::peek_str(iter) {
+        while let Some(c) = iter.peek() {
             match c {
                 ' ' | '\t' => iter.next(),
                 _ => break
@@ -175,231 +128,12 @@ impl CTokenizer {
         }
     }
 
-    fn tokenize_macro_row(&self, mac: &str) -> Vec<MacroToken> {
-        let mut out = Vec::new();
-        let mut iter = mac.char_indices();
-        loop {
-            match (iter.next(), CTokenizer::peek_str(&iter)) {
-                (Some((_, '#')), Some('#')) => {
-                    iter.next();
-                    out.push(MacroToken::TokenPaste)
-                },
-                (Some((_, '#')), _) => out.push(MacroToken::Stringify),
-                (Some((_, ' ')), _) => {
-                    self.macro_eval_flush_whitespace(&mut iter);
-                    out.push(MacroToken::Whitespace)
-                },
-                (Some((_, c)), _) => match c {
-                    'a' ... 'z' | 'A' ... 'Z' | '_' =>
-                        out.push(MacroToken::Identifier(self.read_identifier(&mut Context {
-                            filename: Rc::new("".to_string()),
-                            file_content: "".to_string(),
-                            span: Span::new()
-                        }, &mut iter, c).data)),
-                    _ => out.push(MacroToken::Other(c))
-                }
-                (None, _) => return out
-            }
-        }
-    }
-
-    fn eval_macro(&mut self, mac: &str, iter: &mut CharIndices) -> String {
-        let else_regex = Regex::new(r"^\s*#\s*else([\s]|$)").unwrap();
-        let endif_regex = Regex::new(r"^\s*#\s*endif([\s]|$)").unwrap();
-        let row = self.tokenize_macro_row(mac);
-        println!("eval: {:?}", row);
-        match row.get(0) {
-            Some(MacroToken::Identifier(ident)) => {
-                match ident.as_ref() {
-                    "define" => {
-                        match row.get(1) {
-                            Some(MacroToken::Whitespace) => {},
-                            _ => panic!("Expected whitespace")
-                        };
-                        let name = match row.get(2) {
-                            Some(MacroToken::Identifier(ident)) => {
-                                ident
-                            },
-                            _ => panic!("Expected identifier")
-                        };
-                        // no whitespace before arg list
-                        if let Some(MacroToken::Other('(')) = row.get(3) {
-                            panic!("Function macros not supported");
-                        };
-                        let mut tokens = &row[3..];
-                        self.macro_context.insert(name.clone(), tokens.to_vec());
-                        "\n".to_string()
-                    }
-                    t@"ifdef" | t@"ifndef" => {
-                        match row.get(1) {
-                            Some(MacroToken::Whitespace) => {},
-                            _ => panic!("Expected whitespace")
-                        };
-                        let name = match row.get(2) {
-                            Some(MacroToken::Identifier(ident)) => {
-                                ident
-                            },
-                            _ => panic!("Expected identifier")
-                        };
-                        assert!(else_regex.is_match("#else"));
-                        assert!(!else_regex.is_match("#endif"));
-                        let mut skip_section = self.macro_context.contains_key(name);
-                        if t == "ifdef" {
-                            skip_section = !skip_section;
-                        }
-                        self.macro_if_stack.last_mut().unwrap().push(skip_section);
-                        if skip_section {
-                            while CTokenizer::peek_str(iter).is_some() && !else_regex.is_match(iter.as_str()) && !endif_regex.is_match(iter.as_str()) {
-                                let s = self.preprosess_get_macro_line(iter);
-                                println!("removed: {}", s);
-                            }
-                        }
-                        " ".to_string()
-                    }
-                    "else" => {
-                        if !self.macro_if_stack.last().unwrap().last().unwrap() {
-                            while CTokenizer::peek_str(iter).is_some() && !endif_regex.is_match(iter.as_str()) {
-                                let s = self.preprosess_get_macro_line(iter);
-                                println!("removed: {}", s);
-                            }
-                        }
-                        " ".to_string()
-                    }
-                    "endif" => {
-                        self.macro_if_stack.last_mut().unwrap().pop();
-                        " ".to_string()
-                    }
-                    _ => panic!("Unknown macro")
-                }
-            },
-            _ => panic!("Parse error")
-        }
-    }
-
-    fn preprocess(&mut self, src: &str) -> String {
-        let iter = &mut src.char_indices();
-        let mut out = String::new();
-        let mut can_parse_macro = true;
-        let mut inside_string = false;
-        loop {
-            match (inside_string, iter.next(), CTokenizer::peek_str(iter)) {
-                (false, Some((_, '/')), Some('/')) => {
-                    self.preprocess_flush_until("\n", iter);
-                    out.push('\n');
-                }
-                (false, Some((_, '\\')), Some('*')) => {
-                    iter.next();
-                    self.preprocess_flush_until("*/", iter);
-                    out.push('\n');
-                }
-                (true, Some((_, '\\')), Some('"')) => {
-                    out.push('\\');
-                    iter.next();
-                    out.push('"');
-                }
-                (_, Some((_, '"')), _) => {
-                    inside_string = !inside_string;
-                    out.push('"');
-                }
-                (_, Some((_, ' ')), _) => out.push(' '),
-                (_, Some((_, '\t')), _) => out.push('\t'),
-                (_, Some((_, '\n')), _) => {
-                    out.push('\n');
-                    can_parse_macro = true;
-                    inside_string = false;
-                }
-                (false, Some((_, '#')), _) => {
-                    if can_parse_macro {
-                        let row = &self.preprosess_get_macro_line(iter);
-                        out.push_str(&self.eval_macro(row, iter));
-                        //panic!("Cannot parse :(");
-                    } else {
-                        out.push('#');
-                    }
-                }
-                (_, Some((_, c)), _) => {
-                    can_parse_macro = false;
-                    out.push(c);
-                }
-                (true, None, _) => panic!("Unexpected end of input"),
-                (_, None, _) => return out
-            }
-        }
-    }
-
-    fn expand_macro_vec(&self, tokens: Vec<MacroToken>) -> String {
-        let mut out = String::new();
-        println!("expand: {:?}", tokens);
-        let mut iter: VecDeque<MacroToken> = tokens.into_iter().collect();
-        loop {
-            println!("{:?}", iter);
-            match (iter.pop_front(), iter.front(), iter.get(1)) {
-                (Some(MacroToken::Identifier(s)), Some(MacroToken::TokenPaste), _) => {
-                    iter.pop_front(); // tokenpaste
-                    while let Some(MacroToken::Whitespace) = iter.front() {
-                        iter.pop_front(); // whitespace
-                    }
-                    match iter.pop_front() {
-                        None => panic!("Paste token cannot be at the end of a macro"),
-                        Some(MacroToken::Identifier(ss)) => {
-                            iter.push_front(MacroToken::Identifier(format!("{}{}", s, ss)));
-                        }
-                        Some(MacroToken::Stringify) => {
-                            panic!("Pasting an identifier and # is not allowed");
-                        }
-                        Some(MacroToken::TokenPaste) => {
-                            // eg. #define A (B ## ## C)
-                            // I'm not exactly sure what to do here, GCC's cpp seems to allow it
-                            // (resulting in BC) so let's follow the example and push them back,
-                            // so there's B ## C in the queue
-                            iter.pop_front(); // pop off the ##
-                            iter.push_front(MacroToken::Identifier(s)); // push back B
-                        }
-                        Some(MacroToken::Other(ss)) => {
-                            // This is also an interesting case, anything can happen after here.
-                            // At least the C standard is explicit about this. "If the result is
-                            // not a valid preprocessing token, the behavior is undefined."
-                            iter.push_front(MacroToken::Identifier(format!("{}{}", s, ss)));
-                        }
-
-                        // all whitespace is popped off so this is unreachable
-                        Some(MacroToken::Whitespace) => unreachable!(),
-                    }
-                }
-                (Some(MacroToken::Identifier(s)), Some(MacroToken::Whitespace),
-                 Some(MacroToken::Identifier(_))) => out.push_str(&s),
-                (Some(t@MacroToken::Identifier(_)), Some(MacroToken::Whitespace), _) => {
-                    // an operator (or whitespace) is coming, pop off whitespace
-                    // and push back the identifier
-                    iter.pop_front();
-                    iter.push_front(t);
-                }
-                (Some(MacroToken::Identifier(s)), _, _) => out.push_str(&s),
-                (Some(MacroToken::Other(s)), _, _) => out.push(s),
-                (Some(MacroToken::Stringify), _, _) => out.push('#'),
-                (Some(MacroToken::Whitespace), _, _) => out.push(' '),
-                (Some(MacroToken::TokenPaste), _, _) => panic!("Token pasting cannot start a macro"),
-                (None, _, _) => break,
-            }
-        }
-        println!("expanded: {}", out);
-        out
-    }
-
-    fn expand_macro(&self, identifier: &str, expanded_macros: &mut HashSet<String>) -> String {
-        match self.macro_context.get(identifier) {
-            Some(tokens) => self.expand_macro_vec(tokens.to_vec()),
-            None => identifier.to_string()
-        }
-    }
-
-    fn parse_file(&mut self, file: &str) -> ParseResult<()> {
-        let context = self.push_file(file);
+    fn tokenize(&mut self, content: &str) -> ParseResult<()> {
+        let context = self.make_context(content.to_string());
         let mut iter = context.file_content.char_indices();
 
         let result = self.parse(&mut iter, &context, &HashSet::new());
 
-        self.pop_file();
         result
     }
 
@@ -407,21 +141,10 @@ impl CTokenizer {
              expanded_macros: &HashSet<&str>) -> ParseResult<()> {
         while let Some((offset, c)) = iter.next() {
             let mut context = base_context.clone();
-            context.span.lo = offset;
-            context.span.hi = offset;
+            context.span = Span::Span(offset, offset);
             let token = self.parse_token(&mut context, iter, c);
             match token.ty {
                 TokenType::Whitespace => {},
-                TokenType::Identifier() => {
-                    if expanded_macros.contains(token.data.as_str()) || self.macro_context.get(&token.data).is_none() {
-                        self.tokens.push(token);
-                    } else {
-                        let expanded = self.expand_macro(&token.data, &mut HashSet::new());
-                        let mut nested_expand = expanded_macros.clone();
-                        nested_expand.insert(&token.data);
-                        self.parse(&mut expanded.char_indices(), base_context, &nested_expand);
-                    }
-                },
                 _ => self.tokens.push(token)
             }
         }
@@ -436,10 +159,6 @@ impl CTokenizer {
             '"' => self.read_string(context, iter, c),
             _ => self.read_operator(context, iter, c),
         }
-    }
-
-    fn peek_str(s: &CharIndices) -> Option<char> {
-        s.as_str().chars().next()
     }
 
     pub fn read_whitespace(&self, context: &mut Context, iter: &mut CharIndices, c: char) -> Token {
@@ -485,7 +204,7 @@ impl CTokenizer {
     }
 
     fn read_identifier_peek(&self, context: &mut Context, iter: &mut CharIndices) -> Token {
-        if let Some(c) = CTokenizer::peek_str(iter) {
+        if let Some(c) = iter.peek() {
             iter.next();
             return self.read_identifier(context, iter, c);
         }
@@ -493,10 +212,10 @@ impl CTokenizer {
     }
 
     fn get_octal(&self, iter: &mut CharIndices, c: char) -> char {
-        match CTokenizer::peek_str(iter) {
+        match iter.peek() {
             Some(second @ '0'...'7') => {
                 iter.next();
-                match CTokenizer::peek_str(iter) {
+                match iter.peek() {
                     Some(third @ '0'...'7') => {
                         iter.next();
                         return char_from_octal(c, second, third);
@@ -510,7 +229,7 @@ impl CTokenizer {
 
     fn get_hex(&self, iter: &mut CharIndices) -> char {
         let mut num: u8 = 0;
-        while let Some(c) = CTokenizer::peek_str(iter) {
+        while let Some(c) = iter.peek() {
             match c {
                 c @ '0' ... '9' => {
                     num = num.saturating_mul(16).saturating_add(num_val(c));
@@ -558,7 +277,7 @@ impl CTokenizer {
                 '\n' => panic!("Missing terminating \" character"),
                 '\\' => {
                     iter.next();
-                    if let Some(c) = CTokenizer::peek_str(iter) {
+                    if let Some(c) = iter.peek() {
                         Some(self.read_string_escape(iter, c))
                     } else {
                         panic!("Unexpected end of file");
@@ -569,7 +288,6 @@ impl CTokenizer {
             |content| TokenType::StringLiteral(content[1..].to_string()));
 
         if let Some((pos, '"')) = iter.next() {
-            token.span.hi = pos;
             token.data.push('"');
             return token;
         }
@@ -582,8 +300,7 @@ impl CTokenizer {
         for (operator, op) in OPERATORS.iter() {
             if operator.starts_with(c) && iter.as_str().starts_with(&operator[1..]) {
                 for _ in 1..operator.len() {
-                    // unwrap() always safe here
-                    context.span.hi = iter.next().unwrap().0;
+                    iter.next();
                 }
                 return Token::from_context(context, TokenType::Operator(op), content)
             }
@@ -592,8 +309,7 @@ impl CTokenizer {
         for (punctuation, p) in PUNCTUATION.iter() {
             if punctuation.starts_with(c) && iter.as_str().starts_with(&punctuation[1..]) {
                 for _ in 1..punctuation.len() {
-                    // unwrap() always safe here
-                    context.span.hi = iter.next().unwrap().0;
+                    iter.next();
                 }
                 return Token::from_context(context, TokenType::Punctuation(p), content)
             }
@@ -614,20 +330,25 @@ impl CTokenizer {
     }
 }
 
-fn num_val(c: char) -> u8 {
-    return c as u8 - '0' as u8;
-}
-
-fn char_from_octal(c1: char, c2: char, c3: char) -> char {
-    return (8*8*num_val(c1) + 8*num_val(c2) + num_val(c3)) as char;
-}
-
 pub fn parse(file: &str) -> ParseResult<Output> {
+    let mut contents = String::new();
+
+    let mut f = File::open(file).expect("file not found");
+    f.read_to_string(&mut contents)
+        .expect("something went wrong reading the file");
+
+    let processed = preprocess(&contents);
+
+    let ok_processed = match processed {
+        Ok(s) => s,
+        Err(e) => return Err(e)
+    };
+
     let mut tokenizer = CTokenizer{ ..Default::default() };
-    match tokenizer.parse_file(file) {
+    match tokenizer.tokenize(&ok_processed) {
         Ok(_) => Ok(Output {
             tokens: tokenizer.tokens,
-            macro_functions: tokenizer.macro_functions
+            //macro_functions: tokenizer.macro_functions
         }),
         Err(e) => Err(e)
     }

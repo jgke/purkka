@@ -2,5 +2,7 @@
 members = [
     "src/core",
     "src/lalr",
-    "src/lalr_runtime"
+    "src/lalr_runtime",
+    "src/preprocessor",
+    "src/shared"
 ]
