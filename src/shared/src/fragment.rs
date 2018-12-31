@@ -89,14 +89,14 @@ pub struct Source {
 
 /// Fragment of a source file. Possibly an expanded macro.
 #[derive(Clone, Debug)]
-pub struct Fragment {
+struct Fragment {
     /// Content of this fragment. Not really 'static, actually contained in the FragmentIterator.
     content: &'static str,
     /// Offset for this Fragment's spans.
     offset: usize
 }
 
-/// An iterator over various files and their contents.
+/// An iterator over multiple filenames and strings, keeping track of origins for each substring.
 ///
 /// # Examples
 ///
@@ -147,6 +147,7 @@ impl Drop for FragmentIterator {
 }
 
 impl FragmentIterator {
+    /// Initialize the iterator.
     pub fn new(filename: &str, content: &str) -> FragmentIterator {
         let mut interner = StringInterner {
             strs: Vec::new()
@@ -169,7 +170,7 @@ impl FragmentIterator {
             interner,
         }
     }
-    /// Get next char, resetting `current_span_start` to the char's location.
+    /// Get next char, resetting the current span to the char's location.
     /// Possibly advances to the next fragment, if the current fragment is empty.
     pub fn next_new_span(&mut self) -> Option<char> {
         if let Some((s, c)) = self.iter.next() {
@@ -255,7 +256,7 @@ impl FragmentIterator {
     /// Iterate over self, mapping the results with f and collect to a string from the iterator.
     /// Stops when `f` return None or current fragment is empty. This will always consume at least
     /// one character from the iterator, which is stored in the string if `f` returns Some. Returns
-    /// the string and its span.
+    /// the resulting string and its span.
     ///
     /// # Example
     /// ```
