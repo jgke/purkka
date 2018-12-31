@@ -1,27 +1,6 @@
 //! Various shared bits and pieces for the compiler.
 
-use std::str::Chars;
-use std::str::CharIndices;
-
 use regex::Regex;
-
-/// Enable peeking for `Chars` or `CharIndices`.
-pub trait PeekableCharsExt {
-    /// Peek the next character, returning None in the case of end of string.
-    fn peek(&self) -> Option<char>;
-}
-
-impl<'a> PeekableCharsExt for Chars<'a> {
-    fn peek(&self) -> Option<char> {
-        self.as_str().chars().next()
-    }
-}
-
-impl<'a> PeekableCharsExt for CharIndices<'a> {
-    fn peek(&self) -> Option<char> {
-        self.as_str().chars().next()
-    }
-}
 
 /// Return whether any of the regexes match.
 pub fn any_match(s: &str, regexes: &[&Regex]) -> bool {

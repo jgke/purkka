@@ -33,7 +33,7 @@
 //! This module contains utilities to help tracking the spans and files.
 
 use std::str::CharIndices;
-use utils::PeekableCharsExt;
+use traits::PeekableCharsExt;
 
 /// This struct converts a &str to &'static str. Unsafe.
 struct StringInterner {

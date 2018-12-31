@@ -3,4 +3,5 @@
 extern crate regex;
 
 pub mod fragment;
+pub mod traits;
 pub mod utils;
