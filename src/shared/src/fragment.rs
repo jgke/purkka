@@ -1,5 +1,7 @@
 //! Multi-file iterator, which keeps track of the current file being iterated. See
-//! [FragmentIterator](struct.FragmentIterator.html) for usage.
+//! [`FragmentIterator`] for usage.
+//!
+//! [`FragmentIterator`]: struct.FragmentIterator.html
 //!
 //! For proper error handling in C, due to `#include` and friends, one needs to keep track of the
 //! origin for various identifiers.
@@ -232,24 +234,61 @@ impl FragmentIterator {
     }
 
     /// Collect a string until `f` return false. Returns the string and its span.
+    /// See [`collect_while_map`] for semantic details.
+    ///
+    /// [`collect_while_map`]: #method.collect_while_map
+    ///
+    /// # Example
+    /// ```
+    /// # use shared::fragment::FragmentIterator;
+    /// let mut iter = FragmentIterator::new("foo.h", "foo bar baz");
+    /// let (s1, _) = iter.collect_while(|x| match x {
+    ///     'a'...'z' => true,
+    ///     _ => false
+    /// });
+    /// assert_eq!(s1, "foo");
+    /// ```
     pub fn collect_while(&mut self, f: impl Fn(char) -> bool) -> (String, Source) {
-        self.collect_while_map(|c| if f(c) { Some(c) } else { None })
+        self.collect_while_map(|c, _| if f(c) { Some(c) } else { None })
     }
 
-    /// Collect a string from the iterator, until `f` return None. Returns the string
-    /// and its span.
-    pub fn collect_while_map(&mut self, f: impl Fn(char) -> Option<char>) -> (String, Source) {
+    /// Iterate over self, mapping the results with f and collect to a string from the iterator.
+    /// Stops when `f` return None or current fragment is empty. This will always consume at least
+    /// one character from the iterator, which is stored in the string if `f` returns Some. Returns
+    /// the string and its span.
+    ///
+    /// # Example
+    /// ```
+    /// # use shared::fragment::FragmentIterator;
+    /// let mut iter = FragmentIterator::new("foo.h", "foo bar baz");
+    /// let (s1, _) = iter.collect_while_map(|x, _| match x {
+    ///     'a'...'z' => Some(x.to_ascii_uppercase()),
+    ///     _ => None
+    /// });
+    /// assert_eq!(s1, "FOO");
+    /// ```
+    pub fn collect_while_map(&mut self, f: impl Fn(char, &mut Self) -> Option<char>) -> (String, Source) {
         let mut content = String::new();
-        while let Some(c) = self.iter.peek() {
-            if let Some(c) = f(c) {
+        if let Some(c) = self.next_new_span() {
+            if let Some(c) = f(c, self) {
                 content.push(c);
-                self.iter.next();
+            }
+        }
+        while let Some(c) = self.peek() {
+            if let Some(c) = f(c, self) {
+                content.push(c);
+                self.next();
             } else {
                 break
             }
         }
 
         (content, self.current_source())
+    }
+
+    /// Peek the next character in the current fragment.
+    pub fn peek(&self) -> Option<char> {
+        return self.iter.peek();
     }
 
     /// Get the current span.
