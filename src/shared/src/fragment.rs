@@ -253,10 +253,10 @@ impl FragmentIterator {
         self.collect_while_map(|c, _| if f(c) { Some(c) } else { None })
     }
 
-    /// Iterate over self, mapping the results with f and collect to a string from the iterator.
-    /// Stops when `f` return None or current fragment is empty. This will always consume at least
-    /// one character from the iterator, which is stored in the string if `f` returns Some. Returns
-    /// the resulting string and its span.
+    /// Iterate over self, map the results with f and collect to a string from the iterator. Stops
+    /// when `f` return None or current fragment is empty. This will always consume at least one
+    /// character from the iterator, which is stored in the string if `f` returns Some. Returns the
+    /// resulting string and its span.
     ///
     /// # Example
     /// ```
@@ -287,9 +287,49 @@ impl FragmentIterator {
         (content, self.current_source())
     }
 
+    /// Iterate over self, flatmap the results with f and collect to a string from the iterator.
+    /// Stops when `f` return None or current fragment is empty.
+    /// See [`collect_while_map`] for semantic details.
+    ///
+    /// [`collect_while_map`]: #method.collect_while_map
+    ///
+    /// # Example
+    /// ```
+    /// # use shared::fragment::FragmentIterator;
+    /// let mut iter = FragmentIterator::new("foo.h", "foo bar baz");
+    /// let (s1, _) = iter.collect_while_flatmap(|x, _| match x {
+    ///     'a'...'z' => Some(vec![x.to_ascii_uppercase(), 'a']),
+    ///     _ => None
+    /// });
+    /// assert_eq!(s1, "FaOaOa");
+    /// ```
+    pub fn collect_while_flatmap(&mut self, f: impl Fn(char, &mut Self) -> Option<Vec<char>>) -> (String, Source) {
+        let mut content = String::new();
+        if let Some(c) = self.next_new_span() {
+            if let Some(chars) = f(c, self) {
+                chars.into_iter().for_each(|c| content.push(c));
+            }
+        }
+        while let Some(c) = self.peek() {
+            if let Some(chars) = f(c, self) {
+                chars.into_iter().for_each(|c| content.push(c));
+                self.next();
+            } else {
+                break
+            }
+        }
+
+        (content, self.current_source())
+    }
+
     /// Peek the next character in the current fragment.
     pub fn peek(&self) -> Option<char> {
         return self.iter.peek();
+    }
+
+    /// Returns whether the current fragment starts with `s`.
+    pub fn starts_with(&self, s: &str) -> bool {
+        return self.iter.as_str().starts_with(s)
     }
 
     /// Get the current span.

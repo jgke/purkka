@@ -112,19 +112,19 @@ fn take_while_mut() {
 
     assert_eq!(iter.next(), Some(' '));
 
-    let (s2, span) = iter.collect_while_map(|x, iter| match x {
+    let (s2, span) = iter.collect_while_flatmap(|x, iter| match x {
         'a'...'z' => {
             iter.next();
             match iter.peek() {
                 Some('a'...'z') => {
-                    Some('B')
+                    Some(vec!['D', 'B'])
                 }
                 _ => None
             }
         },
         _ => None
     });
-    assert_eq!(s2, "B");
+    assert_eq!(s2, "DB");
     assert_eq!(span,
                Source {
                    filename: "foo.h".to_string(),
@@ -136,11 +136,11 @@ fn take_while_mut() {
 
     assert_eq!(iter.next(), Some(' '));
 
-    let (s3, _) = iter.collect_while_map(|x, _| match x {
-        'a'...'z' => Some('C'),
+    let (s3, _) = iter.collect_while_flatmap(|x, _| match x {
+        'a'...'z' => Some(vec![]),
         _ => None
     });
-    assert_eq!(s3, "CCC");
+    assert_eq!(s3, "");
 
     assert_eq!(iter.next(), None);
 }
