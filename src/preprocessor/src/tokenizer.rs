@@ -56,7 +56,6 @@ impl MacroContext {
     /// Divide src into MacroTokens.
     pub(crate) fn preprocess(&mut self, iter: &mut FragmentIterator) -> Vec<MacroToken> {
         let mut out: Vec<MacroToken> = Vec::new();
-        let mut empty_hashset = HashSet::new();
         let mut can_parse_macro = true;
         loop {
             match iter.peek() {
@@ -71,9 +70,8 @@ impl MacroContext {
                     let ty = self.get_token(iter, can_parse_macro);
                     can_parse_macro = ty.1;
                     if let Some(token) = ty.0 {
-                        out.extend(self.maybe_expand_identifier(token, &mut empty_hashset).into_iter())
+                        out.extend(self.maybe_expand_identifier(token).into_iter())
                     }
-                    assert!(empty_hashset.len() == 0);
                 }
                 None => break
             }
@@ -367,7 +365,15 @@ impl MacroContext {
         }
     }
 
-    fn maybe_expand_identifier(&self, token: MacroToken, used_names: &mut HashSet<String>) -> Vec<MacroToken> {
+    fn maybe_expand_identifier(&self, token: MacroToken) -> Vec<MacroToken> {
+        let mut empty_set = HashSet::new();
+        let result = self.maybe_expand_identifier_recur(token, &mut empty_set);
+        assert!(empty_set.len() == 0);
+        result
+    }
+
+    fn maybe_expand_identifier_recur(&self, token: MacroToken,
+                                     used_names: &mut HashSet<String>) -> Vec<MacroToken> {
         match &token.ty.clone() {
             MacroTokenType::Identifier(ident) => {
                 if used_names.get(ident).is_some() {
@@ -380,7 +386,7 @@ impl MacroContext {
                         let mut out_token = t.clone();
                         out_token.respan(&token.source);
                         used_names.insert(ident.to_string());
-                        let result = self.maybe_expand_identifier(out_token, used_names).into_iter();
+                        let result = self.maybe_expand_identifier_recur(out_token, used_names).into_iter();
                         used_names.remove(ident);
                         result
                     }).collect()
