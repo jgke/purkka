@@ -11,6 +11,9 @@ use shared::utils::*;
 use shared::traits::PeekableCharsExt;
 use shared::fragment::{FragmentIterator, Source};
 
+use std::fs::File;
+use std::io::prelude::*;
+
 #[derive(Debug)]
 pub struct Output {
     pub macro_functions: HashMap<String, ()>,
@@ -519,7 +522,17 @@ impl MacroContext {
     */
 }
 
-pub fn preprocess(filename: &str, content: &str) -> ParseResult<Vec<MacroToken>> {
+pub fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<MacroToken>> {
     let mut iter = FragmentIterator::new(filename, content);
     Ok(MacroContext::new().preprocess(&mut iter))
+}
+
+pub fn preprocess_file(filename: &str) -> ParseResult<Vec<MacroToken>> {
+    let mut contents = String::new();
+
+    let mut f = File::open(filename).expect("file not found");
+    f.read_to_string(&mut contents)
+        .expect("something went wrong reading the file");
+
+    preprocess_string(filename, &contents)
 }

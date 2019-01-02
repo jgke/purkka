@@ -6,7 +6,7 @@ use shared::fragment::{Source, Span};
 
 fn process(original: &str, expected: Vec<MacroToken>) {
     assert_eq!(
-        preprocessor::preprocess("foo.c", original),
+        preprocessor::preprocess_string("foo.c", original),
         Ok(expected));
 }
 
