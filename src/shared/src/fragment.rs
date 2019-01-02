@@ -88,6 +88,15 @@ pub struct Source {
     pub span: Span
 }
 
+impl Source {
+    pub fn merge(&mut self, other: &Source) {
+        match self.span.source {
+            None => self.span.source = Some(Box::new(other.clone())),
+            Some(ref mut s) => s.merge(other)
+        }
+    }
+}
+
 /// Fragment of a source file. Possibly an expanded macro.
 #[derive(Clone, Debug)]
 struct Fragment {
@@ -150,6 +159,11 @@ impl Drop for FragmentIterator {
 impl FragmentIterator {
     /// Initialize the iterator.
     pub fn new(filename: &str, content: &str) -> FragmentIterator {
+        FragmentIterator::with_offset(filename, content, 0)
+    }
+
+    /// Initialize the iterator with a predetermined offset.
+    pub fn with_offset(filename: &str, content: &str, offset: usize) -> FragmentIterator {
         let mut interner = StringInterner {
             strs: Vec::new()
         };
@@ -157,7 +171,7 @@ impl FragmentIterator {
         let mut fragments = Vec::new();
         fragments.push(Fragment {
             content: static_content,
-            offset: 0
+            offset: offset
         });
         let iter = static_content.char_indices();
         FragmentIterator {
@@ -171,6 +185,8 @@ impl FragmentIterator {
             interner,
         }
     }
+
+
     /// Get next char, resetting the current span to the char's location.
     /// Possibly advances to the next fragment, if the current fragment is empty.
     pub fn next_new_span(&mut self) -> Option<char> {
@@ -342,6 +358,11 @@ impl FragmentIterator {
     /// Get the current span.
     pub fn current_source(&self) -> Source {
         self.current_source.clone()
+    }
+
+    /// Get the current filename.
+    pub fn current_filename(&self) -> String {
+        self.current_source.filename.clone()
     }
 
     /// Get the current fragment.
