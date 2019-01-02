@@ -1,13 +1,15 @@
 extern crate regex;
 extern crate shared;
 
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::str::CharIndices;
-use std::rc::Rc;
+mod tokentype;
 
-use regex::Regex;
+use tokentype::{OPERATORS, PUNCTUATION, Operator, Punctuation};
 
-use shared::*;
+use std::collections::{HashMap};
+
+use shared::utils::*;
+use shared::traits::PeekableCharsExt;
+use shared::fragment::{FragmentIterator, Source};
 
 #[derive(Debug)]
 pub struct Output {
@@ -21,15 +23,21 @@ struct MacroContext {
     functions: HashMap<String, ()>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-enum MacroToken {
-    Stringify,
-    TokenPaste,
-    Whitespace,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MacroTokenType {
     Identifier(String),
-    Other(char)
+    Number(String),
+    StringLiteral(String),
+    Operator(Operator),
+    Punctuation(Punctuation),
+    Other(char),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MacroToken {
+    pub source: Source,
+    pub ty: MacroTokenType
+}
 
 type ParseResult<T> = Result<T, &'static str>;
 
@@ -42,42 +50,266 @@ impl MacroContext {
         }
     }
 
-    fn preprocess_flush_until(&self, until: &str, iter: &mut CharIndices) -> String {
-        let mut out = String::new();
+    /// Divide src into MacroTokens.
+    fn preprocess(&mut self, iter: &mut FragmentIterator) -> Vec<MacroToken> {
+        let mut out: Vec<MacroToken> = Vec::new();
+        let mut can_parse_macro = true;
         loop {
-            if iter.as_str().starts_with(until) {
-                for _  in 0..until.len() {
+            let next = iter.peek_n(2);
+            let ty = match next.as_ref() {
+                "//" => {
+                    can_parse_macro = true;
+                    self.preprocess_get_macro_line(iter);
+                    continue
+                }
+                "/*" => {
+                    iter.next();
+                    self.preprocess_flush_until("*/", iter);
+                    continue
+                }
+                _ => match iter.peek() {
+                    Some('"') => {
+                        can_parse_macro = false;
+                        self.read_string(iter)
+                    }
+                    Some('.')  => {
+                        can_parse_macro = false;
+                        let substr = iter.peek_n(2);
+                        let mut substr_iter = substr.chars();
+                        substr_iter.next();
+                        if let Some(c) = substr_iter.next() {
+                            match c {
+                                '0' ... '9' => self.read_number(iter),
+                                _ => self.read_other(iter)
+                            }
+                        } else {
+                            self.read_other(iter)
+                        }
+                    }
+                    Some(' ') => { iter.next(); continue; },
+                    Some('\t') => { iter.next(); continue; },
+                    Some('\n') => {
+                        can_parse_macro = true;
+                        continue;
+                    }
+                    Some('#') => {
+                        if can_parse_macro {
+                            let row = &self.preprocess_get_macro_line(iter);
+                            //out.push_str(&self.eval_macro(row, iter));
+                            panic!("Cannot parse :(");
+                        } else {
+                            panic!("Spurious #");
+                        }
+                    }
+                    Some(c) => {
+                        can_parse_macro = false;
+                        match c {
+                            'a' ... 'z' | 'A' ... 'Z' | '_' => {
+                                self.read_identifier(iter)
+                            }
+                            '0' ... '9' => {
+                                self.read_number(iter)
+                            }
+                            _ => self.read_other(iter)
+                        }
+                    }
+                    None => break
+                }
+            };
+            out.push(ty);
+        }
+
+        out
+    }
+
+    fn preprocess_flush_until(&self, until: &str, iter: &mut FragmentIterator) -> (String, Source) {
+        let mut out = iter.collect_while_map(
+            |c, i| if i.starts_with(until) { None } else { Some(c) });
+        for _  in 0..until.len() {
+            match iter.next() {
+                Some(c) => { out.0.push(c); }
+                None => panic!("Unexpected end of file"),
+            }
+        }
+        out
+    }
+
+    fn preprocess_get_macro_line(&self, iter: &mut FragmentIterator) -> (String, Source) {
+        let out = iter.collect_while_map(
+            |c, i| match (c, i.peek()) {
+                ('\\', Some('\n')) => {
+                    i.next();
+                    i.next();
+                    Some(' ')
+                },
+                ('\n', _) => None,
+                ('\t', _) => Some(' '),
+                (c, _) => Some(c),
+            });
+        iter.next(); // Newline
+        out
+    }
+
+    fn preprocess_get_string(&self, iter: &mut FragmentIterator) -> (String, Source) {
+        let out = iter.collect_while_flatmap(
+            |c, i| match (c, i.peek()) {
+                ('\\', Some('"')) => {
+                    i.next();
+                    Some(vec!['\\', '"'])
+                },
+                ('\n', _) => None,
+                ('\t', _) => Some(vec![' ']),
+                (c, _) => Some(vec![c]),
+            });
+        iter.next(); // Newline
+        out
+    }
+
+    fn read_identifier(&self, iter: &mut FragmentIterator) -> MacroToken {
+        let (identifier, source) = iter.collect_while(
+                     |c| match c {
+                         '0' ... '9' | 'a' ... 'z' | 'A' ... 'Z' | '_' => true,
+                         _ => false
+                     });
+        MacroToken { source: source, ty: MacroTokenType::Identifier(identifier) }
+    }
+
+    fn read_number(&self, iter: &mut FragmentIterator) -> MacroToken {
+        let exponents = &["e+", "e-", "E+", "E-", "p+", "p-", "P+", "P-"];
+        let (number, source) = iter.collect_while_flatmap(
+            |c, i| exponents.iter()
+            .filter(|e| i.starts_with(e))
+            .last()
+            .map(|e| {
+                i.next();
+                Some(e.chars().collect())
+            })
+            .unwrap_or_else(||
+                            match c {
+                                '0' ... '9' => Some(vec![c]),
+                                '.' => Some(vec![c]),
+                                'a' ... 'z' | 'A' ... 'Z' => Some(vec![c]),
+                                _ => {
+                                    None
+                                }
+                            }));
+        MacroToken { source: source, ty: MacroTokenType::Number(number) }
+    }
+
+    fn read_string(&self, iter: &mut FragmentIterator) -> MacroToken {
+        let mut end = false;
+        let (content, source) = iter.collect_while_flatmap(
+            |c, iter|
+            match c {
+                '"' => {
+                    if end {
+                        iter.next();
+                        None
+                    } else {
+                        end = true;
+                        Some(vec![])
+                    }
+                },
+                '\n' => panic!("Missing terminating \" character"),
+                '\\' => {
+                    iter.next();
+                    if let Some(c) = iter.peek() {
+                        Some(vec![self.read_string_escape(iter, c)])
+                    } else {
+                        panic!("Unexpected end of file");
+                    }
+                },
+                c => Some(vec![c])
+            });
+        MacroToken { source: source, ty: MacroTokenType::StringLiteral(content) }
+    }
+
+    fn read_string_escape(&self, iter: &mut FragmentIterator, c: char) -> char {
+        match c {
+            '\'' => '\'',
+            '"' =>  '\"',
+            '?' =>  '?',
+            '\\' => '\\',
+            'a' =>  '\x07',
+            'b' =>  '\x08',
+            'f' =>  '\x0C',
+            'n' =>  '\n',
+            't' =>  '\t',
+            'r' =>  '\r',
+            'v' =>  '\x0B',
+            c @ '0'...'7' => self.get_octal(iter, c),
+            'x' => self.get_hex(iter),
+            c => c,
+        }
+    }
+
+    fn get_octal(&self, iter: &mut FragmentIterator, c: char) -> char {
+        match iter.peek() {
+            Some(second @ '0'...'7') => {
+                iter.next();
+                match iter.peek() {
+                    Some(third @ '0'...'7') => {
+                        iter.next();
+                        return char_from_octal(c, second, third);
+                    }
+                    _ => return char_from_octal('0', c, second)
+                }
+            }
+            _ => return char_from_octal('0', '0', c)
+        }
+    }
+
+    fn get_hex(&self, iter: &mut FragmentIterator) -> char {
+        let mut num: u8 = 0;
+        while let Some(c) = iter.peek() {
+            match c {
+                c @ '0' ... '9' => {
+                    num = num.saturating_mul(16).saturating_add(num_val(c));
                     iter.next();
                 }
-                out.push_str(until);
-                return out
+                c @ 'a' ... 'f' => {
+                    num = num.saturating_mul(16).saturating_add(c as u8 - 'a' as u8 + 10);
+                    iter.next();
+                }
+                c @ 'A' ... 'F' => {
+                    num = num.saturating_mul(16).saturating_add(c as u8 - 'A' as u8 + 10);
+                    iter.next();
+                }
+                _ => break
             }
-            match iter.next() {
-                Some((_ , c)) => out.push(c),
-                None => return out
+        }
+        return (num & 255) as u8 as char;
+    }
+
+    fn read_other(&self, iter: &mut FragmentIterator) -> MacroToken {
+        for (operator, op) in OPERATORS.iter() {
+            if iter.starts_with(operator) {
+                for _ in 1..operator.len() {
+                    iter.next();
+                }
+                return MacroToken { source: iter.current_source(), ty: MacroTokenType::Operator(**op) }
             }
+        }
+
+        for (punctuation, p) in PUNCTUATION.iter() {
+            if iter.starts_with(punctuation) {
+                for _ in 1..punctuation.len() {
+                    iter.next();
+                }
+                return MacroToken { source: iter.current_source(), ty: MacroTokenType::Punctuation(**p) }
+            }
+        }
+
+        match iter.next() {
+            Some(c) => MacroToken { source: iter.current_source(), ty: MacroTokenType::Other(c) },
+            _ => unreachable!()
         }
     }
 
-    fn preprosess_get_macro_line(&self, iter: &mut CharIndices) -> String {
-        let mut out = String::new();
-        loop {
-            match (iter.next(), iter.peek()) {
-                (Some((_, '\\')), Some('\n')) => {
-                    iter.next();
-                    iter.next();
-                    out.push(' ');
-                },
-                (Some((_, '\n')), _) => return out,
-                (Some((_, ' ')), _) => out.push(' '),
-                (Some((_, '\t')), _) => out.push(' '),
-                (Some((_, c)), _) => out.push(c),
-                (None, _) => return out
-            }
-        }
-    }
 
-    fn macro_eval_flush_whitespace(&self, iter: &mut CharIndices) {
+    /*
+
+    fn macro_eval_flush_whitespace(&self, iter: &mut FragmentIterator) {
         while let Some(c) = iter.peek() {
             match c {
                 ' ' | '\t' => iter.next(),
@@ -103,40 +335,11 @@ impl MacroContext {
                 (Some((_, c)), _) => match c {
                     'a' ... 'z' | 'A' ... 'Z' | '_' =>
                         out.push(MacroToken::Identifier(self.read_identifier(&mut iter, c))),
-                    _ => out.push(MacroToken::Other(c))
+                    _ => out.push(MacroToken::Other(c.to_string()))
                 }
                 (None, _) => return out
             }
         }
-    }
-
-    pub fn read(&self, iter: &mut CharIndices, c: char,
-                f: impl Fn(char) -> bool) -> String {
-        self.read_mut(iter, c,
-                      |x, _| if f(x) { Some(x) } else { None })
-    }
-
-    pub fn read_mut(&self, iter: &mut CharIndices, c: char,
-                    f: impl Fn(char, &mut CharIndices) -> Option<char>) -> String {
-        let mut content = c.to_string();
-        while let Some(c) = iter.peek() {
-            if let Some(c) = f(c, iter) {
-                content.push(c);
-                iter.next();
-            } else {
-                break
-            }
-        }
-
-        content
-    }
-
-    fn read_identifier(&self, iter: &mut CharIndices, c: char) -> String {
-        self.read(iter, c,
-                     |c| match c {
-                         '0' ... '9' | 'a' ... 'z' | 'A' ... 'Z' | '_' => true,
-                         _ => false
-                     })
     }
 
     fn eval_constexpr(&mut self, tokens: &[MacroToken]) -> bool {
@@ -151,7 +354,7 @@ impl MacroContext {
         false
     }
 
-    fn eval_macro(&mut self, mac: &str, iter: &mut CharIndices) -> String {
+    fn eval_macro(&mut self, mac: &str, iter: &mut FragmentIterator) -> String {
         let elif_regex = Regex::new(r"^\s*#\s*elif\s").unwrap();
         let else_regex = Regex::new(r"^\s*#\s*else([\s]|$)").unwrap();
         let endif_regex = Regex::new(r"^\s*#\s*endif([\s]|$)").unwrap();
@@ -172,7 +375,7 @@ impl MacroContext {
                             _ => panic!("Expected identifier")
                         };
                         // no whitespace before arg list
-                        if let Some(MacroToken::Other('(')) = row.get(3) {
+                        if let Some(MacroToken::Other("(".to_string())) = row.get(3) {
                             panic!("Function macros not supported");
                         };
                         let mut tokens = &row[3..];
@@ -244,64 +447,6 @@ impl MacroContext {
         }
     }
 
-    /// Divide src into 
-    fn preprocess(&mut self, filename: &str, src: &str) -> String {
-        let iter = &mut src.char_indices();
-        let mut out = String::new();
-        let mut can_parse_macro = true;
-        let mut inside_string = false;
-        loop {
-            match (inside_string, iter.next(), iter.peek()) {
-                (false, Some((_, '/')), Some('/')) => {
-                    self.preprocess_flush_until("\n", iter);
-                    out.push('\n');
-                }
-                (false, Some((_, '\\')), Some('*')) => {
-                    iter.next();
-                    self.preprocess_flush_until("*/", iter);
-                    out.push('\n');
-                }
-                (true, Some((_, '\\')), Some('"')) => {
-                    out.push('\\');
-                    iter.next();
-                    out.push('"');
-                }
-                (_, Some((_, '"')), _) => {
-                    inside_string = !inside_string;
-                    out.push('"');
-                }
-                (_, Some((_, ' ')), _) => out.push(' '),
-                (_, Some((_, '\t')), _) => out.push('\t'),
-                (_, Some((_, '\n')), _) => {
-                    out.push('\n');
-                    can_parse_macro = true;
-                    inside_string = false;
-                }
-                (false, Some((_, '#')), _) => {
-                    if can_parse_macro {
-                        let row = &self.preprosess_get_macro_line(iter);
-                        out.push_str(&self.eval_macro(row, iter));
-                        //panic!("Cannot parse :(");
-                    } else {
-                        out.push('#');
-                    }
-                }
-                (_, Some((_, c)), _) => {
-                    can_parse_macro = false;
-                    match c {
-                        'a' ... 'z' | 'A' ... 'Z' | '_' => {
-                            let ident = self.read_identifier(iter, c);
-                            out.push_str(&self.expand_macro(&ident, &mut HashSet::new()));
-                        }
-                        _ => out.push(c)
-                    }
-                }
-                (true, None, _) => panic!("Unexpected end of input"),
-                (_, None, _) => return out
-            }
-        }
-    }
-
     fn expand_macro_vec(&self, tokens: Vec<MacroToken>) -> String {
         let mut out = String::new();
         println!("expand: {:?}", tokens);
@@ -354,7 +499,7 @@ impl MacroContext {
                     iter.push_front(t);
                 }
                 (Some(MacroToken::Identifier(s)), _, _) => out.push_str(&s),
-                (Some(MacroToken::Other(s)), _, _) => out.push(s),
+                (Some(MacroToken::Other(s)), _, _) => out.push_str(&s),
                 (Some(MacroToken::Stringify), _, _) => out.push('#'),
                 (Some(MacroToken::Whitespace), _, _) => out.push(' '),
                 (Some(MacroToken::TokenPaste), _, _) => panic!("Token pasting cannot start a macro"),
@@ -371,8 +516,10 @@ impl MacroContext {
             None => identifier.to_string()
         }
     }
+    */
 }
 
-pub fn preprocess(filename: &str, content: &str) -> ParseResult<String> {
-    Ok(MacroContext::new().preprocess(filename, content))
+pub fn preprocess(filename: &str, content: &str) -> ParseResult<Vec<MacroToken>> {
+    let mut iter = FragmentIterator::new(filename, content);
+    Ok(MacroContext::new().preprocess(&mut iter))
 }

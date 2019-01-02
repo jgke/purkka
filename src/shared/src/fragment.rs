@@ -33,6 +33,7 @@
 //! This module contains utilities to help tracking the spans and files.
 
 use std::str::CharIndices;
+use std::cmp::min;
 use traits::PeekableCharsExt;
 
 /// This struct converts a &str to &'static str. Unsafe.
@@ -249,7 +250,7 @@ impl FragmentIterator {
     /// });
     /// assert_eq!(s1, "foo");
     /// ```
-    pub fn collect_while(&mut self, f: impl Fn(char) -> bool) -> (String, Source) {
+    pub fn collect_while(&mut self, mut f: impl FnMut(char) -> bool) -> (String, Source) {
         self.collect_while_map(|c, _| if f(c) { Some(c) } else { None })
     }
 
@@ -268,7 +269,7 @@ impl FragmentIterator {
     /// });
     /// assert_eq!(s1, "FOO");
     /// ```
-    pub fn collect_while_map(&mut self, f: impl Fn(char, &mut Self) -> Option<char>) -> (String, Source) {
+    pub fn collect_while_map(&mut self, mut f: impl FnMut(char, &mut Self) -> Option<char>) -> (String, Source) {
         let mut content = String::new();
         if let Some(c) = self.next_new_span() {
             if let Some(c) = f(c, self) {
@@ -303,7 +304,7 @@ impl FragmentIterator {
     /// });
     /// assert_eq!(s1, "FaOaOa");
     /// ```
-    pub fn collect_while_flatmap(&mut self, f: impl Fn(char, &mut Self) -> Option<Vec<char>>) -> (String, Source) {
+    pub fn collect_while_flatmap(&mut self, mut f: impl FnMut(char, &mut Self) -> Option<Vec<char>>) -> (String, Source) {
         let mut content = String::new();
         if let Some(c) = self.next_new_span() {
             if let Some(chars) = f(c, self) {
@@ -325,6 +326,12 @@ impl FragmentIterator {
     /// Peek the next character in the current fragment.
     pub fn peek(&self) -> Option<char> {
         return self.iter.peek();
+    }
+
+    /// Peek the next character in the current fragment.
+    pub fn peek_n(&self, n: usize) -> String {
+        let s = self.iter.as_str();
+        return s[0..min(s.len(), n)].to_string();
     }
 
     /// Returns whether the current fragment starts with `s`.
