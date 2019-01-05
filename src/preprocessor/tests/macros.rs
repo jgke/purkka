@@ -3,12 +3,19 @@ extern crate shared;
 
 use preprocessor::tokentype::Operator;
 use preprocessor::tokenizer::{MacroToken, MacroTokenType};
-use shared::fragment::{Source, Span};
+use shared::fragment::{FragmentIterator, Source, Span};
 
 fn process(original: &str, expected: Vec<MacroToken>) {
-    assert_eq!(
-        preprocessor::preprocess_string("foo.c", original),
-        Ok(expected));
+    let iter = FragmentIterator::new("foo.c", original);
+    let processed = preprocessor::preprocess_string("foo.c", original);
+    if let Ok(p) = &processed {
+        println!("---- Test result ----");
+        println!("Result:");
+        p.iter().for_each(|t| println!("{}", t.display(&iter)));
+        println!("Expected:");
+        expected.iter().for_each(|t| println!("{}", t.display(&iter)));
+    }
+    assert_eq!(processed, Ok(expected));
 }
 
 fn mt(file: &str, lo: usize, hi: usize, ty: MacroTokenType) -> MacroToken {
@@ -170,6 +177,49 @@ fn mutually_recursive_macros() {
                          Some(s("foo.c", 0, 15, // #define FOO BAR
                                 Some(s("foo.c", 12, 14, // BAR
                                        None))))))))),
+        ]);
+}
+
+#[test]
+fn function_macro() {
+    process(
+        "#define FOO() foo\nFOO()",
+        vec![
+        mt_s("foo.c", 18, 22, 
+           MacroTokenType::Identifier("foo".to_string()),
+           Some(s("foo.c", 0, 17, Some(s("foo.c", 14, 16, None))))),
+        ]);
+}
+
+#[test]
+fn function_macro_one_arg() {
+    process(
+        "#define FOO(a) a\nFOO(b)",
+        vec![
+        mt_s("foo.c", 21, 21, // b
+           MacroTokenType::Identifier("b".to_string()),
+           Some(s("foo.c", 17, 22, // FOO(b)
+                  Some(s("foo.c", 0, 16, // #define FOO(a) a
+                         Some(s("foo.c", 15, 15, // a
+                                None
+                               ))))))),
+        ]);
+}
+
+#[test]
+fn function_macro_nested() {
+    process(
+        "#define BAR(a) a\n#define FOO(a) BAR(a)\nFOO(b)",
+        vec![
+        mt_s("foo.c", 43, 43, // b
+           MacroTokenType::Identifier("b".to_string()),
+           Some(s("foo.c", 39, 44, // FOO(b)
+                  Some(s("foo.c", 17, 38, // #define FOO(a) BAR(a)
+                         Some(s("foo.c", 32, 34, // BAR
+                                Some(s("foo.c", 0, 16, // #define BAR(a) a
+                                       Some(s("foo.c", 15, 15, // #define a
+                                              None
+                                             ))))))))))),
         ]);
 }
 

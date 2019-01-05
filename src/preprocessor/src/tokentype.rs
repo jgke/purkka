@@ -6,8 +6,6 @@ use tokentype::Keyword::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Operator {
-    OpenBracket, CloseBracket,
-    OpenParen, CloseParen,
     Dot, Arrow,
     Increment, Decrement, BitAnd, Times, Plus, Minus, BitNot, Not, /* SizeofOp, */
     Divide, Mod, BitShiftLeft, BitShiftRight,
@@ -134,11 +132,6 @@ pub static OPERATORS: &'static [(&'static str, &'static Operator)] = &[
 
     ("~", &BitNot),
     ("!", &Not),
-
-    ("(", &OpenParen),
-    (")", &CloseParen),
-    ("[", &OpenBracket),
-    ("]", &CloseBracket),
 
     ("?", &Terniary),
     (":", &TerniaryAlternative),

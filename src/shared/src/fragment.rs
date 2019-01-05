@@ -32,8 +32,9 @@
 //!
 //! This module contains utilities to help tracking the spans and files.
 
-use std::str::CharIndices;
 use std::cmp::min;
+use std::collections::HashMap;
+use std::str::CharIndices;
 use traits::PeekableCharsExt;
 
 /// This struct converts a &str to &'static str. Unsafe.
@@ -132,6 +133,8 @@ pub struct FragmentIterator {
     current_source: Source,
     /// Iterator for the current fragments.
     iter: CharIndices<'static>,
+    /// All inserted files
+    contents: HashMap<String, String>,
     /// Hack: list of interned strings. Fragments actually point to a leaked Box<String>.
     interner: StringInterner
 }
@@ -173,11 +176,14 @@ impl FragmentIterator {
             content: static_content,
             offset: offset
         });
+        let mut contents = HashMap::new();
+        contents.insert(filename.to_string(), content.to_string());
         let iter = static_content.char_indices();
         FragmentIterator {
             fragments,
             current_fragment: 0,
             iter,
+            contents, 
             current_source: Source {
                 filename: filename.to_string(),
                 span: Span { lo: 0, hi: 0, source: None }
@@ -249,6 +255,11 @@ impl FragmentIterator {
                 lo: 0, hi: 0, source: Some(Box::new(self.current_source.clone()))
             }
         };
+
+        // Insert the file to the content table, if not present.
+        if self.contents.get(filename).is_none() {
+            self.contents.insert(filename.to_string(), content.to_string());
+        }
     }
 
     /// Collect a string until `f` return false. Returns the string and its span.
@@ -376,6 +387,22 @@ impl FragmentIterator {
             self.current_fragment += 1;
             self.iter = self.current_fragment().content.char_indices();
         }
+    }
+
+    /// Get the source string for a source recursively.
+    pub fn source_to_str(&self, mut source: &Source) -> String {
+        let mut out = "Source: ".to_string();
+        let s = &self.contents[&source.filename];
+        out.push_str(s[source.span.lo..=source.span.hi].trim());
+        let mut current_source = &source.span.source;
+        while let Some(src) = current_source {
+            out.push_str("\nExpanded from: ");
+            let s = &self.contents[&src.filename];
+            out.push_str(s[src.span.lo..=src.span.hi].trim());
+            current_source = &src.span.source;
+        }
+        out.push('\n');
+        out
     }
 }
 
