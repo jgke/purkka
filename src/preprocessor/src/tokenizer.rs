@@ -20,7 +20,6 @@ enum Macro {
 
 pub(crate) struct MacroContext {
     symbols: HashMap<String, Macro>,
-    if_stack: Vec<Vec<bool>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -71,7 +70,6 @@ impl MacroContext {
     pub(crate) fn new() -> MacroContext {
         MacroContext {
             symbols: HashMap::new(),
-            if_stack: Vec::new(),
         }
     }
 
@@ -186,21 +184,6 @@ impl MacroContext {
                 '\t' => Some(vec![' ']),
                 c => Some(vec![c]),
             })
-    }
-
-    fn preprocess_get_string(&self, iter: &mut FragmentIterator) -> (String, Source) {
-        let out = iter.collect_while_flatmap(
-            |c, i| match (c, i.peek()) {
-                ('\\', Some('"')) => {
-                    i.next();
-                    Some(vec!['\\', '"'])
-                },
-                ('\n', _) => None,
-                ('\t', _) => Some(vec![' ']),
-                (c, _) => Some(vec![c]),
-            });
-        iter.next(); // Newline
-        out
     }
 
     fn read_identifier(&self, iter: &mut FragmentIterator) -> MacroToken {
@@ -324,16 +307,6 @@ impl MacroContext {
     }
 
     fn read_other(&self, iter: &mut FragmentIterator) -> MacroToken {
-        for (operator, op) in OPERATORS.iter() {
-            if iter.starts_with(operator) {
-                iter.next_new_span();
-                for _ in 1..operator.len() {
-                    iter.next();
-                }
-                return MacroToken { source: iter.current_source(), ty: MacroTokenType::Operator(**op) }
-            }
-        }
-
         for (punctuation, p) in PUNCTUATION.iter() {
             if iter.starts_with(punctuation) {
                 iter.next_new_span();
@@ -341,6 +314,16 @@ impl MacroContext {
                     iter.next();
                 }
                 return MacroToken { source: iter.current_source(), ty: MacroTokenType::Punctuation(**p) }
+            }
+        }
+
+        for (operator, op) in OPERATORS.iter() {
+            if iter.starts_with(operator) {
+                iter.next_new_span();
+                for _ in 1..operator.len() {
+                    iter.next();
+                }
+                return MacroToken { source: iter.current_source(), ty: MacroTokenType::Operator(**op) }
             }
         }
 
@@ -361,11 +344,10 @@ impl MacroContext {
                 let (left, _) = self.read_identifier_raw(&mut sub_iter);
                 if let Some('(') = sub_iter.peek() {
                     assert_eq!(self.get_token(&mut sub_iter, false).0.map(|x| x.ty), Some(MacroTokenType::Punctuation(Punctuation::OpenParen)));
-                    let mut depth = 0;
                     let mut args = Vec::new();
                     let mut had_comma = None;
                     while sub_iter.peek().is_some() {
-                        if let (Some(mut token), subspan) = self.get_token(&mut sub_iter, false) {
+                        if let (Some(mut token), _) = self.get_token(&mut sub_iter, false) {
                             match (had_comma, token.ty.clone()) {
                                 (None, MacroTokenType::Punctuation(Punctuation::CloseParen)) => break,
                                 (Some(false), MacroTokenType::Punctuation(Punctuation::CloseParen)) => break,
@@ -388,7 +370,7 @@ impl MacroContext {
                     let mut right = Vec::new();
 
                     while sub_iter.peek().is_some() {
-                        if let (Some(mut token), subspan) = self.get_token(&mut sub_iter, false) {
+                        if let (Some(mut token), _) = self.get_token(&mut sub_iter, false) {
                             token.respan(&total_span);
                             right.push(token);
                         }
@@ -399,7 +381,7 @@ impl MacroContext {
                     let mut right = Vec::new();
 
                     while sub_iter.peek().is_some() {
-                        if let (Some(mut token), subspan) = self.get_token(&mut sub_iter, false) {
+                        if let (Some(mut token), _) = self.get_token(&mut sub_iter, false) {
                             token.respan(&total_span);
                             right.push(token);
                         }
@@ -410,15 +392,6 @@ impl MacroContext {
                 vec![]
             },
             ty => panic!("Unknown macro type: {}", ty)
-        }
-    }
-
-    fn macro_eval_flush_whitespace(&self, iter: &mut FragmentIterator) {
-        while let Some(c) = iter.peek() {
-            match c {
-                ' ' | '\t' => iter.next(),
-                _ => break
-            };
         }
     }
 
@@ -438,14 +411,17 @@ impl MacroContext {
                 if used_names.get(ident).is_some() {
                     return vec![token]
                 }
+                used_names.insert(ident.to_string());
                 let maybe_syms = self.symbols.get(ident).map(|x| x.clone());
-                match maybe_syms {
+                let out = match maybe_syms {
                     Some(Macro::Text(syms)) =>
                         self.expand_text_macro(iter, ident, &token.source, &syms, used_names),
                     Some(Macro::Function(args, syms)) =>
-                        self.expand_function_macro(iter, ident, &token.source, &args, &syms, used_names),
+                        self.expand_function_macro(iter, &token.source, &args, &syms, used_names),
                     None => vec![token]
-                }
+                };
+                used_names.remove(ident);
+                out
             }
             _ => vec![token],
         }
@@ -467,14 +443,11 @@ impl MacroContext {
     }
 
     fn expand_function_macro(&mut self, iter: &mut FragmentIterator,
-                             ident: &str, source: &Source,
+                             source: &Source,
                              fn_args: &Vec<String>, syms: &Vec<MacroToken>,
                              used_names: &mut HashSet<String>) -> Vec<MacroToken> {
-        let (mut more_syms, total_span) = self.parse_new_function_macro(iter, source, fn_args);
-        let mut body_span = syms.get(0).map(|x| x.source.clone()).unwrap_or(total_span.clone());
-        let mut sub_iter = syms.iter().for_each(|t| {
-            body_span.span.hi = t.source.span.hi;
-        });
+        let (more_syms, total_span) = self.parse_new_function_macro(iter, source, fn_args);
+        let body_span = syms.get(0).map(|x| x.source.clone()).unwrap_or(total_span.clone());
         let mut sub_iter = syms.iter().map(|t| {
             let mut out_token = t.clone();
             out_token.respan(&total_span);
@@ -497,7 +470,13 @@ impl MacroContext {
                     let syms = more_syms
                         .get(&ident)
                         .map(|x| Macro::Text(x.to_vec()))
-                        .or_else(|| self.symbols.get(&ident).map(|x| x.clone()));
+                        .or_else(|| {
+                            if used_names.contains(&ident) {
+                                None
+                            } else {
+                                self.symbols.get(&ident).map(|x| x.clone())
+                            }
+                        });
                     println!("syms: {:?}", syms);
                     match syms {
                         Some(Macro::Text(tt)) =>
@@ -509,7 +488,7 @@ impl MacroContext {
                                        }).collect()
                                 ),
                         Some(Macro::Function(body_args, tt)) => {
-                            let (extra_tokens, some_src) = self.parse_function_macro_args(&mut sub_iter, &outer_source, &body_args);
+                            self.parse_function_macro_args(&mut sub_iter, &outer_source, &body_args);
                             for t in tt {
                                 match t.ty.clone() {
                                     MacroTokenType::Identifier(ident) => {

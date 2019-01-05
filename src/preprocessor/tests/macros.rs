@@ -1,7 +1,7 @@
 extern crate preprocessor;
 extern crate shared;
 
-use preprocessor::tokentype::Operator;
+use preprocessor::tokentype::{Operator, Punctuation};
 use preprocessor::tokenizer::{MacroToken, MacroTokenType};
 use shared::fragment::{FragmentIterator, Source, Span};
 
@@ -77,25 +77,52 @@ fn strings() {
 #[test]
 fn numbers() {
     process(
-        "1 .54e+1..a5",
+        "1 .54e+1..a5 4%",
         vec![
         mt("foo.c", 0, 0, 
             MacroTokenType::Number("1".to_string())),
         mt("foo.c", 2, 11, 
-            MacroTokenType::Number(".54e+1..a5".to_string()))]);
+            MacroTokenType::Number(".54e+1..a5".to_string())),
+        mt("foo.c", 13, 13, 
+            MacroTokenType::Number("4".to_string())),
+        mt("foo.c", 14, 14, 
+            MacroTokenType::Operator(Operator::Mod))
+        ]);
+}
+
+#[test]
+fn operators() {
+    process(
+        "++ -- +++++",
+        vec![
+        mt("foo.c", 0, 1, 
+            MacroTokenType::Operator(Operator::Increment)),
+        mt("foo.c", 3, 4, 
+            MacroTokenType::Operator(Operator::Decrement)),
+        mt("foo.c", 6, 7, 
+            MacroTokenType::Operator(Operator::Increment)),
+        mt("foo.c", 8, 9, 
+            MacroTokenType::Operator(Operator::Increment)),
+        mt("foo.c", 10, 10, 
+            MacroTokenType::Operator(Operator::Plus)),
+        ]);
 }
 
 #[test]
 fn period() {
     process(
-        ". .a",
+        ". ... .a.",
         vec![
         mt("foo.c", 0, 0, 
             MacroTokenType::Operator(Operator::Dot)),
-        mt("foo.c", 2, 2, 
+        mt("foo.c", 2, 4, 
+            MacroTokenType::Punctuation(Punctuation::Varargs)),
+        mt("foo.c", 6, 6, 
             MacroTokenType::Operator(Operator::Dot)),
-        mt("foo.c", 3, 3, 
-            MacroTokenType::Identifier("a".to_string()))
+        mt("foo.c", 7, 7, 
+            MacroTokenType::Identifier("a".to_string())),
+        mt("foo.c", 8, 8, 
+            MacroTokenType::Operator(Operator::Dot)),
         ]);
 }
 
@@ -115,6 +142,18 @@ fn whitespace() {
     process(
         "\t   \t \\\n \n   ",
         vec![]);
+}
+
+#[test]
+fn spurious_backslash() {
+    process(
+        "\\a",
+        vec![
+        mt("foo.c", 0, 0, 
+            MacroTokenType::Other('\\')),
+        mt("foo.c", 1, 1, 
+            MacroTokenType::Identifier("a".to_string())),
+        ]);
 }
 
 #[test]
@@ -220,6 +259,20 @@ fn function_macro_nested() {
                                        Some(s("foo.c", 15, 15, // #define a
                                               None
                                              ))))))))))),
+        ]);
+}
+
+#[test]
+fn macro_expand_infinite_recursive() {
+    process(
+        "#define FOO(a) FOO\nFOO(a)",
+        vec![
+        mt_s("foo.c", 19, 24, // b
+             MacroTokenType::Identifier("FOO".to_string()),
+             Some(s("foo.c", 0, 18, // #define FOO(a) FOO
+                    Some(s("foo.c", 15, 17, // FOO
+                           None
+                          ))))),
         ]);
 }
 

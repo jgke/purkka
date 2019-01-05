@@ -154,7 +154,6 @@ pub static PUNCTUATION: &'static [(&'static str, &'static Punctuation)] = &[
     (")", &Punctuation::CloseParen),
     ("{", &Punctuation::OpenBrace),
     ("}", &Punctuation::CloseBrace),
-    ("*", &Punctuation::Star),
     (",", &Punctuation::Comma),
     (":", &Punctuation::Colon),
     ("=", &Punctuation::Assign),
