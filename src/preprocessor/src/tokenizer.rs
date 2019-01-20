@@ -14,8 +14,8 @@ pub struct Output {
 
 #[derive(Clone, Debug)]
 enum Macro {
-    Text(Vec<MacroToken>),
-    Function(Vec<String>, Vec<MacroToken>)
+    Text(Source, Vec<MacroToken>),
+    Function(Source, Vec<String>, Vec<MacroToken>)
 }
 
 pub(crate) struct MacroContext {
@@ -49,22 +49,40 @@ pub struct MacroTokenDisplay<'a> {
     iter: &'a FragmentIterator
 }
 
+impl fmt::Debug for MacroTokenDisplay<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
 impl fmt::Display for MacroTokenDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "type: {:?}\n{}", self.token.ty, self.iter.source_to_str(&self.token.source))
+        write!(f, "type: {:?}\nsource:\n{}", self.token.ty, self.iter.source_to_str(&self.token.source))
     }
 }
 
 impl MacroToken {
-    fn respan(&mut self, source: &Source) {
+    fn respan_front(&mut self, source: &Source) {
         let old_source = self.source.clone();
         let mut new_source = source.clone();
         new_source.merge(&old_source);
         self.source = new_source;
     }
+    fn respan_back(&mut self, source: &Source) {
+        self.source.merge(source)
+    }
+
+    fn get_identifier_str(&self) -> Option<String> {
+        match &self.ty {
+            MacroTokenType::Identifier(ident) => Some(ident.clone()),
+            _ => None
+        }
+    }
 }
 
 pub type ParseResult<T> = Result<T, &'static str>;
+
+struct MacroParseIter<'a>(&'a Vec<(MacroToken, HashSet<String>)>, usize, &'a mut FragmentIterator);
 
 impl MacroContext {
     pub(crate) fn new() -> MacroContext {
@@ -371,23 +389,23 @@ impl MacroContext {
 
                     while sub_iter.peek().is_some() {
                         if let (Some(mut token), _) = self.get_token(&mut sub_iter, false) {
-                            token.respan(&total_span);
+                            //token.respan_front(&total_span);
                             right.push(token);
                         }
                     }
 
-                    self.symbols.insert(left, Macro::Function(args, right));
+                    self.symbols.insert(left, Macro::Function(total_span, args, right));
                 } else {
                     let mut right = Vec::new();
 
                     while sub_iter.peek().is_some() {
                         if let (Some(mut token), _) = self.get_token(&mut sub_iter, false) {
-                            token.respan(&total_span);
+                            //token.respan_front(&total_span);
                             right.push(token);
                         }
                     }
 
-                    self.symbols.insert(left, Macro::Text(right));
+                    self.symbols.insert(left, Macro::Text(total_span, right));
                 }
                 vec![]
             },
@@ -395,219 +413,292 @@ impl MacroContext {
         }
     }
 
-    /// Expand an identifier, if it is a macro
-    fn maybe_expand_identifier(&mut self, token: MacroToken, iter: &mut FragmentIterator) -> Vec<MacroToken> {
-        let mut empty_set = HashSet::new();
-        let result = self.maybe_expand_identifier_recur(token, iter, &mut empty_set);
-        assert!(empty_set.len() == 0);
-        result
+    // Macro utilities
+    fn has_next_token(&self, ctx: &MacroParseIter) -> bool {
+        let MacroParseIter(list, index, iter) = ctx;
+        return list.len() > *index || iter.peek().is_some();
     }
+    fn get_next_token(&mut self, ctx: &mut MacroParseIter) -> (Option<(MacroToken, HashSet<String>)>, bool) {
+        let MacroParseIter(list, index, iter) = ctx;
 
-    fn maybe_expand_identifier_recur(&mut self, token: MacroToken,
-                                     iter: &mut FragmentIterator,
-                                     used_names: &mut HashSet<String>) -> Vec<MacroToken> {
-        match &token.ty.clone() {
-            MacroTokenType::Identifier(ident) => {
-                if used_names.get(ident).is_some() {
-                    return vec![token]
-                }
-                used_names.insert(ident.to_string());
-                let maybe_syms = self.symbols.get(ident).map(|x| x.clone());
-                let out = match maybe_syms {
-                    Some(Macro::Text(syms)) =>
-                        self.expand_text_macro(iter, ident, &token.source, &syms, used_names),
-                    Some(Macro::Function(args, syms)) =>
-                        self.expand_function_macro(iter, &token.source, &args, &syms, used_names),
-                    None => vec![token]
-                };
-                used_names.remove(ident);
-                out
-            }
-            _ => vec![token],
+        if list.len() > *index {
+            return (Some(list[*index].clone()), true)
         }
+
+        return (self.get_token(iter, false).0.map(|x| (x, HashSet::new())), false);
     }
 
+    /// Expand an identifier, if it is a macro. Consumes tokens from `iter` in case of function
+    /// macros. Does not consume tokens past fragment boundaries.
+    ///
+    /// Algorithm:
+    /// ```text
+    ///     let token list = [(t, {})]
+    ///
+    ///     for (t, used_macros) in token list
+    ///         if t not in used_macros and (t, replacement list) is text macro:
+    ///             add t to used macros
+    ///
+    ///             remove t from token list
+    ///             for tt in replacement list:
+    ///                 add (tt, used macros) to token list
+    ///
+    ///         else if t not in used_macros
+    ///                 and (t, args, replacement list) is function macro
+    ///                 and next token is (:
+    ///             add t to used macros
+    ///
+    ///             read function macro arguments
+    ///             //expand arguments
+    ///             replace arguments in function macro body
+    ///
+    ///             remove t from token list
+    ///             for tt in replacement list:
+    ///                 add (tt, used macros) to token list
+    ///
+    ///         else:
+    ///             advance iterator
+    ///
+    ///     return token list.map(|(x, _)| x)
+    /// ```
+    ///
+    fn maybe_expand_identifier(&mut self, token: MacroToken, iter: &mut FragmentIterator) -> Vec<MacroToken> {
+        let mut list: Vec<(MacroToken, HashSet<String>)> = vec![(token.clone(), HashSet::new())];
+        let mut index = 0;
+
+        'mainloop: while index < list.len() {
+            let (t, used_names) = &list[index].clone();
+            let ident_str = t.get_identifier_str();
+            if ident_str.clone().map(|ident| used_names.contains(&ident)).unwrap_or(true) {
+                index += 1;
+                continue;
+            } else {
+                let maybe_syms = ident_str.clone()
+                    .and_then(|ident| self.symbols.get(&ident))
+                    .map(|x| x.clone());
+
+                match maybe_syms {
+                    Some(Macro::Text(span, body)) => {
+                        // add t to used macros
+                        //
+                        // remove t from token list
+                        // for tt in replacement list:
+                        //     add (tt, used macros) to token list
+                        let mut tokens = self.expand_text_macro(&ident_str.unwrap(), &span, &t.source, &body, used_names);
+
+                        let mut rest = list.split_off(index+1);
+                        list.remove(index);
+                        list.append(&mut tokens);
+                        list.append(&mut rest);
+                    }
+                    Some(Macro::Function(span, args, body)) => {
+                        // else if t not in used_macros
+                        //         and (t, args, replacement list) is function macro
+                        //         and next token is (:
+                        //         ...
+                        //         remove t from token list
+                        //         for tt in replacement list:
+                        //             add (tt, used macros) to token list
+                        loop {
+                            // This part checks whether the next token is (. Since we're dealing
+                            // with two iterators at once this is a bit complicated.
+                            if self.has_next_token(&MacroParseIter(&list, index+1, iter)) {
+                                let (next_tok, consumed_index) =
+                                    self.get_next_token(&mut MacroParseIter(&list, index+1, iter));
+
+                                match (next_tok.clone().map(|x| x.0.ty), consumed_index) {
+                                    (Some(MacroTokenType::Punctuation(Punctuation::OpenParen)), true) => {
+                                        break;
+                                    }
+                                    (Some(MacroTokenType::Punctuation(Punctuation::OpenParen)), false) => {
+                                        list.push(next_tok.unwrap());
+                                        break;
+                                    },
+                                    // we consumed whitespace from the iter in this case, so just
+                                    // continue
+                                    (None, false) => continue,
+                                    // We got something else than whitespace or ( in these cases
+                                    (Some(_), false) => {
+                                        list.push(next_tok.unwrap());
+                                        continue 'mainloop
+                                    }
+                                    (Some(_), true) => {
+                                        index += 1;
+                                        continue 'mainloop
+                                    }
+                                    (None, true) => unreachable!()
+                                }
+                            } else {
+                                continue 'mainloop
+                            }
+                        }
+                        let (consumed_count, mut tokens) = self.expand_function_macro(
+                            &mut MacroParseIter(&list, index+2, iter),
+                            &ident_str.unwrap(), &span, &t.source, &args, &body, used_names);
+
+                        let mut rest = list.split_off(index+2);
+                        list.remove(index+1); // open paren
+                        list.remove(index); // function name
+                        list.append(&mut tokens);
+                        list.extend_from_slice(&rest[consumed_count..]);
+                    }
+                    None => {
+                        index += 1;
+                        continue 'mainloop;
+                    }
+                }
+            }
+        }
+
+        list.into_iter().map(|(x, _)| x).collect()
+    }
+
+    /// Get the expanded form of ident.
+    ///
+    /// Algorithm part:
+    ///     remove t from token list
+    ///     for tt in replacement list:
+    ///         add (tt, used macros) to token list
     fn expand_text_macro(&mut self,
-                         iter: &mut FragmentIterator,
-                         ident: &str, source: &Source,
-                         syms: &Vec<MacroToken>, used_names: &mut HashSet<String>) -> Vec<MacroToken> {
-        used_names.insert(ident.to_string());
-        let out = syms.iter().flat_map(|t| {
+                         ident: &str,
+                         body_span: &Source,
+                         ident_span: &Source,
+                         body: &Vec<MacroToken>, used_names: &HashSet<String>) -> Vec<(MacroToken, HashSet<String>)> {
+        let mut more_used_names = used_names.clone();
+        more_used_names.insert(ident.to_string());
+        let out = body.iter().map(|t| {
             let mut out_token = t.clone();
-            out_token.respan(source);
-            let result = self.maybe_expand_identifier_recur(out_token, iter, used_names).into_iter();
-            result
+            out_token.respan_front(body_span);
+            out_token.respan_front(ident_span);
+            (out_token, more_used_names.clone())
         }).collect();
-        used_names.remove(ident);
         out 
     }
 
-    fn expand_function_macro(&mut self, iter: &mut FragmentIterator,
-                             source: &Source,
-                             fn_args: &Vec<String>, syms: &Vec<MacroToken>,
-                             used_names: &mut HashSet<String>) -> Vec<MacroToken> {
-        let (more_syms, total_span) = self.parse_new_function_macro(iter, source, fn_args);
-        let body_span = syms.get(0).map(|x| x.source.clone()).unwrap_or(total_span.clone());
-        let mut sub_iter = syms.iter().map(|t| {
+    /// Algorithm part:
+    ///     add t to used macros
+    ///
+    ///     read function macro arguments
+    ///     replace arguments in function macro body
+    ///
+    ///     remove t from token list
+    ///     for tt in replacement list:
+    ///         add (tt, used macros) to token list
+    fn expand_function_macro(&mut self,
+                             iter: &mut MacroParseIter,
+                             ident: &str,
+                             body_span: &Source,
+                             args_span: &Source,
+                             fn_args: &Vec<String>, body: &Vec<MacroToken>,
+                             used_names: &HashSet<String>) -> (usize, Vec<(MacroToken, HashSet<String>)>) {
+        // Example:
+        // #define BAR(a) a
+        // #define FOO(a) BAR(a) a
+        // ~~~~~~~~~~~~~~~~~~~~~~~ body_span
+        //         ~~~             ident
+        //             ~           fn_args
+        //                ~~~~~~~~ body
+        // FOO(foo) expands to:
+        //  foo
+        //  Expanded from: FOO(foo)
+        //  Expanded from: #define FOO(a) BAR(a) a
+        //  Expanded from: #define BAR(a) a
+        //  foo
+        //  Expanded from: FOO(foo)
+        //  Expanded from: #define FOO(a) BAR(a) a
+
+        let mut used_syms = used_names.clone();
+        used_syms.insert(ident.to_string());
+
+        let (consume_count, more_syms, mut total_span, has_expanded) = self.parse_function_macro_arguments(iter, args_span, fn_args);
+        total_span.span.source = None;
+        let mut sub_iter = body.iter().map(|t| {
             let mut out_token = t.clone();
-            out_token.respan(&total_span);
+            if !has_expanded {
+                //out_token.respan_back(&total_span);
+            }
             out_token
         }).peekable();
-        let mut res = Vec::new();
-
-        println!("body_span: {}", iter.source_to_str(&body_span));
-        println!("total_span: {}", iter.source_to_str(&total_span));
-        println!("fn_args: {:?}", fn_args);
-        println!("syms: {:?}", syms);
-        println!("used_names: {:?}", used_names);
-        println!("more_syms: {:?}", more_syms);
+        let mut res: Vec<(MacroToken, HashSet<String>)> = Vec::new();
 
         while let Some(t) = sub_iter.next() {
             let outer_source = t.source.clone();
-            println!("token: {}", t.display(iter));
             match t.ty.clone() {
                 MacroTokenType::Identifier(ident) => {
-                    let syms = more_syms
-                        .get(&ident)
-                        .map(|x| Macro::Text(x.to_vec()))
-                        .or_else(|| {
-                            if used_names.contains(&ident) {
-                                None
-                            } else {
-                                self.symbols.get(&ident).map(|x| x.clone())
-                            }
-                        });
-                    println!("syms: {:?}", syms);
+                    let syms = more_syms.get(&ident);
                     match syms {
-                        Some(Macro::Text(tt)) =>
+                        Some(tt) =>
                             res.append(&mut tt.iter()
                                        .map(|x| {
                                            let mut nx = x.clone();
-                                           nx.source.merge(&t.source);
-                                           nx
-                                       }).collect()
-                                ),
-                        Some(Macro::Function(body_args, tt)) => {
-                            self.parse_function_macro_args(&mut sub_iter, &outer_source, &body_args);
-                            for t in tt {
-                                match t.ty.clone() {
-                                    MacroTokenType::Identifier(ident) => {
-                                        let mut default = vec![t.clone()];
-                                        res.append(
-                                            &mut more_syms.get(&ident)
-                                            .unwrap_or(&default)
-                                            .iter()
-                                            .map(|sym| {
-                                                let mut n_sym = sym.clone();
-                                                n_sym.source.merge(&outer_source);
-                                                n_sym.source.merge(&t.source);
-                                                n_sym
-                                            }).collect())
-                                    }
-                                    _ => {
-                                        let mut n_sym = t.clone();
-                                        res.push(n_sym)
-                                    }
-                                }
-                            }
-                        }
+                                           //nx.respan_back(&total_span);
+                                           //nx.source.span.source = None;
+                                           //out_token.respan_back(&total_span);
+                                           let mut s = t.clone();
+                                           s.respan_front(&total_span);
+                                           if !has_expanded {
+                                               nx.respan_back(&total_span);
+                                           }
+                                           //
+                                           //nx.source = s.source;
+                                           //nx.respan_back(&t.source);
+                                           //nx.respan_back(&body_span);
+                                           (nx, used_syms.clone())
+                                       }).collect()),
                         None => {
                             let mut n_sym = t.clone();
-                            res.push(n_sym)
+                            //n_sym.respan_back(&total_span);
+                            res.push((n_sym, used_syms.clone()))
                         }
                     }
                 }
                 _ => {
                     let mut n_sym = t.clone();
-                    res.push(n_sym)
+                    //n_sym.respan_back(&total_span);
+                    res.push((n_sym, used_syms.clone()))
                 }
             }
         }
-        res
+        for t in &mut res {
+           t.0.respan_back(&body_span);
+        }
+        (consume_count, res)
     }
 
-    fn parse_function_macro_args(&self, iter: &mut Iterator<Item=MacroToken>, start: &Source,
-                                 args: &Vec<String>) -> (HashMap<String, Vec<MacroToken>>, Source) {
+    fn parse_function_macro_arguments(&mut self, iter: &mut MacroParseIter, start: &Source,
+                                      args: &Vec<String>) -> (usize, HashMap<String, Vec<MacroToken>>, Source, bool) {
         let mut more_syms = HashMap::new();
         let mut depth = 0; // paren depth
         let mut arg_count = 0;
-        let mut total_span = start.clone();
+        let mut total_span = Some(start.clone());
+        let mut consume_count = 0;
+        let mut has_expanded = false;
         let arg_len = args.len();
         let empty = "".to_string();
-        if let Some(token) = iter.next() {
-            match token.ty {
-                MacroTokenType::Punctuation(Punctuation::OpenParen) => {
-                    total_span.span.hi = token.source.span.hi;
-                }
-                _ => panic!("Unexpected token")
-            }
-        }
-
-        'argfor: for arg in args.iter().chain(std::iter::once(&empty)) {
-            let mut arg_vals: Vec<MacroToken> = Vec::new();
-            while let Some(token) = iter.next() {
-                total_span.span.hi = token.source.span.hi;
-                match (depth, token.ty.clone()) {
-                    (0, MacroTokenType::Punctuation(Punctuation::CloseParen)) => {
-                        if arg != "" {
-                            more_syms.insert(arg.clone(), arg_vals.drain(..).collect());
-                            arg_count += 1;
-                        }
-                        break 'argfor;
-                    }
-                    (_, MacroTokenType::Punctuation(Punctuation::CloseParen)) => {
-                        depth -= 1;
-                        arg_vals.push(token)
-                    }
-                    (_, MacroTokenType::Punctuation(Punctuation::OpenParen)) => {
-                        depth += 1;
-                        arg_vals.push(token)
-                    }
-                    (0, MacroTokenType::Punctuation(Punctuation::Comma)) => {
-                        more_syms.insert(arg.clone(), arg_vals.drain(..).collect());
-                        arg_count += 1;
-                    }
-                    //(_, MacroTokenType::Identifier(ident)) => {
-                    //    match self.symbols.get(&ident) {
-                    //        Some(tt) => arg_vals.append(&mut tt),
-                    //        None => arg_vals.push(token)
-                    //    }
-                    //}
-                    _ => {
-                        arg_vals.push(token)
-                    }
-                }
-            }
-        }
-        if arg_count != arg_len {
-            panic!("Incorrect number of arguments: expected {}, got {}", arg_len, arg_count);
-        }
-        (more_syms, total_span)
-    }
-
-    fn parse_new_function_macro(&mut self, iter: &mut FragmentIterator, start: &Source,
-                                args: &Vec<String>) -> (HashMap<String, Vec<MacroToken>>, Source) {
-        let mut more_syms = HashMap::new();
-        let mut depth = 0; // paren depth
-        let mut arg_count = 0;
-        let mut total_span = start.clone();
-        let arg_len = args.len();
-        while iter.peek().is_some() {
-            if let (Some(token), _) = self.get_token(iter, false) {
-                match token.ty.clone() {
-                    MacroTokenType::Punctuation(Punctuation::OpenParen) => {
-                        break;
-                    }
-                    _ => unreachable!()
-                }
-            }
-        }
-        let empty = "".to_string();
-        'argfor: for arg in args.iter().chain(std::iter::once(&empty)) {
+        let empty_vec = vec![empty];
+        let args_iter = if args.len() == 0 {
+            &empty_vec
+        } else {
+            args
+        };
+        'argfor: for arg in args_iter.iter() {
             let mut arg_vals = Vec::new();
-            'itersome: while iter.peek().is_some() {
-                if let (Some(mut token), _) = self.get_token(iter, false) {
-                    total_span.span.hi = token.source.span.hi;
+            'itersome: while self.has_next_token(iter) {
+                if let (Some((mut token, used_names)), consumed_index) = self.get_next_token(iter) {
+                    if consumed_index {
+                        iter.1 += 1;
+                        consume_count += 1;
+                    }
+                    if let Some(ref mut source) = total_span {
+                        //source.span.lo = std::cmp::min(source.span.lo, token.source.span.lo);
+                        source.span.hi = token.source.span.hi;
+                        //source.span.hi = token.source.span.hi;
+                        if source.span.source.is_some() {
+                            has_expanded = true;
+                        }
+                    } else {
+                        total_span = Some(token.source.clone());
+                    }
                     match (depth, token.ty.clone()) {
                         (0, MacroTokenType::Punctuation(Punctuation::CloseParen)) => {
                             if arg != "" {
@@ -627,6 +718,7 @@ impl MacroContext {
                         (0, MacroTokenType::Punctuation(Punctuation::Comma)) => {
                             more_syms.insert(arg.clone(), arg_vals.drain(..).collect());
                             arg_count += 1;
+                            continue 'argfor;
                         }
                         _ => {
                             arg_vals.push(token)
@@ -638,7 +730,7 @@ impl MacroContext {
         if arg_count != arg_len {
             panic!("Incorrect number of arguments: expected {}, got {}", arg_len, arg_count);
         }
-        (more_syms, total_span)
+        (consume_count, more_syms, total_span.unwrap(), has_expanded)
     }
 
 }

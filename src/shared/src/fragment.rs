@@ -68,7 +68,7 @@ impl StringInterner {
 }
 
 /// A span in the currently parsed file.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Span {
     /// Starting index of the span.
     pub lo: usize,
@@ -80,21 +80,39 @@ pub struct Span {
 }
 
 /// Source location for an expanded macro. This, too, can be a result of an expansion.
-#[derive(Clone, Debug, PartialEq, Eq)]
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Source {
     /// The file where the expansion originated in.
     /// Todo: change to a interned shared reference (eg. Rc<> with interning)
     pub filename: String,
     /// The location in the file for the expansion.
-    pub span: Span
+    pub span: Span,
 }
 
 impl Source {
+    /// Add `other` to the end of the expansions
     pub fn merge(&mut self, other: &Source) {
         match self.span.source {
             None => self.span.source = Some(Box::new(other.clone())),
             Some(ref mut s) => s.merge(other)
         }
+    }
+
+    pub fn drop_last_source(&mut self) {
+        match self.span.source {
+            None => {},
+            Some(ref mut s) => {
+                match s.span.source {
+                    None => {}
+                    Some(_) => {
+                        s.drop_last_source();
+                        return;
+                    }
+                }
+            }
+        }
+        self.span.source = None;
     }
 }
 
@@ -188,7 +206,7 @@ impl FragmentIterator {
                 filename: filename.to_string(),
                 span: Span { lo: 0, hi: 0, source: None }
             },
-            interner,
+            interner
         }
     }
 
@@ -390,19 +408,33 @@ impl FragmentIterator {
     }
 
     /// Get the source string for a source recursively.
-    pub fn source_to_str(&self, mut source: &Source) -> String {
-        let mut out = "Source: ".to_string();
+    pub fn source_to_str(&self, source: &Source) -> String {
+        let mut lines: Vec<(String, (&str, usize, usize))> = Vec::new(); 
+        let mut out = "".to_string();
         let s = &self.contents[&source.filename];
         out.push_str(s[source.span.lo..=source.span.hi].trim());
+        lines.push((
+                format!("{}", s[source.span.lo..=source.span.hi].trim()),
+                (source.filename.as_ref(), source.span.lo, source.span.hi)
+                ));
         let mut current_source = &source.span.source;
         while let Some(src) = current_source {
-            out.push_str("\nExpanded from: ");
             let s = &self.contents[&src.filename];
-            out.push_str(s[src.span.lo..=src.span.hi].trim());
+            lines.push((
+                    format!("Expanded from: {:?}", s[src.span.lo..=src.span.hi].trim()),
+                    (src.filename.as_ref(), src.span.lo, src.span.hi)
+                    ));
             current_source = &src.span.source;
         }
-        out.push('\n');
-        out
+        let max = lines.iter().fold(0, |prev, (s, _)| std::cmp::max(prev, s.len()));
+        lines.iter()
+            .map(|(s, (file, lo, hi))|
+                 format!("{:width$}({}: {}-{})\n", s, file, lo, hi, width=max+1)
+                 )
+            .collect::<Vec<String>>()
+            .concat()
+        //out.push('\n');
+        //out
     }
 }
 

@@ -6,6 +6,7 @@ use preprocessor::tokenizer::{MacroToken, MacroTokenType};
 use shared::fragment::{FragmentIterator, Source, Span};
 
 fn process(original: &str, expected: Vec<MacroToken>) {
+    println!("Processing file contents:\n---- Start file ----\n{}\n---- End file ----", original);
     let iter = FragmentIterator::new("foo.c", original);
     let processed = preprocessor::preprocess_string("foo.c", original);
     if let Ok(p) = &processed {
@@ -224,9 +225,10 @@ fn function_macro() {
     process(
         "#define FOO() foo\nFOO()",
         vec![
-        mt_s("foo.c", 18, 22, 
-           MacroTokenType::Identifier("foo".to_string()),
-           Some(s("foo.c", 0, 17, Some(s("foo.c", 14, 16, None))))),
+        mt_s("foo.c", 14, 16, 
+             MacroTokenType::Identifier("foo".to_string()),
+             Some(s("foo.c", 0, 17,
+                    None))),
         ]);
 }
 
@@ -239,9 +241,8 @@ fn function_macro_one_arg() {
            MacroTokenType::Identifier("b".to_string()),
            Some(s("foo.c", 17, 22, // FOO(b)
                   Some(s("foo.c", 0, 16, // #define FOO(a) a
-                         Some(s("foo.c", 15, 15, // a
-                                None
-                               ))))))),
+                         None
+                        ))))),
         ]);
 }
 
@@ -254,11 +255,9 @@ fn function_macro_nested() {
            MacroTokenType::Identifier("b".to_string()),
            Some(s("foo.c", 39, 44, // FOO(b)
                   Some(s("foo.c", 17, 38, // #define FOO(a) BAR(a)
-                         Some(s("foo.c", 32, 34, // BAR
                                 Some(s("foo.c", 0, 16, // #define BAR(a) a
-                                       Some(s("foo.c", 15, 15, // #define a
-                                              None
-                                             ))))))))))),
+                                       None
+                                      ))))))),
         ]);
 }
 
@@ -267,10 +266,29 @@ fn macro_expand_infinite_recursive() {
     process(
         "#define FOO(a) FOO\nFOO(a)",
         vec![
-        mt_s("foo.c", 19, 24, // b
+        mt_s("foo.c", 15, 17, // FOO
              MacroTokenType::Identifier("FOO".to_string()),
              Some(s("foo.c", 0, 18, // #define FOO(a) FOO
-                    Some(s("foo.c", 15, 17, // FOO
+                    None
+                   ))),
+        ]);
+}
+
+#[test]
+fn function_macro_multiple_arguments() {
+    process(
+        "#define FOO(a,b) a b\nFOO(1,2)",
+        vec![
+        mt_s("foo.c", 25, 25, // 1
+             MacroTokenType::Number("1".to_string()),
+             Some(s("foo.c", 21, 28, // FOO(1,2)
+                    Some(s("foo.c", 0, 20, // #define FOO(a) FOO(a,b) a b
+                           None
+                          ))))),
+        mt_s("foo.c", 27, 27, // 2,
+             MacroTokenType::Number("2".to_string()),
+             Some(s("foo.c", 21, 28, // FOO(1,2)
+                    Some(s("foo.c", 0, 20, // #define FOO(a) FOO(a,b) a b
                            None
                           ))))),
         ]);
