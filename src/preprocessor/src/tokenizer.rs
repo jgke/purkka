@@ -612,13 +612,7 @@ impl MacroContext {
 
         let (consume_count, more_syms, mut total_span, has_expanded) = self.parse_function_macro_arguments(iter, args_span, fn_args);
         total_span.span.source = None;
-        let mut sub_iter = body.iter().map(|t| {
-            let mut out_token = t.clone();
-            if !has_expanded {
-                //out_token.respan_back(&total_span);
-            }
-            out_token
-        }).peekable();
+        let mut sub_iter = body.iter().peekable();
         let mut res: Vec<(MacroToken, HashSet<String>)> = Vec::new();
 
         while let Some(t) = sub_iter.next() {
@@ -631,30 +625,19 @@ impl MacroContext {
                             res.append(&mut tt.iter()
                                        .map(|x| {
                                            let mut nx = x.clone();
-                                           //nx.respan_back(&total_span);
-                                           //nx.source.span.source = None;
-                                           //out_token.respan_back(&total_span);
-                                           let mut s = t.clone();
-                                           s.respan_front(&total_span);
                                            if !has_expanded {
                                                nx.respan_back(&total_span);
                                            }
-                                           //
-                                           //nx.source = s.source;
-                                           //nx.respan_back(&t.source);
-                                           //nx.respan_back(&body_span);
                                            (nx, used_syms.clone())
                                        }).collect()),
                         None => {
                             let mut n_sym = t.clone();
-                            //n_sym.respan_back(&total_span);
                             res.push((n_sym, used_syms.clone()))
                         }
                     }
                 }
                 _ => {
                     let mut n_sym = t.clone();
-                    //n_sym.respan_back(&total_span);
                     res.push((n_sym, used_syms.clone()))
                 }
             }
@@ -690,9 +673,7 @@ impl MacroContext {
                         consume_count += 1;
                     }
                     if let Some(ref mut source) = total_span {
-                        //source.span.lo = std::cmp::min(source.span.lo, token.source.span.lo);
                         source.span.hi = token.source.span.hi;
-                        //source.span.hi = token.source.span.hi;
                         if source.span.source.is_some() {
                             has_expanded = true;
                         }
