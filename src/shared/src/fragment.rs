@@ -386,7 +386,9 @@ impl FragmentIterator {
 
     /// Get the current span.
     pub fn current_source(&self) -> Source {
-        self.current_source.clone()
+        let mut out = self.current_source.clone();
+        out.span.source = None;
+        out
     }
 
     /// Get the current filename.
@@ -399,11 +401,28 @@ impl FragmentIterator {
         &mut self.fragments[self.current_fragment]
     }
 
-    /// Advance to the next fragment, but don't yet reset the span.
-    fn advance_fragment(&mut self) {
+    /// Advance to the next fragment, but don't yet reset the span. Returns true on success.
+    fn advance_fragment(&mut self) -> bool {
         if self.current_fragment + 1 < self.fragments.len() {
             self.current_fragment += 1;
             self.iter = self.current_fragment().content.char_indices();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Advance to the next fragment and reset the span. Returns true on success.
+    pub fn advance_and_reset_span(&mut self) -> bool {
+        if self.current_fragment + 1 < self.fragments.len() {
+            self.current_fragment += 1;
+            self.iter = self.current_fragment().content.char_indices();
+            let mut nested: Option<Box<Source>> = None;
+            std::mem::swap(&mut self.current_source.span.source, &mut nested);
+            self.current_source = *nested.unwrap();
+            true
+        } else {
+            false
         }
     }
 

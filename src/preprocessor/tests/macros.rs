@@ -12,6 +12,38 @@ fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<MacroToke
     }, filename)
 }
 
+fn process_files(
+    files: Vec<(&str, &str)>,
+    start: &str,
+    expected: Vec<MacroToken>) {
+    let mut iter = FragmentIterator::new("_empty", " ");
+
+    println!("Processing file contents:");
+    for (name, content) in &files {
+        println!("---- File {} ----\n{}", name, content);
+        iter.split_and_push_file(name, content);
+    }
+    println!("---- End file list ----");
+
+    let processed = preprocessor::preprocess(|filename| {
+        for (name, content) in &files {
+            if name == &filename {
+                return content.to_string()
+            }
+        }
+        panic!()
+    }, start);
+
+    if let Ok(p) = &processed {
+        println!("---- Test result ----");
+        println!("Result:");
+        p.iter().for_each(|t| println!("{}", t.display(&iter)));
+        println!("Expected:");
+        expected.iter().for_each(|t| println!("{}", t.display(&iter)));
+    }
+    assert_eq!(processed, Ok(expected));
+}
+
 fn process(original: &str, expected: Vec<MacroToken>) {
     println!("Processing file contents:\n---- Start file ----\n{}\n---- End file ----", original);
     let iter = FragmentIterator::new("foo.c", original);
@@ -299,6 +331,24 @@ fn function_macro_multiple_arguments() {
                            None
                           ))))),
         ]);
+}
+
+#[test]
+fn included_macro() {
+    process_files(vec![
+                  ("foo.h", "#define FOO foo\n"),
+                  ("bar.h", "#include \"foo.h\"\nFOO"),
+    ],
+    "bar.h",
+    vec![
+    mt_s("bar.h", 17, 19, // FOO
+         MacroTokenType::Identifier("foo".to_string()),
+         Some(s("foo.h", 0, 15, // #define FOO foo
+                Some(s("foo.h", 12, 14, // foo
+                       None
+                      ))))),
+
+    ])
 }
 
 // todo: test for eof after "#define foo" and "#define"

@@ -119,7 +119,7 @@ impl<CB> MacroContext<CB> where CB: FnMut(String) -> String {
                         out.extend(self.maybe_expand_identifier(token, &mut iter).into_iter())
                     }
                 }
-                None => break
+                None => if !iter.advance_and_reset_span() { break }
             }
         }
 
@@ -417,6 +417,44 @@ impl<CB> MacroContext<CB> where CB: FnMut(String) -> String {
                 }
                 vec![]
             },
+            "include" => {
+                loop {
+                    match sub_iter.peek() {
+                        Some(' ') | Some('\t') => sub_iter.next(),
+                        _ => break
+                    };
+                }
+                let start = self.read_other(&mut sub_iter);
+                let is_quote = if let MacroTokenType::Other('"') = start.ty {
+                    true
+                } else if let MacroTokenType::Operator(Operator::LessThan) = start.ty {
+                    false
+                } else {
+                    panic!("Unexpected character: {}", start.display(&sub_iter));
+                };
+
+                let (filename, _) = sub_iter.collect_while(|x|
+                                                           (is_quote && x != '"') ||
+                                                           (!is_quote && x != '>'));
+
+                let end = self.read_other(&mut sub_iter);
+                let is_quote = if let MacroTokenType::Other('"') = end.ty {
+                    if !is_quote {
+                        panic!("Invalid closing character")
+                    }
+                } else if let MacroTokenType::Operator(Operator::MoreThan) = end.ty {
+                    if is_quote {
+                        panic!("Invalid closing character")
+                    }
+                } else {
+                    panic!("Unexpected character: {}", end.display(&sub_iter));
+                };
+
+                let content = (self.get_file)(filename.clone());
+                iter.split_and_push_file(&filename, &content);
+
+                vec![]
+            }
             ty => panic!("Unknown macro type: {}", ty)
         }
     }
