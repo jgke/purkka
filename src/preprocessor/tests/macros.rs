@@ -2,13 +2,20 @@ extern crate preprocessor;
 extern crate shared;
 
 use preprocessor::tokentype::{Operator, Punctuation};
-use preprocessor::tokenizer::{MacroToken, MacroTokenType};
+use preprocessor::tokenizer::{MacroToken, MacroTokenType, ParseResult};
 use shared::fragment::{FragmentIterator, Source, Span};
+
+fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<MacroToken>> {
+    preprocessor::preprocess(|f| {
+        assert_eq!(filename, f);
+        content.to_string()
+    }, filename)
+}
 
 fn process(original: &str, expected: Vec<MacroToken>) {
     println!("Processing file contents:\n---- Start file ----\n{}\n---- End file ----", original);
     let iter = FragmentIterator::new("foo.c", original);
-    let processed = preprocessor::preprocess_string("foo.c", original);
+    let processed = preprocess_string("foo.c", original);
     if let Ok(p) = &processed {
         println!("---- Test result ----");
         println!("Result:");

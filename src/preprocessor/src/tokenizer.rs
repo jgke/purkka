@@ -18,8 +18,9 @@ enum Macro {
     Function(Source, Vec<String>, Vec<MacroToken>)
 }
 
-pub(crate) struct MacroContext {
+pub(crate) struct MacroContext<CB> where CB: FnMut(String) -> String {
     symbols: HashMap<String, Macro>,
+    get_file: CB
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -84,31 +85,38 @@ pub type ParseResult<T> = Result<T, &'static str>;
 
 struct MacroParseIter<'a>(&'a Vec<(MacroToken, HashSet<String>)>, usize, &'a mut FragmentIterator);
 
-impl MacroContext {
-    pub(crate) fn new() -> MacroContext {
+impl<CB> MacroContext<CB> where CB: FnMut(String) -> String {
+    pub(crate) fn new(get_file: CB) -> MacroContext<CB> {
         MacroContext {
             symbols: HashMap::new(),
+            get_file
         }
     }
 
+    fn get_iterator(&mut self, filename: &str) -> FragmentIterator {
+        let content = (self.get_file)(filename.to_string());
+        FragmentIterator::new(filename, &content)
+    }
+
     /// Divide src into MacroTokens.
-    pub(crate) fn preprocess(&mut self, iter: &mut FragmentIterator) -> Vec<MacroToken> {
+    pub(crate) fn preprocess(&mut self, filename: &str) -> Vec<MacroToken> {
+        let mut iter = self.get_iterator(filename);
         let mut out: Vec<MacroToken> = Vec::new();
         let mut can_parse_macro = true;
         loop {
             match iter.peek() {
                 Some('#') => {
                     if can_parse_macro {
-                        out.append(&mut self.read_macro(iter));
+                        out.append(&mut self.read_macro(&mut iter));
                     } else {
                         panic!("Spurious #");
                     }
                 }
                 Some(_) => {
-                    let ty = self.get_token(iter, can_parse_macro);
+                    let ty = self.get_token(&mut iter, can_parse_macro);
                     can_parse_macro = ty.1;
                     if let Some(token) = ty.0 {
-                        out.extend(self.maybe_expand_identifier(token, iter).into_iter())
+                        out.extend(self.maybe_expand_identifier(token, &mut iter).into_iter())
                     }
                 }
                 None => break
