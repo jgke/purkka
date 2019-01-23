@@ -95,7 +95,7 @@ pub type StringLiteral = String;
 //    Whitespace
 //}
 
-pub static OPERATORS: &'static [(&'static str, &'static Operator)] = &[
+pub static OPERATORS: &[(&str, &Operator)] = &[
     ("<<=", &BitShiftLeftAssign),
     (">>=", &BitShiftRightAssign),
     ("%=", &ModAssign),

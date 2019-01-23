@@ -620,19 +620,7 @@ impl<CB> MacroContext<CB> where CB: FnMut(String) -> String {
                 if iter.peek().map(|t| t.ty == MacroTokenType::Operator(Operator::MacroPaste)) == Some(true) {
                     iter.next(); // MacroPaste
                     let next = iter.next().unwrap();
-                    let left = t.get_identifier_str().unwrap();
-                    let right = next.get_identifier_str().unwrap();
-                    let mut source = t.source.clone();
-                    source.span.hi = next.source.span.hi;
-                    let combined = format!("{}{}", left, right);
-                    let mut tmp_iter = FragmentIterator::new("", &combined);
-                    let parsed_token = self.get_token(&mut tmp_iter, false);
-                    assert!(tmp_iter.peek().is_none());
-                    assert!(parsed_token.0.is_some());
-                    MacroToken {
-                        source,
-                        ty: parsed_token.0.unwrap().ty
-                    }
+                    combine_tokens(t, next)
                 } else {
                     t.clone()
                 }
@@ -782,5 +770,27 @@ impl<CB> MacroContext<CB> where CB: FnMut(String) -> String {
         }
         (consume_count, more_syms, total_span.unwrap(), has_expanded)
     }
+}
 
+fn combine_tokens(left: &MacroToken, right: &MacroToken) -> MacroToken {
+    let left_str = left.get_identifier_str().unwrap();
+    let right_str = right.get_identifier_str().unwrap();
+    let mut source = left.source.clone();
+    source.span.hi = right.source.span.hi;
+    let combined = format!("{}{}", left_str, right_str);
+    let mut tmp_iter = FragmentIterator::new("", &combined);
+    let mut parsed_token = MacroContext {
+        get_file: unreachable_file_open,
+        symbols: HashMap::new()
+    }.get_token(&mut tmp_iter, false);
+    assert!(tmp_iter.peek().is_none());
+    assert!(parsed_token.0.is_some());
+    MacroToken {
+        source,
+        ty: parsed_token.0.unwrap().ty
+    }
+}
+
+fn unreachable_file_open(_: String) -> String {
+    unreachable!()
 }
