@@ -699,8 +699,17 @@ impl<CB> MacroContext<CB> where CB: FnMut(String) -> String {
                 }
             }
         }
-        for t in &mut res {
-           t.0.respan_back(&body_span);
+        let mut i = 0;
+        while i < res.len() {
+            if res.get(i+1).map(|t| t.0.ty == MacroTokenType::Operator(Operator::MacroPaste)) == Some(true) {
+                let map = res[i].1.clone();
+                let replacement = combine_tokens(&res[i].0, &res[i+2].0);
+                shared::utils::remove_and_replace(&mut res, i..i+3, &mut vec![(replacement, map)]);
+            }
+
+            let ref mut t = res[i];
+            t.0.respan_back(&body_span);
+            i += 1;
         }
         (consume_count, res)
     }
@@ -775,18 +784,23 @@ impl<CB> MacroContext<CB> where CB: FnMut(String) -> String {
 fn combine_tokens(left: &MacroToken, right: &MacroToken) -> MacroToken {
     let left_str = left.get_identifier_str().unwrap();
     let right_str = right.get_identifier_str().unwrap();
+
     let mut source = left.source.clone();
     source.span.hi = right.source.span.hi;
+
+    // This part feels like a bit of an overkill to parse a single token...
     let combined = format!("{}{}", left_str, right_str);
     let mut tmp_iter = FragmentIterator::new("", &combined);
     let mut parsed_token = MacroContext {
         get_file: unreachable_file_open,
         symbols: HashMap::new()
     }.get_token(&mut tmp_iter, false);
+
     assert!(tmp_iter.peek().is_none());
     assert!(parsed_token.0.is_some());
+
     MacroToken {
-        source,
+        source: source.bottom().clone(),
         ty: parsed_token.0.unwrap().ty
     }
 }

@@ -377,4 +377,17 @@ fn token_pasting_with_macro_content() {
         ]);
 }
 
+#[test]
+fn token_pasting_with_function_macro() {
+    process(
+        "#define FOO(a,b) a##b\nFOO(foo,bar)",
+        vec![
+        mt_s("foo.c", 22, 33, // FOO(foo,bar)
+             MacroTokenType::Identifier("foobar".to_string()),
+             Some(s("foo.c", 0, 21, // #define FOO(a) FOO(a,b) a##b
+                    None
+                   ))),
+        ]);
+}
+
 // todo: test for eof after "#define foo" and "#define"

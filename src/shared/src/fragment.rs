@@ -99,20 +99,12 @@ impl Source {
         }
     }
 
-    pub fn drop_last_source(&mut self) {
+    /// Get the bottom cause of this source.
+    pub fn bottom(&self) -> &Source {
         match self.span.source {
-            None => {},
-            Some(ref mut s) => {
-                match s.span.source {
-                    None => {}
-                    Some(_) => {
-                        s.drop_last_source();
-                        return;
-                    }
-                }
-            }
+            None => self,
+            Some(ref s) => s.bottom()
         }
-        self.span.source = None;
     }
 }
 
