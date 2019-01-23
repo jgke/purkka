@@ -40,7 +40,7 @@ use traits::PeekableCharsExt;
 /// This struct converts a &str to &'static str. Unsafe.
 struct StringInterner {
     /// Hack: list of interned strings. Fragments actually point to a leaked Box<String>.
-    pub strs: Vec<*mut str>
+    pub strs: Vec<*mut str>,
 }
 
 impl StringInterner {
@@ -50,9 +50,7 @@ impl StringInterner {
         let boxed: Box<str> = s.to_string().into_boxed_str();
         let unsafe_str = Box::into_raw(boxed);
         self.strs.push(unsafe_str);
-        unsafe {
-            Box::leak(Box::from_raw(unsafe_str))
-        }
+        unsafe { Box::leak(Box::from_raw(unsafe_str)) }
     }
 
     /// Drop all references. This COULD be implemented as `impl Drop for StringInterner`, but I
@@ -76,7 +74,7 @@ pub struct Span {
     pub hi: usize,
     /// If this exists, this span is created by macro expansion. Original location is specified in
     /// this field.
-    pub source: Option<Box<Source>>
+    pub source: Option<Box<Source>>,
 }
 
 /// Source location for an expanded macro. This, too, can be a result of an expansion.
@@ -95,7 +93,7 @@ impl Source {
     pub fn merge(&mut self, other: &Source) {
         match self.span.source {
             None => self.span.source = Some(Box::new(other.clone())),
-            Some(ref mut s) => s.merge(other)
+            Some(ref mut s) => s.merge(other),
         }
     }
 
@@ -103,7 +101,7 @@ impl Source {
     pub fn bottom(&self) -> &Source {
         match self.span.source {
             None => self,
-            Some(ref s) => s.bottom()
+            Some(ref s) => s.bottom(),
         }
     }
 }
@@ -114,7 +112,7 @@ struct Fragment {
     /// Content of this fragment. Not really 'static, actually contained in the FragmentIterator.
     content: &'static str,
     /// Offset for this Fragment's spans.
-    offset: usize
+    offset: usize,
 }
 
 /// An iterator over multiple filenames and strings, keeping track of origins for each substring.
@@ -146,7 +144,7 @@ pub struct FragmentIterator {
     /// All inserted files
     contents: HashMap<String, String>,
     /// Hack: list of interned strings. Fragments actually point to a leaked Box<String>.
-    interner: StringInterner
+    interner: StringInterner,
 }
 
 impl Iterator for FragmentIterator {
@@ -177,14 +175,12 @@ impl FragmentIterator {
 
     /// Initialize the iterator with a predetermined offset.
     pub fn with_offset(filename: &str, content: &str, offset: usize) -> FragmentIterator {
-        let mut interner = StringInterner {
-            strs: Vec::new()
-        };
+        let mut interner = StringInterner { strs: Vec::new() };
         let static_content = interner.intern_str(content);
         let mut fragments = Vec::new();
         fragments.push(Fragment {
             content: static_content,
-            offset: offset
+            offset: offset,
         });
         let mut contents = HashMap::new();
         contents.insert(filename.to_string(), content.to_string());
@@ -193,15 +189,18 @@ impl FragmentIterator {
             fragments,
             current_fragment: 0,
             iter,
-            contents, 
+            contents,
             current_source: Source {
                 filename: filename.to_string(),
-                span: Span { lo: 0, hi: 0, source: None }
+                span: Span {
+                    lo: 0,
+                    hi: 0,
+                    source: None,
+                },
             },
-            interner
+            interner,
         }
     }
-
 
     /// Get next char, resetting the current span to the char's location.
     /// Possibly advances to the next fragment, if the current fragment is empty.
@@ -219,8 +218,7 @@ impl FragmentIterator {
                 std::mem::swap(&mut self.current_source.span.source, &mut nested);
                 self.current_source = *nested.unwrap();
                 self.next_new_span()
-            }
-            else {
+            } else {
                 None
             }
         }
@@ -232,17 +230,16 @@ impl FragmentIterator {
         // The new frag
         let frag = Fragment {
             content: self.interner.intern_str(content),
-            offset: 0
+            offset: 0,
         };
 
         // The right side frag
         let mut rest_frag = self.current_fragment().clone();
 
-
         // XXX: We want to split this with an inclusive range, and split_at is exclusive for the
         // first half. As this practically happens at newlines, +1 should be next character, so
         // this shouldn't matter...
-        let split_offset = self.current_source.span.hi+1;
+        let split_offset = self.current_source.span.hi + 1;
         let cur_frag_content = rest_frag.content.split_at(split_offset);
 
         // Update the current frag's content to only include the left side
@@ -262,13 +259,16 @@ impl FragmentIterator {
         self.current_source = Source {
             filename: filename.to_string(),
             span: Span {
-                lo: 0, hi: 0, source: Some(Box::new(self.current_source.clone()))
-            }
+                lo: 0,
+                hi: 0,
+                source: Some(Box::new(self.current_source.clone())),
+            },
         };
 
         // Insert the file to the content table, if not present.
         if self.contents.get(filename).is_none() {
-            self.contents.insert(filename.to_string(), content.to_string());
+            self.contents
+                .insert(filename.to_string(), content.to_string());
         }
     }
 
@@ -306,7 +306,10 @@ impl FragmentIterator {
     /// });
     /// assert_eq!(s1, "FOO");
     /// ```
-    pub fn collect_while_map(&mut self, mut f: impl FnMut(char, &mut Self) -> Option<char>) -> (String, Source) {
+    pub fn collect_while_map(
+        &mut self,
+        mut f: impl FnMut(char, &mut Self) -> Option<char>,
+    ) -> (String, Source) {
         let mut content = String::new();
         if let Some(c) = self.next_new_span() {
             if let Some(c) = f(c, self) {
@@ -318,7 +321,7 @@ impl FragmentIterator {
                 content.push(c);
                 self.next();
             } else {
-                break
+                break;
             }
         }
 
@@ -341,7 +344,10 @@ impl FragmentIterator {
     /// });
     /// assert_eq!(s1, "FaOaOa");
     /// ```
-    pub fn collect_while_flatmap(&mut self, mut f: impl FnMut(char, &mut Self) -> Option<Vec<char>>) -> (String, Source) {
+    pub fn collect_while_flatmap(
+        &mut self,
+        mut f: impl FnMut(char, &mut Self) -> Option<Vec<char>>,
+    ) -> (String, Source) {
         let mut content = String::new();
         if let Some(c) = self.next_new_span() {
             if let Some(chars) = f(c, self) {
@@ -353,7 +359,7 @@ impl FragmentIterator {
                 chars.into_iter().for_each(|c| content.push(c));
                 self.next();
             } else {
-                break
+                break;
             }
         }
 
@@ -373,7 +379,7 @@ impl FragmentIterator {
 
     /// Returns whether the current fragment starts with `s`.
     pub fn starts_with(&self, s: &str) -> bool {
-        return self.iter.as_str().starts_with(s)
+        return self.iter.as_str().starts_with(s);
     }
 
     /// Get the current span.
@@ -420,28 +426,31 @@ impl FragmentIterator {
 
     /// Get the source string for a source recursively.
     pub fn source_to_str(&self, source: &Source) -> String {
-        let mut lines: Vec<(String, (&str, usize, usize))> = Vec::new(); 
+        let mut lines: Vec<(String, (&str, usize, usize))> = Vec::new();
         let mut out = "".to_string();
         let s = &self.contents[&source.filename];
         out.push_str(s[source.span.lo..=source.span.hi].trim());
         lines.push((
-                format!("{}", s[source.span.lo..=source.span.hi].trim()),
-                (source.filename.as_ref(), source.span.lo, source.span.hi)
-                ));
+            format!("{}", s[source.span.lo..=source.span.hi].trim()),
+            (source.filename.as_ref(), source.span.lo, source.span.hi),
+        ));
         let mut current_source = &source.span.source;
         while let Some(src) = current_source {
             let s = &self.contents[&src.filename];
             lines.push((
-                    format!("Expanded from: {:?}", s[src.span.lo..=src.span.hi].trim()),
-                    (src.filename.as_ref(), src.span.lo, src.span.hi)
-                    ));
+                format!("Expanded from: {:?}", s[src.span.lo..=src.span.hi].trim()),
+                (src.filename.as_ref(), src.span.lo, src.span.hi),
+            ));
             current_source = &src.span.source;
         }
-        let max = lines.iter().fold(0, |prev, (s, _)| std::cmp::max(prev, s.len()));
-        lines.iter()
-            .map(|(s, (file, lo, hi))|
-                 format!("{:width$}({}: {}-{})\n", s, file, lo, hi, width=max+1)
-                 )
+        let max = lines
+            .iter()
+            .fold(0, |prev, (s, _)| std::cmp::max(prev, s.len()));
+        lines
+            .iter()
+            .map(|(s, (file, lo, hi))| {
+                format!("{:width$}({}: {}-{})\n", s, file, lo, hi, width = max + 1)
+            })
             .collect::<Vec<String>>()
             .concat()
         //out.push('\n');

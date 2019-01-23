@@ -22,7 +22,7 @@ fn main() {
                     println!("{:?}", token)
                 }
             }
-            Err(e) => panic!(e)
+            Err(e) => panic!(e),
         }
     }
 }

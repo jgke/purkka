@@ -1,7 +1,7 @@
 //! Various shared bits and pieces for the compiler.
 
-use std::ops::Range;
 use std::mem::swap;
+use std::ops::Range;
 
 use regex::Regex;
 
@@ -18,7 +18,7 @@ pub fn num_val(c: char) -> u8 {
 
 /// Return char value for octal value, for example `char_from_octal('1', '0', '1') -> 'A'.
 pub fn char_from_octal(c1: char, c2: char, c3: char) -> char {
-    return (8*8*num_val(c1) + 8*num_val(c2) + num_val(c3)) as char;
+    return (8 * 8 * num_val(c1) + 8 * num_val(c2) + num_val(c3)) as char;
 }
 
 /// Remove range `range` from `vec`, then insert `replacement` in its place. Does nothing if range
@@ -43,15 +43,20 @@ pub fn char_from_octal(c1: char, c2: char, c3: char) -> char {
 /// assert_eq!(a, vec![1, 2, 3, 6, 4]);
 /// assert_eq!(b, vec![5]);
 /// ```
-pub fn remove_and_replace<T>(vec: &mut Vec<T>, range: std::ops::Range<usize>, replacement: &mut Vec<T>)
-where T: std::fmt::Debug {
+pub fn remove_and_replace<T>(
+    vec: &mut Vec<T>,
+    range: std::ops::Range<usize>,
+    replacement: &mut Vec<T>,
+) where
+    T: std::fmt::Debug,
+{
     println!("{:?} {:?} {:?}", range, vec, replacement);
     let start = range.start;
     if range.end > range.start {
         if range.end - range.start == replacement.len() {
             for i in range {
                 println!("{}", i);
-                swap(&mut replacement[i-start], &mut vec[i]);
+                swap(&mut replacement[i - start], &mut vec[i]);
             }
         } else {
             let mut removed = vec.split_off(range.start);

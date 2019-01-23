@@ -331,5 +331,5 @@ box_all!(FunctionDefinition,
 
 #[derive(Debug)]
 pub enum TranslationUnit<'a> {
-    ExternalDeclaration(&'a [i64]) 
+    ExternalDeclaration(&'a [i64]),
 }

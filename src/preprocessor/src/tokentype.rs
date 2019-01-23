@@ -1,58 +1,137 @@
-use tokentype::Operator::*;
 use tokentype::Keyword::*;
+use tokentype::Operator::*;
 //use tokentype::Macro::*;
 //
 #[allow(dead_code)]
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Operator {
-    Dot, Arrow,
-    Increment, Decrement, BitAnd, Times, Plus, Minus, BitNot, Not, /* SizeofOp, */
-    Divide, Mod, BitShiftLeft, BitShiftRight,
-    LessThan, MoreThan, LessEqThan, MoreEqThan, Equals, NotEquals, BitXor, BitOr, And, Or,
-    Terniary, TerniaryAlternative,
-    Assign, TimesAssign, DivAssign, ModAssign, PlusAssign, MinusAssign,
-    BitShiftLeftAssign, BitShiftRightAssign, BitAndAssign, BitXorAssign, BitOrAssign,
+    Dot,
+    Arrow,
+    Increment,
+    Decrement,
+    BitAnd,
+    Times,
+    Plus,
+    Minus,
+    BitNot,
+    Not, /* SizeofOp, */
+    Divide,
+    Mod,
+    BitShiftLeft,
+    BitShiftRight,
+    LessThan,
+    MoreThan,
+    LessEqThan,
+    MoreEqThan,
+    Equals,
+    NotEquals,
+    BitXor,
+    BitOr,
+    And,
+    Or,
+    Terniary,
+    TerniaryAlternative,
+    Assign,
+    TimesAssign,
+    DivAssign,
+    ModAssign,
+    PlusAssign,
+    MinusAssign,
+    BitShiftLeftAssign,
+    BitShiftRightAssign,
+    BitAndAssign,
+    BitXorAssign,
+    BitOrAssign,
     Comma,
-    Macro, MacroPaste
+    Macro,
+    MacroPaste,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnaryOperator {
-    BitNot, Not, Dereference, AddressOf, UnaryPlus, UnaryMinus
+    BitNot,
+    Not,
+    Dereference,
+    AddressOf,
+    UnaryPlus,
+    UnaryMinus,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Keyword {
-    Auto, Break, Case, Char,
-    Const, Continue, Default, Do,
-    Double, Else, Enum, Extern,
-    Float, For, Goto, If,
-    Int, Long, Register, Return,
-    Short, Signed, Sizeof, Static,
-    Struct, Switch, Typedef, Union,
-    Unsigned, Void, Volatile, While
+    Auto,
+    Break,
+    Case,
+    Char,
+    Const,
+    Continue,
+    Default,
+    Do,
+    Double,
+    Else,
+    Enum,
+    Extern,
+    Float,
+    For,
+    Goto,
+    If,
+    Int,
+    Long,
+    Register,
+    Return,
+    Short,
+    Signed,
+    Sizeof,
+    Static,
+    Struct,
+    Switch,
+    Typedef,
+    Union,
+    Unsigned,
+    Void,
+    Volatile,
+    While,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StorageClass {
-    Auto, Extern, Register, Static, Typedef
+    Auto,
+    Extern,
+    Register,
+    Static,
+    Typedef,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TypeSpecifier {
-    Char, Double, Float, Int, Long, Short, Void,
-    Enum, Struct, Union,
-    Signed, Unsigned
+    Char,
+    Double,
+    Float,
+    Int,
+    Long,
+    Short,
+    Void,
+    Enum,
+    Struct,
+    Union,
+    Signed,
+    Unsigned,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Punctuation {
-    OpenBracket, CloseBracket,
-    OpenParen, CloseParen,
-    OpenBrace, CloseBrace,
-    Star, Comma, Colon, Assign,
-    Semicolon, Varargs,
+    OpenBracket,
+    CloseBracket,
+    OpenParen,
+    CloseParen,
+    OpenBrace,
+    CloseBrace,
+    Star,
+    Comma,
+    Colon,
+    Assign,
+    Semicolon,
+    Varargs,
     //Macro
 }
 
@@ -75,7 +154,7 @@ pub enum Punctuation {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Constant {
-    Integer()
+    Integer(),
 }
 
 pub type Identifier = String;
@@ -106,13 +185,11 @@ pub static OPERATORS: &[(&str, &Operator)] = &[
     ("/=", &DivAssign),
     ("^=", &BitXorAssign),
     ("|=", &BitOrAssign),
-
     ("++", &Increment),
     ("--", &Decrement),
     ("<<", &BitShiftLeft),
     (">>", &BitShiftRight),
     ("->", &Arrow),
-
     ("!=", &NotEquals),
     ("&&", &And),
     ("<=", &LessEqThan),
@@ -120,7 +197,6 @@ pub static OPERATORS: &[(&str, &Operator)] = &[
     (">=", &MoreEqThan),
     ("||", &Or),
     ("##", &MacroPaste),
-
     ("+", &Plus),
     ("%", &Mod),
     ("&", &BitAnd),
@@ -129,22 +205,16 @@ pub static OPERATORS: &[(&str, &Operator)] = &[
     ("-", &Minus),
     ("|", &BitOr),
     ("^", &BitXor),
-
     ("~", &BitNot),
     ("!", &Not),
-
     ("?", &Terniary),
     (":", &TerniaryAlternative),
-
     (".", &Dot),
     (",", &Comma),
-
     ("#", &Macro),
-
     (">", &MoreThan),
     ("<", &LessThan),
-
-    ("=", &Assign)
+    ("=", &Assign),
 ];
 
 pub static PUNCTUATION: &'static [(&'static str, &'static Punctuation)] = &[
@@ -160,7 +230,7 @@ pub static PUNCTUATION: &'static [(&'static str, &'static Punctuation)] = &[
     (";", &Punctuation::Semicolon),
     ("...", &Punctuation::Varargs),
     //("#", &Punctuation::Macro)
-] ;
+];
 
 pub static KEYWORDS: &'static [(&'static str, &'static Keyword)] = &[
     ("auto", &Auto),
@@ -194,7 +264,7 @@ pub static KEYWORDS: &'static [(&'static str, &'static Keyword)] = &[
     ("unsigned", &Unsigned),
     ("void", &Void),
     ("volatile", &Volatile),
-    ("while", &While)
+    ("while", &While),
 ];
 
 //pub static SIMPLE_MACROS: &'static [(&'static str, &'static Macro)] = &[

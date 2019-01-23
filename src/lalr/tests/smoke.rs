@@ -7,7 +7,7 @@ extern crate lalr_runtime;
 
 use std::fmt;
 
-#[derive(Clone,Debug,PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum Token {
     Constant(),
     Plus(),
@@ -17,7 +17,6 @@ enum Token {
     OpenParen(),
     CloseParen(),
 }
-
 
 lalr! {
     S -> PlusExpr;
@@ -41,20 +40,24 @@ fn token_parsing() {
     let tree = driver(&mut [Constant(), Plus(), OpenParen(), Constant(), CloseParen()].iter());
     assert_eq!(
         tree,
-        Some(S::PlusExpr(S_PlusExpr(
-                    PlusExpr::Plus(PlusExpr_Plus(
-                            Box::new(PlusExpr::TimesExpr(PlusExpr_TimesExpr(
-                                        TimesExpr::PrimaryExpr(TimesExpr_PrimaryExpr(
-                                                PrimaryExpr::Constant(PrimaryExpr_Constant(
-                                                        Constant()))))))),
-                            Plus(),
-                            TimesExpr::PrimaryExpr(TimesExpr_PrimaryExpr(
-                                    PrimaryExpr::OpenParen(PrimaryExpr_OpenParen(
-                                            OpenParen(),
-                                            Box::new(PlusExpr::TimesExpr(PlusExpr_TimesExpr(
-                                                        TimesExpr::PrimaryExpr(TimesExpr_PrimaryExpr(
-                                                                PrimaryExpr::Constant(PrimaryExpr_Constant(
-                                                                        Constant()))))))),
-                                            CloseParen())))))))))
-        );
+        Some(S::PlusExpr(S_PlusExpr(PlusExpr::Plus(PlusExpr_Plus(
+            Box::new(PlusExpr::TimesExpr(PlusExpr_TimesExpr(
+                TimesExpr::PrimaryExpr(TimesExpr_PrimaryExpr(PrimaryExpr::Constant(
+                    PrimaryExpr_Constant(Constant())
+                )))
+            ))),
+            Plus(),
+            TimesExpr::PrimaryExpr(TimesExpr_PrimaryExpr(PrimaryExpr::OpenParen(
+                PrimaryExpr_OpenParen(
+                    OpenParen(),
+                    Box::new(PlusExpr::TimesExpr(PlusExpr_TimesExpr(
+                        TimesExpr::PrimaryExpr(TimesExpr_PrimaryExpr(PrimaryExpr::Constant(
+                            PrimaryExpr_Constant(Constant())
+                        )))
+                    ))),
+                    CloseParen()
+                )
+            )))
+        )))))
+    );
 }

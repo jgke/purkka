@@ -1,7 +1,7 @@
 //! Extension traits.
 
-use std::str::Chars;
 use std::str::CharIndices;
+use std::str::Chars;
 
 /// Enable peeking for `Chars` or `CharIndices`.
 pub trait PeekableCharsExt {
