@@ -582,11 +582,7 @@ impl<CB> MacroContext<CB> where CB: FnMut(String) -> String {
                             &mut MacroParseIter(&list, index+2, iter),
                             &ident_str.unwrap(), &span, &t.source, &args, &body, used_names);
 
-                        let mut rest = list.split_off(index+2);
-                        list.remove(index+1); // open paren
-                        list.remove(index); // function name
-                        list.append(&mut tokens);
-                        list.extend_from_slice(&rest[consumed_count..]);
+                        remove_and_replace(&mut list, index..index+2+consumed_count, &mut tokens);
                     }
                     None => {
                         index += 1;
