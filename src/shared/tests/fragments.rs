@@ -47,16 +47,10 @@ fn fragment_spans() {
                    filename: "other.h".to_string(),
                    span: Span {
                        lo: 0, hi: 2,
-                       source: Some(Box::new(
-                               Source {
-                                   filename: "foo.h".to_string(),
-                                   span: Span {
-                                       lo: 0, hi: 0,
-                                       source: None
-                                   }
-                               }))
+                       source: None
                    }
                });
+    assert_eq!(iter.advance_and_reset_span(), true);
     assert_eq!(iter.next_new_span(), Some('o'));
     assert_eq!(iter.next(), Some('o'));
     assert_eq!(iter.current_source(),
