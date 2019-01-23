@@ -612,13 +612,36 @@ impl<CB> MacroContext<CB> where CB: FnMut(String) -> String {
                          body: &Vec<MacroToken>, used_names: &HashSet<String>) -> Vec<(MacroToken, HashSet<String>)> {
         let mut more_used_names = used_names.clone();
         more_used_names.insert(ident.to_string());
-        let out = body.iter().map(|t| {
-            let mut out_token = t.clone();
+        let mut out = Vec::new();
+        let mut iter = body.iter().peekable();
+        while iter.peek().is_some() {
+            let mut out_token = {
+                let t = iter.next().unwrap();
+                if iter.peek().map(|t| t.ty == MacroTokenType::Operator(Operator::MacroPaste)) == Some(true) {
+                    iter.next(); // MacroPaste
+                    let next = iter.next().unwrap();
+                    let left = t.get_identifier_str().unwrap();
+                    let right = next.get_identifier_str().unwrap();
+                    let mut source = t.source.clone();
+                    source.span.hi = next.source.span.hi;
+                    let combined = format!("{}{}", left, right);
+                    let mut tmp_iter = FragmentIterator::new("", &combined);
+                    let parsed_token = self.get_token(&mut tmp_iter, false);
+                    assert!(tmp_iter.peek().is_none());
+                    assert!(parsed_token.0.is_some());
+                    MacroToken {
+                        source,
+                        ty: parsed_token.0.unwrap().ty
+                    }
+                } else {
+                    t.clone()
+                }
+            };
             out_token.respan_front(body_span);
             out_token.respan_front(ident_span);
-            (out_token, more_used_names.clone())
-        }).collect();
-        out 
+            out.push((out_token, more_used_names.clone()))
+        }
+        out
     }
 
     /// Algorithm part:

@@ -14,7 +14,7 @@ pub enum Operator {
     Assign, TimesAssign, DivAssign, ModAssign, PlusAssign, MinusAssign,
     BitShiftLeftAssign, BitShiftRightAssign, BitAndAssign, BitXorAssign, BitOrAssign,
     Comma,
-    //Macro, MacroPaste
+    Macro, MacroPaste
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,7 +119,7 @@ pub static OPERATORS: &'static [(&'static str, &'static Operator)] = &[
     ("==", &Equals),
     (">=", &MoreEqThan),
     ("||", &Or),
-    //("##", &MacroPaste),
+    ("##", &MacroPaste),
 
     ("+", &Plus),
     ("%", &Mod),
@@ -139,7 +139,7 @@ pub static OPERATORS: &'static [(&'static str, &'static Operator)] = &[
     (".", &Dot),
     (",", &Comma),
 
-    //("#", &Macro),
+    ("#", &Macro),
 
     (">", &MoreThan),
     ("<", &LessThan),

@@ -95,11 +95,11 @@ fn three_identifiers() {
     process(
         "Foo Bar Baz",
         vec![
-        mt("foo.c", 0, 2, 
+        mt("foo.c", 0, 2,
             MacroTokenType::Identifier("Foo".to_string())),
-        mt("foo.c", 4, 6, 
+        mt("foo.c", 4, 6,
             MacroTokenType::Identifier("Bar".to_string())),
-        mt("foo.c", 8, 10, 
+        mt("foo.c", 8, 10,
             MacroTokenType::Identifier("Baz".to_string()))]);
 }
 
@@ -108,9 +108,9 @@ fn strings() {
     process(
         "\"foo\" \"bar\\nbaz\"",
         vec![
-        mt("foo.c", 0, 4, 
+        mt("foo.c", 0, 4,
             MacroTokenType::StringLiteral("foo".to_string())),
-        mt("foo.c", 6, 15, 
+        mt("foo.c", 6, 15,
             MacroTokenType::StringLiteral("bar\nbaz".to_string()))]);
 }
 
@@ -119,13 +119,13 @@ fn numbers() {
     process(
         "1 .54e+1..a5 4%",
         vec![
-        mt("foo.c", 0, 0, 
+        mt("foo.c", 0, 0,
             MacroTokenType::Number("1".to_string())),
-        mt("foo.c", 2, 11, 
+        mt("foo.c", 2, 11,
             MacroTokenType::Number(".54e+1..a5".to_string())),
-        mt("foo.c", 13, 13, 
+        mt("foo.c", 13, 13,
             MacroTokenType::Number("4".to_string())),
-        mt("foo.c", 14, 14, 
+        mt("foo.c", 14, 14,
             MacroTokenType::Operator(Operator::Mod))
         ]);
 }
@@ -135,15 +135,15 @@ fn operators() {
     process(
         "++ -- +++++",
         vec![
-        mt("foo.c", 0, 1, 
+        mt("foo.c", 0, 1,
             MacroTokenType::Operator(Operator::Increment)),
-        mt("foo.c", 3, 4, 
+        mt("foo.c", 3, 4,
             MacroTokenType::Operator(Operator::Decrement)),
-        mt("foo.c", 6, 7, 
+        mt("foo.c", 6, 7,
             MacroTokenType::Operator(Operator::Increment)),
-        mt("foo.c", 8, 9, 
+        mt("foo.c", 8, 9,
             MacroTokenType::Operator(Operator::Increment)),
-        mt("foo.c", 10, 10, 
+        mt("foo.c", 10, 10,
             MacroTokenType::Operator(Operator::Plus)),
         ]);
 }
@@ -153,15 +153,15 @@ fn period() {
     process(
         ". ... .a.",
         vec![
-        mt("foo.c", 0, 0, 
+        mt("foo.c", 0, 0,
             MacroTokenType::Operator(Operator::Dot)),
-        mt("foo.c", 2, 4, 
+        mt("foo.c", 2, 4,
             MacroTokenType::Punctuation(Punctuation::Varargs)),
-        mt("foo.c", 6, 6, 
+        mt("foo.c", 6, 6,
             MacroTokenType::Operator(Operator::Dot)),
-        mt("foo.c", 7, 7, 
+        mt("foo.c", 7, 7,
             MacroTokenType::Identifier("a".to_string())),
-        mt("foo.c", 8, 8, 
+        mt("foo.c", 8, 8,
             MacroTokenType::Operator(Operator::Dot)),
         ]);
 }
@@ -171,9 +171,9 @@ fn comments() {
     process(
         "/* foo */ bar //baz \nqux // bax \\\nbux",
         vec![
-        mt("foo.c", 10, 12, 
+        mt("foo.c", 10, 12,
             MacroTokenType::Identifier("bar".to_string())),
-        mt("foo.c", 21, 23, 
+        mt("foo.c", 21, 23,
             MacroTokenType::Identifier("qux".to_string()))]);
 }
 
@@ -189,9 +189,9 @@ fn spurious_backslash() {
     process(
         "\\a",
         vec![
-        mt("foo.c", 0, 0, 
+        mt("foo.c", 0, 0,
             MacroTokenType::Other('\\')),
-        mt("foo.c", 1, 1, 
+        mt("foo.c", 1, 1,
             MacroTokenType::Identifier("a".to_string())),
         ]);
 }
@@ -201,7 +201,7 @@ fn simple_macro() {
     process(
         "#define FOO BAR\nFOO",
         vec![
-        mt_s("foo.c", 16, 18, 
+        mt_s("foo.c", 16, 18,
            MacroTokenType::Identifier("BAR".to_string()),
            Some(s("foo.c", 0, 15, Some(s("foo.c", 12, 14, None))))),
         ]);
@@ -212,7 +212,7 @@ fn simple_macro_with_offset() {
     process(
         "\n\n#define FOO BAR\nFOO",
         vec![
-        mt_s("foo.c", 18, 20, 
+        mt_s("foo.c", 18, 20,
            MacroTokenType::Identifier("BAR".to_string()),
            Some(s("foo.c", 2, 17, Some(s("foo.c", 14, 16, None))))),
         ]);
@@ -223,7 +223,7 @@ fn multiple_macros() {
     process(
         "#define BAR BAZ\n#define FOO BAR\nFOO",
         vec![
-        mt_s("foo.c", 32, 34, 
+        mt_s("foo.c", 32, 34,
            MacroTokenType::Identifier("BAZ".to_string()),
            Some(s("foo.c", 16, 31, // #define BAR BAZ
                   Some(s("foo.c", 28, 30, // BAZ
@@ -238,7 +238,7 @@ fn recursive_macro() {
     process(
         "\n\n#define FOO FOO\nFOO",
         vec![
-        mt_s("foo.c", 18, 20, 
+        mt_s("foo.c", 18, 20,
            MacroTokenType::Identifier("FOO".to_string()),
            Some(s("foo.c", 2, 17, Some(s("foo.c", 14, 16, None))))),
         ]);
@@ -249,7 +249,7 @@ fn mutually_recursive_macros() {
     process(
         "#define BAR FOO\n#define FOO BAR\nFOO",
         vec![
-        mt_s("foo.c", 32, 34, 
+        mt_s("foo.c", 32, 34,
            MacroTokenType::Identifier("FOO".to_string()),
            Some(s("foo.c", 16, 31, // #define BAR BAZ
                   Some(s("foo.c", 28, 30, // BAZ
@@ -264,7 +264,7 @@ fn function_macro() {
     process(
         "#define FOO() foo\nFOO()",
         vec![
-        mt_s("foo.c", 14, 16, 
+        mt_s("foo.c", 14, 16,
              MacroTokenType::Identifier("foo".to_string()),
              Some(s("foo.c", 0, 17,
                     None))),
@@ -349,6 +349,32 @@ fn included_macro() {
                       ))))),
 
     ])
+}
+
+#[test]
+fn token_pasting() {
+    process(
+        "#define FOO a##b\nFOO",
+        vec![
+        mt_s("foo.c", 17, 19, // FOO
+           MacroTokenType::Identifier("ab".to_string()),
+           Some(s("foo.c", 0, 16, // #define FOO a##b
+                  Some(s("foo.c", 12, 15,
+                         None))))),
+        ]);
+}
+
+#[test]
+fn token_pasting_with_macro_content() {
+    process(
+        "#define BAR foo\n#define FOO BAR##b\nFOO",
+        vec![
+        mt_s("foo.c", 35, 37, // FOO
+           MacroTokenType::Identifier("BARb".to_string()),
+           Some(s("foo.c", 16, 34, // #define FOO BAR##b
+                  Some(s("foo.c", 28, 33, // BAR##b
+                         None))))),
+        ]);
 }
 
 // todo: test for eof after "#define foo" and "#define"
