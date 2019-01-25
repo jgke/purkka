@@ -104,6 +104,30 @@ impl Source {
             Some(ref s) => s.bottom(),
         }
     }
+
+    /// Provides an iterator.
+    pub fn iter(&self) -> SourceIterator<'_> {
+        SourceIterator {
+            next: Some(self)
+        }
+    }
+}
+
+pub struct SourceIterator<'a> {
+    next: Option<&'a Source>
+}
+
+impl<'a> Iterator for SourceIterator<'a> {
+    type Item = &'a Source;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next.map(|node| {
+            self.next = node.span.source
+                .as_ref()
+                .map(|source| &**source);
+            node
+        })
+    }
 }
 
 /// Fragment of a source file. Possibly an expanded macro.

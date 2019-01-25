@@ -7,7 +7,6 @@ pub mod tokentype;
 use std::fs::File;
 use std::io::prelude::*;
 
-use shared::fragment::FragmentIterator;
 use tokenizer::{MacroContext, MacroToken, ParseResult};
 
 pub fn preprocess<CB>(get_file: CB, filename: &str) -> ParseResult<Vec<MacroToken>>

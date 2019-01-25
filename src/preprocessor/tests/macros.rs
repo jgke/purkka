@@ -345,13 +345,13 @@ fn mutually_recursive_macros() {
 }
 
 #[test]
-fn function_macro() {
+fn function_macro_constant() {
     process(
         "#define FOO() foo\nFOO()",
         vec![mt_s(
             "foo.c",
             14,
-            16,
+            16, // foo
             MacroTokenType::Identifier("foo".to_string()),
             Some(s("foo.c", 0, 17, None)),
         )],
@@ -372,8 +372,13 @@ fn function_macro_one_arg() {
                 17,
                 22, // FOO(b)
                 Some(s(
-                    "foo.c", 0, 16, // #define FOO(a) a
-                    None,
+                    "foo.c",
+                    15,
+                    15, // a
+                    Some(s(
+                        "foo.c", 0, 16, // #define FOO(a) a
+                        None,
+                    )),
                 )),
             )),
         )],
@@ -395,11 +400,21 @@ fn function_macro_nested() {
                 44, // FOO(b)
                 Some(s(
                     "foo.c",
-                    17,
-                    38, // #define FOO(a) BAR(a)
+                    36,
+                    36, // a, second inside FOO(a) BAR(a)
                     Some(s(
-                        "foo.c", 0, 16, // #define BAR(a) a
-                        None,
+                        "foo.c",
+                        17,
+                        38, // #define FOO(a) BAR(a)
+                        Some(s(
+                            "foo.c",
+                            15,
+                            15, // a, second inside BAR(a) a
+                            Some(s(
+                                "foo.c", 0, 16, // #define BAR(a) a
+                                None,
+                            )),
+                        )),
                     )),
                 )),
             )),
@@ -439,8 +454,13 @@ fn function_macro_multiple_arguments() {
                     21,
                     28, // FOO(1,2)
                     Some(s(
-                        "foo.c", 0, 20, // #define FOO(a) FOO(a,b) a b
-                        None,
+                        "foo.c",
+                        17,
+                        17, // a
+                        Some(s(
+                            "foo.c", 0, 20, // #define FOO(a) FOO(a,b) a b
+                            None,
+                        )),
                     )),
                 )),
             ),
@@ -454,8 +474,13 @@ fn function_macro_multiple_arguments() {
                     21,
                     28, // FOO(1,2)
                     Some(s(
-                        "foo.c", 0, 20, // #define FOO(a) FOO(a,b) a b
-                        None,
+                        "foo.c",
+                        19,
+                        19, // a
+                        Some(s(
+                            "foo.c", 0, 20, // #define FOO(a) FOO(a,b) a b
+                            None,
+                        )),
                     )),
                 )),
             ),
@@ -536,14 +561,87 @@ fn token_pasting_with_function_macro() {
         "#define FOO(a,b) a##b\nFOO(foo,bar)",
         vec![mt_s(
             "foo.c",
-            22,
-            33, // FOO(foo,bar)
+            17,
+            20, // a##b
             MacroTokenType::Identifier("foobar".to_string()),
             Some(s(
-                "foo.c", 0, 21, // #define FOO(a,b) a##b
-                None,
+                "foo.c",
+                22,
+                33, // FOO(foo,bar)
+                Some(s(
+                    "foo.c", 0, 21, // #define FOO(a,b) a##b
+                    None,
+                )),
             )),
         )],
+    );
+}
+
+#[test]
+fn function_macro_with_expanded_argument() {
+    process(
+        "#define FOO(a) foo##a\n#define BAR(a,b) a##b\nFOO(BAR(bar,baz))",
+        vec![mt_s(
+            "foo.c",
+            15,
+            20, // foo##a
+            MacroTokenType::Identifier("foobarbaz".to_string()),
+            Some(s(
+                "foo.c",
+                44,
+                60, // FOO(BAR(bar,baz))
+                Some(s(
+                    "foo.c", 0, 21, // #define FOO(a) foo##a
+                    None,
+                )),
+            )),
+        )],
+    );
+}
+
+#[test]
+fn function_macro_with_trailing_paren() {
+    process(
+        "#define FOO(a) a)\nFOO(foo))",
+        vec![
+            mt_s(
+                "foo.c",
+                22,
+                24, // foo
+                MacroTokenType::Identifier("foo".to_string()),
+                Some(s(
+                    "foo.c",
+                    18,
+                    25, // FOO(foo)
+                    Some(s(
+                        "foo.c",
+                        15,
+                        15, // a
+                        Some(s(
+                            "foo.c", 0, 17, // #define FOO(a) a)
+                            None,
+                        )),
+                    )),
+                )),
+            ),
+            mt_s(
+                "foo.c",
+                16,
+                16, // )
+                MacroTokenType::Punctuation(Punctuation::CloseParen),
+                Some(s(
+                    "foo.c", 0, 17, // #define FOO(a) a)
+                    None,
+                )),
+            ),
+            mt_s(
+                "foo.c",
+                26,
+                26, // )
+                MacroTokenType::Punctuation(Punctuation::CloseParen),
+                None,
+            ),
+        ],
     );
 }
 
