@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use syntax::ext::quote::rt::Span;
+use syntax_pos::Span;
 
 use std::cmp::Ordering;
 use std::collections::HashMap;

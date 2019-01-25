@@ -9,7 +9,7 @@ extern crate syntax_pos;
 
 use rustc_plugin::Registry;
 use syntax::ext::base::{DummyResult, ExtCtxt, MacResult};
-use syntax::ext::quote::rt::Span;
+use syntax_pos::Span;
 use syntax::parse::token;
 use syntax::tokenstream::TokenTree;
 

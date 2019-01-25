@@ -2,8 +2,7 @@ use smallvec::SmallVec;
 use syntax::ast;
 use syntax::ext::base::{ExtCtxt, MacEager, MacResult};
 use syntax::ext::build::AstBuilder;
-use syntax::ext::quote::rt::ExtParseUtils;
-use syntax::ext::quote::rt::Span;
+use syntax_pos::{FileName, Span};
 use syntax::parse;
 use syntax::ptr::P;
 use syntax::source_map::{respan, Spanned};
@@ -767,7 +766,9 @@ fn driver(tokenstream: &mut Iterator<Item = &Token>) -> Option<S> {
         tm.rules["S"].data[0].1[0].identifier
     ));
 
-    items.push(cx.parse_item(driver_fn));
+    let session = cx.parse_sess();
+    let filename = FileName::Custom("lalr_driver_fn".to_string());
+    items.push(parse::new_parser_from_source_str(session, filename, driver_fn).parse_item().unwrap().unwrap());
 
     return MacEager::items(items);
 }
