@@ -774,17 +774,31 @@ where
         let mut used_syms = used_names.clone();
         used_syms.insert(ident.to_string());
 
+        let mut allow_parse_fail = HashSet::new();
+        let mut force_parse = HashSet::new();
+
+        {
+            let mut i = 0;
+            while i < body.len() {
+                if body[i].ty == MacroTokenType::Operator(Operator::Macro) {
+                    i += 1;
+                    allow_parse_fail.insert(body[i].get_identifier_str().unwrap());
+                } else if body[i].get_identifier_str().is_some() {
+                    force_parse.insert(body[i].get_identifier_str().unwrap());
+                }
+                i += 1;
+            }
+        }
+
         let (consume_count, more_syms, mut total_span, has_expanded, arg_spans) =
-            self.parse_function_macro_arguments(iter, args_span, fn_args, &used_syms);
+            self.parse_function_macro_arguments(iter, args_span, fn_args, &used_syms,
+                                                &allow_parse_fail.difference(&force_parse).collect());
         total_span.span.source = None;
         let mut sub_iter = body.iter().peekable();
         let mut res: Vec<(MacroToken, HashSet<String>)> = Vec::new();
 
-        println!("{:?}", total_span);
-
         while let Some(t) = sub_iter.next() {
             let outer_source = t.source.clone();
-            println!("{}", iter.2.source_to_str(&outer_source));
             match t.ty.clone() {
                 MacroTokenType::Identifier(ident) => {
                     let syms = more_syms.get(&ident);
@@ -820,7 +834,7 @@ where
                             };
                             res.push((t, used_syms.clone()));
                         } else {
-                            panic!();
+                            panic!("Identifier {} is not an argument and cannot be stringified", ident);
                         }
                     } else {
                         panic!();
@@ -860,6 +874,7 @@ where
         start: &Source,
         args: &Vec<String>,
         used_names: &HashSet<String>,
+        do_not_expand: &HashSet<&String>,
     ) -> (usize, HashMap<String, Vec<MacroToken>>, Source, bool, HashMap<String, Source>) {
         let mut more_syms = HashMap::new();
         let mut arg_sources = HashMap::new();
@@ -917,6 +932,7 @@ where
                         }
                         (0, MacroTokenType::Punctuation(Punctuation::Comma)) => {
                             more_syms.insert(arg.clone(), arg_vals.drain(..).collect());
+                            arg_sources.insert(arg.clone(), arg_source.unwrap());
                             arg_count += 1;
                             continue 'argfor;
                         }
@@ -931,7 +947,11 @@ where
                                 iter.0.push((token, used_names));
                             }
                             let start_index = iter.1;
-                            self.maybe_expand_identifier_full(iter);
+                            if do_not_expand.get(arg).is_none() {
+                                self.maybe_expand_identifier_full(iter);
+                            } else {
+                                iter.1 += 1;
+                            }
                             let end_index = iter.1;
                             iter.1 = start_index;
                             let mut sliced = iter

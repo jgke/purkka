@@ -652,14 +652,95 @@ fn stringify_function_macro() {
         vec![mt_s(
             "foo.c",
             22,
-            24, // foo##a
+            24, // foo
             MacroTokenType::StringLiteral("foo".to_string()),
             Some(s(
                 "foo.c",
                 0,
-                17, // FOO(BAR(bar,baz))
+                17, // #define FOO(a) #a
                 None),
             )),
+        ],
+    );
+}
+
+#[test]
+fn stringify_function_macro_no_expand() {
+    process(
+        "#define BAR(a,b) a b\n#define FOO(a, b) #a b\nFOO(BAR(), BAR(1,2))",
+        vec![mt_s(
+            "foo.c",
+            48,
+            52, // foo##a
+            MacroTokenType::StringLiteral("BAR()".to_string()),
+            Some(s(
+                "foo.c",
+                21,
+                43, // #define FOO(a, b) #a b
+                None),
+            )),
+            mt_s(
+            "foo.c",
+            59,
+            59, // 1
+            MacroTokenType::Number("1".to_string()),
+            Some(s(
+                "foo.c",
+                55,
+                62, // BAR(1,2)
+                Some(s(
+                    "foo.c",
+                    17,
+                    17, // a
+                    Some(s(
+                        "foo.c",
+                        0,
+                        20, // #define BAR(a,b) a b
+                        Some(s(
+                            "foo.c",
+                            44,
+                            63, // FOO(BAR(), BAR(1,2))
+                            Some(s(
+                                "foo.c",
+                                42,
+                                42, // b
+                                Some(s(
+                                    "foo.c",
+                                    21,
+                                    43, // #define FOO(a, b) #a b
+                                    None))),
+            )))))))))),
+            mt_s(
+            "foo.c",
+            61,
+            61, // 2
+            MacroTokenType::Number("2".to_string()),
+            Some(s(
+                "foo.c",
+                55,
+                62, // BAR(1,2)
+                Some(s(
+                    "foo.c",
+                    19,
+                    19, // b
+                    Some(s(
+                        "foo.c",
+                        0,
+                        20, // #define BAR(a,b) a b
+                        Some(s(
+                            "foo.c",
+                            44,
+                            63, // FOO(BAR(), BAR(1,2))
+                            Some(s(
+                                "foo.c",
+                                42,
+                                42, // b
+                                Some(s(
+                                    "foo.c",
+                                    21,
+                                    43, // #define FOO(a, b) #a b
+                                    None))),
+            )))))))))),
         ],
     );
 }
