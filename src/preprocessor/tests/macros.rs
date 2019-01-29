@@ -645,4 +645,23 @@ fn function_macro_with_trailing_paren() {
     );
 }
 
+#[test]
+fn stringify_function_macro() {
+    process(
+        "#define FOO(a) #a\nFOO(foo)",
+        vec![mt_s(
+            "foo.c",
+            22,
+            24, // foo##a
+            MacroTokenType::StringLiteral("foo".to_string()),
+            Some(s(
+                "foo.c",
+                0,
+                17, // FOO(BAR(bar,baz))
+                None),
+            )),
+        ],
+    );
+}
+
 // todo: test for eof after "#define foo" and "#define"

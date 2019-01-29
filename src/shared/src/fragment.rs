@@ -448,7 +448,7 @@ impl FragmentIterator {
         }
     }
 
-    /// Get the source string for a source recursively.
+    /// Get the user-readable source string for a source recursively.
     pub fn source_to_str(&self, source: &Source) -> String {
         let mut lines: Vec<(String, (&str, usize, usize))> = Vec::new();
         let mut out = "".to_string();
@@ -479,6 +479,12 @@ impl FragmentIterator {
             .concat()
         //out.push('\n');
         //out
+    }
+
+    /// Get the topmost source as a plain string without filename
+    pub fn top_source_to_str(&self, source: &Source) -> String {
+        let s = &self.contents[&source.filename];
+        s[source.span.lo..=source.span.hi].trim().to_string()
     }
 }
 

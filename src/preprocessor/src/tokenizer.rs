@@ -774,7 +774,7 @@ where
         let mut used_syms = used_names.clone();
         used_syms.insert(ident.to_string());
 
-        let (consume_count, more_syms, mut total_span, has_expanded) =
+        let (consume_count, more_syms, mut total_span, has_expanded, arg_spans) =
             self.parse_function_macro_arguments(iter, args_span, fn_args, &used_syms);
         total_span.span.source = None;
         let mut sub_iter = body.iter().peekable();
@@ -806,6 +806,24 @@ where
                             let mut n_sym = t.clone();
                             res.push((n_sym, used_syms.clone()))
                         }
+                    }
+                }
+                MacroTokenType::Operator(Operator::Macro) => {
+                    if let Some(ident) = sub_iter.peek().and_then(|t| t.get_identifier_str().clone()) {
+                        if let Some(span) = arg_spans.get(&ident) {
+                            let t_ty = MacroTokenType::StringLiteral(iter.2.top_source_to_str(span));
+
+                            let map = sub_iter.next();
+                            let mut t = MacroToken {
+                                source: span.clone(),
+                                ty: t_ty
+                            };
+                            res.push((t, used_syms.clone()));
+                        } else {
+                            panic!();
+                        }
+                    } else {
+                        panic!();
                     }
                 }
                 _ => {
@@ -842,8 +860,9 @@ where
         start: &Source,
         args: &Vec<String>,
         used_names: &HashSet<String>,
-    ) -> (usize, HashMap<String, Vec<MacroToken>>, Source, bool) {
+    ) -> (usize, HashMap<String, Vec<MacroToken>>, Source, bool, HashMap<String, Source>) {
         let mut more_syms = HashMap::new();
+        let mut arg_sources = HashMap::new();
         let mut depth = 0; // paren depth
         let mut arg_count = 0;
         let mut total_span = Some(start.clone());
@@ -855,6 +874,7 @@ where
         let args_iter = if args.len() == 0 { &empty_vec } else { args };
         'argfor: for arg in args_iter.iter() {
             let mut arg_vals = Vec::new();
+            let mut arg_source: Option<Source> = None;
             'itersome: while self.has_next_token(iter) {
                 if let (Some((mut token, used_names)), consumed_index) = self.get_next_token(iter) {
                     if consumed_index {
@@ -869,19 +889,29 @@ where
                     } else {
                         total_span = Some(token.source.clone());
                     }
+                    if arg_source.is_none() {
+                        arg_source = Some(token.source.clone());
+                    }
                     match (depth, token.ty.clone()) {
                         (0, MacroTokenType::Punctuation(Punctuation::CloseParen)) => {
                             if arg != "" {
                                 more_syms.insert(arg.clone(), arg_vals.drain(..).collect());
+                                arg_sources.insert(arg.clone(), arg_source.unwrap());
                                 arg_count += 1;
                             }
                             break 'argfor;
                         }
                         (_, MacroTokenType::Punctuation(Punctuation::CloseParen)) => {
+                            if let Some(ref mut src) = arg_source {
+                                src.span.hi = token.source.span.hi;
+                            }
                             depth -= 1;
                             arg_vals.push(token)
                         }
                         (_, MacroTokenType::Punctuation(Punctuation::OpenParen)) => {
+                            if let Some(ref mut src) = arg_source {
+                                src.span.hi = token.source.span.hi;
+                            }
                             depth += 1;
                             arg_vals.push(token)
                         }
@@ -891,6 +921,9 @@ where
                             continue 'argfor;
                         }
                         (_, MacroTokenType::Identifier(ident)) => {
+                            if let Some(ref mut src) = arg_source {
+                                src.span.hi = token.source.span.hi;
+                            }
                             if consumed_index {
                                 iter.1 -= 1;
                                 consume_count -= 1;
@@ -908,7 +941,12 @@ where
                                 .collect();
                             arg_vals.append(&mut sliced);
                         }
-                        _ => arg_vals.push(token),
+                        _ => {
+                            if let Some(ref mut src) = arg_source {
+                                src.span.hi = token.source.span.hi;
+                            }
+                            arg_vals.push(token);
+                        }
                     }
                 }
             }
@@ -919,7 +957,7 @@ where
                 arg_len, arg_count
             );
         }
-        (consume_count, more_syms, total_span.unwrap(), has_expanded)
+        (consume_count, more_syms, total_span.unwrap(), has_expanded, arg_sources)
     }
 }
 
