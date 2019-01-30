@@ -217,6 +217,53 @@ pub static OPERATORS: &[(&str, &Operator)] = &[
     ("=", &Assign),
 ];
 
+// constant expression operator precedence
+pub static PRECEDENCE: &[(usize, &Operator)] = &[
+    (1, &Not),
+    (1, &BitNot),
+
+    (2, &Mod),
+    (2, &Times),
+    (2, &Divide),
+
+    (3, &Plus),
+    (3, &Minus),
+
+    (4, &BitShiftLeft),
+    (4, &BitShiftRight),
+
+    (5, &MoreThan),
+    (5, &LessThan),
+    (5, &LessEqThan),
+    (5, &MoreEqThan),
+
+    (6, &NotEquals),
+    (6, &Equals),
+
+    (7, &BitAnd),
+
+    (8, &BitXor),
+
+    (9, &BitOr),
+
+    (10, &And),
+
+    (11, &Or),
+
+    (12, &Terniary),
+    (12, &TerniaryAlternative),
+];
+
+// return (precedence, is-right-to-left)
+pub fn get_precedence(punc: &Operator) -> (usize, bool) {
+    for (precedence, ty) in PRECEDENCE {
+        if *ty == punc {
+            return (*precedence, *precedence == 1);
+        }
+    }
+    panic!();
+}
+
 pub static PUNCTUATION: &'static [(&'static str, &'static Punctuation)] = &[
     ("[", &Punctuation::OpenBracket),
     ("]", &Punctuation::CloseBracket),

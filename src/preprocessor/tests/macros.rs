@@ -793,4 +793,10 @@ fn if_0() {
     ]);
 }
 
+#[test]
+fn if_1_gt_2() {
+    process("#if 1 > 2\nfoo\n#endif", vec![
+    ]);
+}
+
 // todo: test for eof after "#define foo" and "#define"
