@@ -3,7 +3,10 @@ use std::fmt;
 
 use shared::fragment::{FragmentIterator, Source};
 use shared::utils::*;
+
+use macrotoken::{MacroToken, MacroTokenType};
 use tokentype::{Operator, Punctuation, OPERATORS, PUNCTUATION};
+use calculator::eval_expression;
 
 #[derive(Debug)]
 pub struct Output {
@@ -54,69 +57,6 @@ where
     symbols: HashMap<String, Macro>,
     if_stack: Vec<Option<bool>>,
     get_file: CB,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum MacroTokenType {
-    Identifier(String),
-    Number(String),
-    StringLiteral(String),
-    Operator(Operator),
-    Punctuation(Punctuation),
-    Other(char),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MacroToken {
-    pub source: Source,
-    pub ty: MacroTokenType,
-}
-
-impl MacroToken {
-    pub fn display<'a>(&'a self, iter: &'a FragmentIterator) -> MacroTokenDisplay<'a> {
-        MacroTokenDisplay { token: self, iter }
-    }
-}
-
-pub struct MacroTokenDisplay<'a> {
-    token: &'a MacroToken,
-    iter: &'a FragmentIterator,
-}
-
-impl fmt::Debug for MacroTokenDisplay<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(self, f)
-    }
-}
-
-impl fmt::Display for MacroTokenDisplay<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "type: {:?}\nsource:\n{}",
-            self.token.ty,
-            self.iter.source_to_str(&self.token.source)
-        )
-    }
-}
-
-impl MacroToken {
-    fn respan_front(&mut self, source: &Source) {
-        let old_source = self.source.clone();
-        let mut new_source = source.clone();
-        new_source.merge(&old_source);
-        self.source = new_source;
-    }
-    fn respan_back(&mut self, source: &Source) {
-        self.source.merge(source)
-    }
-
-    fn get_identifier_str(&self) -> Option<String> {
-        match &self.ty {
-            MacroTokenType::Identifier(ident) => Some(ident.clone()),
-            _ => None,
-        }
-    }
 }
 
 pub type ParseResult<T> = Result<T, &'static str>;
@@ -539,7 +479,15 @@ where
                 let (left, _) = self.read_identifier_raw(&mut sub_iter);
                 self.symbols.remove(&left);
             }
-            MacroType::If => unimplemented!(),
+            MacroType::If => {
+                let value = self.evaluate_if(&mut sub_iter);
+
+                self.if_stack.push(Some(value));
+
+                if !value {
+                    self.skip_lines_to_else_or_endif(iter, true);
+                }
+            }
             MacroType::Ifdef | MacroType::Ifndef =>
                 self.handle_ifdef(iter, &mut sub_iter, ty == MacroType::Ifndef),
             MacroType::Else => self.handle_else(iter),
@@ -571,6 +519,53 @@ where
             _ => panic!("Unknown macro: {}", ty)
         };
         (macro_type, sub_iter, total_span)
+    }
+
+    fn evaluate_if(&mut self, sub_iter: &mut FragmentIterator) -> bool {
+        let mut tokens = vec![];
+        while sub_iter.peek().is_some() {
+            if let Some(token) = self.get_token(sub_iter, false).0 {
+                if token.get_identifier_str() == Some("defined".to_string()) {
+                    let next = self.get_token(sub_iter, false).0.unwrap();
+                    let (ident, source) = if next.ty == MacroTokenType::Punctuation(Punctuation::OpenParen) {
+                        let ident_token = self.get_token(sub_iter, false).0.unwrap();
+                        let tmp_ident = ident_token.get_identifier_str().unwrap().to_string();
+                        let close_paren = self.get_token(sub_iter, false).0.unwrap().ty;
+                        assert!(close_paren == MacroTokenType::Punctuation(Punctuation::CloseParen));
+                        (tmp_ident, ident_token.source)
+                    } else {
+                        let ident_token = self.get_token(sub_iter, false).0.unwrap();
+                        let tmp_ident = ident_token.get_identifier_str().unwrap().to_string();
+                        (tmp_ident, ident_token.source)
+                    };
+                    let tok = if self.symbols.contains_key(&ident) {
+                        MacroToken {
+                            source,
+                            ty: MacroTokenType::Number("1".to_string())
+                        }
+                    } else {
+                        MacroToken {
+                            source,
+                            ty: MacroTokenType::Number("0".to_string())
+                        }
+                    };
+                    tokens.push(tok);
+                } else {
+                    // Undefined behaviour: defined() appearing as the result of an expansion.
+                    // Resolution: pass it forward as an identifier, for simplicity. GCC resolves
+                    // it 'normally'. Probably change later to follow GCC's example.
+                    tokens.extend(self.maybe_expand_identifier(token, sub_iter).into_iter())
+                }
+            }
+        }
+        for ref mut token in &mut tokens {
+            if token.get_identifier_str().is_some() {
+                token.ty = MacroTokenType::Number("0".to_string());
+            }
+        }
+
+        // Actual evaluation part.
+        eval_expression(&tokens)
     }
 
     fn handle_ifdef(&mut self, iter: &mut FragmentIterator, sub_iter: &mut FragmentIterator, is_ifndef: bool) {

@@ -1,9 +1,11 @@
 extern crate preprocessor;
 extern crate shared;
 
-use preprocessor::tokenizer::{MacroToken, MacroTokenType, ParseResult};
-use preprocessor::tokentype::{Operator, Punctuation};
 use shared::fragment::{FragmentIterator, Source, Span};
+
+use preprocessor::macrotoken::{MacroToken, MacroTokenType};
+use preprocessor::tokenizer::{ParseResult};
+use preprocessor::tokentype::{Operator, Punctuation};
 
 fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<MacroToken>> {
     preprocessor::preprocess(
@@ -775,7 +777,14 @@ baz
 
 #[test]
 fn undef() {
-    process("#undef FOO\n#define FOO\n#undef FOO\n", vec![]);
+    process("#undef FOO\n#define FOO\n#undef FOO", vec![]);
+}
+
+#[test]
+fn if_1() {
+    process("#if 1\nfoo\n#endif", vec![
+            mt("foo.c", 6, 8, MacroTokenType::Identifier("foo".to_string()))
+    ]);
 }
 
 // todo: test for eof after "#define foo" and "#define"

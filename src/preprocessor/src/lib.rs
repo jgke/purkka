@@ -1,14 +1,17 @@
 extern crate regex;
 extern crate shared;
 
+pub mod macrotoken;
 pub mod tokenizer;
 pub mod tokentype;
+pub mod calculator;
 
 use std::fs::File;
 use std::io::prelude::*;
 use std::path;
 
-use tokenizer::{MacroContext, MacroToken, ParseResult};
+use macrotoken::MacroToken;
+use tokenizer::{MacroContext, ParseResult};
 
 static INCLUDE_PATH: &[&str] = &["/usr/local/include", "/usr/include"];
 
