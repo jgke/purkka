@@ -17,11 +17,38 @@ enum Macro {
     Function(Source, Vec<String>, Vec<MacroToken>),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MacroType {
+    //Conditional macros
+    If,
+    Ifdef,
+    Ifndef,
+    Elif,
+    Else,
+    Endif,
+
+    // Source of all problems with the preprocessor
+    Include,
+
+    // Define function/object, undef
+    Define,
+    Undef,
+
+    // Misc. macros
+    Line,
+    Pragma,
+    Error,
+
+    // common extension
+    Warning
+}
+
 pub(crate) struct MacroContext<CB>
 where
     CB: FnMut(String) -> String,
 {
     symbols: HashMap<String, Macro>,
+    if_stack: Vec<Option<bool>>,
     get_file: CB,
 }
 
@@ -103,6 +130,7 @@ where
     pub(crate) fn new(get_file: CB) -> MacroContext<CB> {
         MacroContext {
             symbols: HashMap::new(),
+            if_stack: Vec::new(),
             get_file,
         }
     }
@@ -121,7 +149,7 @@ where
             match iter.peek() {
                 Some('#') => {
                     if can_parse_macro {
-                        out.append(&mut self.read_macro(&mut iter));
+                        self.read_macro(&mut iter);
                     } else {
                         panic!("Spurious #");
                     }
@@ -406,13 +434,10 @@ where
     }
 
     /// Parse a macro (eg. #define FOO BAR) and store it for later, or act instantly in case of #if
-    fn read_macro(&mut self, iter: &mut FragmentIterator) -> Vec<MacroToken> {
-        let (row_string, total_span) = self.preprocess_get_macro_line(iter);
-        let file = iter.current_filename();
-        let mut sub_iter = FragmentIterator::with_offset(&file, &row_string, total_span.span.lo);
-        let (ty, _) = self.read_identifier_raw(&mut sub_iter);
-        match ty.as_str() {
-            "define" => {
+    fn read_macro(&mut self, iter: &mut FragmentIterator) {
+        let (ty, mut sub_iter, total_span) = self.get_macro_type(iter);
+        match ty {
+            MacroType::Define => {
                 let (left, _) = self.read_identifier_raw(&mut sub_iter);
                 if let Some('(') = sub_iter.peek() {
                     assert_eq!(
@@ -470,9 +495,8 @@ where
 
                     self.symbols.insert(left, Macro::Text(total_span, right));
                 }
-                vec![]
             }
-            "include" => {
+            MacroType::Include => {
                 loop {
                     match sub_iter.peek() {
                         Some(' ') | Some('\t') => sub_iter.next(),
@@ -506,11 +530,103 @@ where
 
                 let content = (self.get_file)(filename.clone());
                 iter.split_and_push_file(&filename, &content);
-
-                vec![]
             }
-            ty => panic!("Unknown macro type: {}", ty),
+            MacroType::If => unimplemented!(),
+            MacroType::Ifdef | MacroType::Ifndef =>
+                self.handle_ifdef(iter, &mut sub_iter, ty == MacroType::Ifndef),
+            MacroType::Else => self.handle_else(iter),
+            MacroType::Endif => self.handle_endif(),
+
+            _ => unimplemented!()
         }
+    }
+
+    fn get_macro_type(&mut self, iter: &mut FragmentIterator) -> (MacroType, FragmentIterator, Source) {
+        let (row_string, total_span) = self.preprocess_get_macro_line(iter);
+        let file = iter.current_filename();
+        let mut sub_iter = FragmentIterator::with_offset(&file, &row_string, total_span.span.lo);
+        let (ty, _) = self.read_identifier_raw(&mut sub_iter);
+        let macro_type = match ty.as_ref() {
+            "if" => MacroType::If,
+            "ifdef" => MacroType::Ifdef,
+            "ifndef" => MacroType::Ifndef,
+            "elif" => MacroType::Elif,
+            "else" => MacroType::Else,
+            "endif" => MacroType::Endif,
+            "include" => MacroType::Include,
+            "define" => MacroType::Define,
+            "undef" => MacroType::Undef,
+            "line" => MacroType::Line,
+            "pragma" => MacroType::Pragma,
+            "error" => MacroType::Error,
+            "warning" => MacroType::Warning,
+            _ => panic!("Unknown macro: {}", ty)
+        };
+        (macro_type, sub_iter, total_span)
+    }
+
+    fn handle_ifdef(&mut self, iter: &mut FragmentIterator, sub_iter: &mut FragmentIterator, is_ifndef: bool) {
+        loop {
+            match sub_iter.peek() {
+                Some(' ') | Some('\t') => sub_iter.next(),
+                _ => break,
+            };
+        }
+
+        let token = self.read_identifier(sub_iter);
+        let ident = token.get_identifier_str().unwrap();
+
+        let truth_value = is_ifndef ^ (self.symbols.get(&ident).is_some());
+
+        self.if_stack.push(Some(truth_value));
+
+        if !truth_value {
+            self.skip_lines_to_else_or_endif(iter, true);
+        }
+    }
+
+    fn skip_lines_to_else_or_endif(&mut self, iter: &mut FragmentIterator, accept_else: bool) {
+        while iter.peek().is_some() {
+            let (next_row, _) = self.preprocess_get_macro_line(iter);
+            let mut sub_iter = FragmentIterator::new("", &next_row);
+            let tok = self.get_token(&mut sub_iter, false).0;
+            if tok.map(|t| t.ty) == Some(MacroTokenType::Operator(Operator::Macro)) {
+                match (accept_else, self.get_macro_type(&mut sub_iter).0) {
+                    (true, MacroType::Else) => {
+                        self.handle_else(iter);
+                        return;
+                    }
+                    (false, MacroType::Else) => panic!(),
+                    (_, MacroType::Endif) => {
+                        self.handle_endif();
+                        return;
+                    }
+                    _ => {}
+                };
+            }
+        }
+        if iter.peek().is_none() {
+            panic!("Unexpected eof");
+        }
+    }
+
+    fn handle_else(&mut self, iter: &mut FragmentIterator) {
+        let popped = self.if_stack.pop();
+        if let Some(Some(truth_value)) = popped {
+            self.if_stack.push(None);
+            if truth_value {
+                self.skip_lines_to_else_or_endif(iter, false);
+            }
+        } else if let Some(None) = popped {
+            panic!("Cannot handle #else after another #else")
+        } else {
+            panic!("Spurious #else");
+        }
+    }
+
+    fn handle_endif(&mut self) {
+        // line has been consumed already here, so just handle the if stack
+        assert!(self.if_stack.pop().is_some());
     }
 
     // Macro utilities
@@ -994,6 +1110,7 @@ fn combine_tokens(left: &MacroToken, source: &Source, right: &MacroToken) -> Mac
     let mut tmp_iter = FragmentIterator::new("", &combined);
     let parsed_token = MacroContext {
         get_file: unreachable_file_open,
+        if_stack: Vec::new(),
         symbols: HashMap::new(),
     }
     .get_token(&mut tmp_iter, false);

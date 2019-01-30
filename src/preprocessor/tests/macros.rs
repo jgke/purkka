@@ -745,4 +745,32 @@ fn stringify_function_macro_no_expand() {
     );
 }
 
+#[test]
+fn ifdef_else_endif() {
+    process("
+#ifdef FOO
+bar
+#else
+baz
+#endif
+#define FOO
+#ifdef FOO
+bar
+#else
+baz
+#endif",
+        vec![mt(
+            "foo.c",
+            22, 24,
+            MacroTokenType::Identifier("baz".to_string()),
+        ),
+        mt(
+            "foo.c",
+            56, 58,
+            MacroTokenType::Identifier("bar".to_string()),
+        )
+        ],
+    );
+}
+
 // todo: test for eof after "#define foo" and "#define"
