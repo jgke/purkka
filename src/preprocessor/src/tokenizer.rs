@@ -43,9 +43,13 @@ enum MacroType {
     Warning
 }
 
+/// Macro context.
+///
+/// CB has the following signature:
+/// FnMut(is_local: bool, current_file: String, opened_file: String) -> String 
 pub(crate) struct MacroContext<CB>
 where
-    CB: FnMut(String) -> String,
+    CB: FnMut(bool, String, String) -> String,
 {
     symbols: HashMap<String, Macro>,
     if_stack: Vec<Option<bool>>,
@@ -125,7 +129,7 @@ struct MacroParseIter<'a>(
 
 impl<CB> MacroContext<CB>
 where
-    CB: FnMut(String) -> String,
+    CB: FnMut(bool, String, String) -> String,
 {
     pub(crate) fn new(get_file: CB) -> MacroContext<CB> {
         MacroContext {
@@ -136,7 +140,7 @@ where
     }
 
     fn get_iterator(&mut self, filename: &str) -> FragmentIterator {
-        let content = (self.get_file)(filename.to_string());
+        let content = (self.get_file)(true, ".".to_string(), filename.to_string());
         FragmentIterator::new(filename, &content)
     }
 
@@ -528,7 +532,7 @@ where
                     panic!("Unexpected character: {}", end.display(&sub_iter));
                 };
 
-                let content = (self.get_file)(filename.clone());
+                let content = (self.get_file)(is_quote, iter.current_filename(), filename.clone());
                 iter.split_and_push_file(&filename, &content);
             }
             MacroType::If => unimplemented!(),
@@ -1123,6 +1127,6 @@ fn combine_tokens(left: &MacroToken, source: &Source, right: &MacroToken) -> Mac
     }
 }
 
-fn unreachable_file_open(_: String) -> String {
+fn unreachable_file_open(_: bool, _: String, _: String) -> String {
     unreachable!()
 }

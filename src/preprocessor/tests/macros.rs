@@ -7,7 +7,7 @@ use shared::fragment::{FragmentIterator, Source, Span};
 
 fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<MacroToken>> {
     preprocessor::preprocess(
-        |f| {
+        |_is_quoted, _current_file, f| {
             assert_eq!(filename, f);
             content.to_string()
         },
@@ -26,7 +26,7 @@ fn process_files(files: Vec<(&str, &str)>, start: &str, expected: Vec<MacroToken
     println!("---- End file list ----");
 
     let processed = preprocessor::preprocess(
-        |filename| {
+        |_is_quoted, _current_file, filename| {
             for (name, content) in &files {
                 if name == &filename {
                     return content.to_string();
