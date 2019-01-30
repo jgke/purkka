@@ -773,4 +773,9 @@ baz
     );
 }
 
+#[test]
+fn undef() {
+    process("#undef FOO\n#define FOO\n#undef FOO\n", vec![]);
+}
+
 // todo: test for eof after "#define foo" and "#define"

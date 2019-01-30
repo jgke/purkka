@@ -535,13 +535,17 @@ where
                 let content = (self.get_file)(is_quote, iter.current_filename(), filename.clone());
                 iter.split_and_push_file(&filename, &content);
             }
+            MacroType::Undef => {
+                let (left, _) = self.read_identifier_raw(&mut sub_iter);
+                self.symbols.remove(&left);
+            }
             MacroType::If => unimplemented!(),
             MacroType::Ifdef | MacroType::Ifndef =>
                 self.handle_ifdef(iter, &mut sub_iter, ty == MacroType::Ifndef),
             MacroType::Else => self.handle_else(iter),
             MacroType::Endif => self.handle_endif(),
 
-            _ => unimplemented!()
+            ty => unimplemented!("{:?} not implemented", ty)
         }
     }
 
