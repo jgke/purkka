@@ -1,5 +1,5 @@
-/*
 #![allow(dead_code)]
+/*
 
 use tokentype;
 use tokentype::{Constant, Identifier, StringLiteral, UnaryOperator};

@@ -516,7 +516,7 @@ where
                     sub_iter.collect_while(|x| (is_quote && x != '"') || (!is_quote && x != '>'));
 
                 let end = self.read_other(&mut sub_iter);
-                let is_quote = if let MacroTokenType::Other('"') = end.ty {
+                if let MacroTokenType::Other('"') = end.ty {
                     if !is_quote {
                         panic!("Invalid closing character")
                     }
@@ -907,7 +907,7 @@ where
         }
 
         let (consume_count, more_syms, mut total_span, has_expanded, arg_spans) =
-            self.parse_function_macro_arguments(iter, args_span, fn_args, &used_syms,
+            self.parse_function_macro_arguments(iter, args_span, fn_args,
                                                 &allow_parse_fail.difference(&force_parse).collect());
         total_span.span.source = None;
         let mut sub_iter = body.iter().peekable();
@@ -943,7 +943,7 @@ where
                         if let Some(span) = arg_spans.get(&ident) {
                             let t_ty = MacroTokenType::StringLiteral(iter.2.top_source_to_str(span));
 
-                            let map = sub_iter.next();
+                            sub_iter.next(); // identifier
                             let mut t = MacroToken {
                                 source: span.clone(),
                                 ty: t_ty
@@ -989,7 +989,6 @@ where
         iter: &mut MacroParseIter,
         start: &Source,
         args: &Vec<String>,
-        used_names: &HashSet<String>,
         do_not_expand: &HashSet<&String>,
     ) -> (usize, HashMap<String, Vec<MacroToken>>, Source, bool, HashMap<String, Source>) {
         let mut more_syms = HashMap::new();
@@ -1052,7 +1051,7 @@ where
                             arg_count += 1;
                             continue 'argfor;
                         }
-                        (_, MacroTokenType::Identifier(ident)) => {
+                        (_, MacroTokenType::Identifier(_)) => {
                             if let Some(ref mut src) = arg_source {
                                 src.span.hi = token.source.span.hi;
                             }
