@@ -787,4 +787,10 @@ fn if_1() {
     ]);
 }
 
+#[test]
+fn if_0() {
+    process("#if 0\nfoo\n#endif", vec![
+    ]);
+}
+
 // todo: test for eof after "#define foo" and "#define"
