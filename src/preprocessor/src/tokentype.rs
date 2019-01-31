@@ -255,10 +255,10 @@ pub static PRECEDENCE: &[(usize, &Operator)] = &[
 ];
 
 // return (precedence, is-right-to-left)
-pub fn get_precedence(punc: &Operator) -> (usize, bool) {
+pub fn get_precedence(punc: &Operator) -> usize {
     for (precedence, ty) in PRECEDENCE {
         if *ty == punc {
-            return (*precedence, *precedence == 1);
+            return *precedence;
         }
     }
     panic!();

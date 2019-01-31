@@ -11,7 +11,7 @@ fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<MacroToke
     preprocessor::preprocess(
         |_is_quoted, _current_file, f| {
             assert_eq!(filename, f);
-            content.to_string()
+            (content.to_string(), f)
         },
         filename,
     )
@@ -31,7 +31,7 @@ fn process_files(files: Vec<(&str, &str)>, start: &str, expected: Vec<MacroToken
         |_is_quoted, _current_file, filename| {
             for (name, content) in &files {
                 if name == &filename {
-                    return content.to_string();
+                    return (content.to_string(), filename);
                 }
             }
             panic!()
@@ -796,6 +796,19 @@ fn if_0() {
 #[test]
 fn if_1_gt_2() {
     process("#if 1 > 2\nfoo\n#endif", vec![
+    ]);
+}
+
+#[test]
+fn if_defined() {
+    process("#define foo\n#if defined ( foo ) \nbar\n#endif", vec![
+            mt("foo.c", 33, 35, MacroTokenType::Identifier("bar".to_string()))
+    ]);
+    process("#if defined foo\nfoo\n#endif", vec![
+    ]);
+    process("#if defined(foo)\nfoo\n#endif", vec![
+    ]);
+    process("#if defined ( foo ) \nfoo\n#endif", vec![
     ]);
 }
 

@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::fmt;
 
 use shared::fragment::{FragmentIterator, Source};
 use shared::utils::*;
@@ -52,7 +51,7 @@ enum MacroType {
 /// FnMut(is_local: bool, current_file: String, opened_file: String) -> String 
 pub(crate) struct MacroContext<CB>
 where
-    CB: FnMut(bool, String, String) -> String,
+    CB: FnMut(bool, String, String) -> (String, String),
 {
     symbols: HashMap<String, Macro>,
     if_stack: Vec<Option<bool>>,
@@ -69,7 +68,7 @@ struct MacroParseIter<'a>(
 
 impl<CB> MacroContext<CB>
 where
-    CB: FnMut(bool, String, String) -> String,
+    CB: FnMut(bool, String, String) -> (String, String),
 {
     pub(crate) fn new(get_file: CB) -> MacroContext<CB> {
         MacroContext {
@@ -81,7 +80,7 @@ where
 
     fn get_iterator(&mut self, filename: &str) -> FragmentIterator {
         let content = (self.get_file)(true, ".".to_string(), filename.to_string());
-        FragmentIterator::new(filename, &content)
+        FragmentIterator::new(&content.1, &content.0)
     }
 
     /// Divide src into MacroTokens.
@@ -116,13 +115,31 @@ where
         out
     }
 
+    fn get_some_token(&mut self, iter: &mut FragmentIterator, parse_macro: bool) -> (MacroToken, bool) {
+        let res;
+        'outer: loop {
+            while iter.peek().is_some() {
+                let tok = self.get_token(iter, parse_macro);
+                match tok.0 {
+                    Some(t) => {
+                        res = (t, tok.1);
+                        break 'outer;
+                    }
+                    None => {}
+                }
+            }
+            panic!();
+        }
+        res
+    }
+
     fn get_token(
         &mut self,
         iter: &mut FragmentIterator,
         parse_macro: bool,
     ) -> (Option<MacroToken>, bool) {
         let next = iter.peek_n(2);
-        match next.as_ref() {
+        let token = match next.as_ref() {
             "//" => {
                 self.preprocess_get_macro_line(iter);
                 (None, true)
@@ -176,7 +193,12 @@ where
                 }
                 None => (None, parse_macro),
             },
+        };
+        //dbg!(&token);
+        if token.0.is_some() {
+            println!("{}", iter.source_to_str(&token.0.as_ref().unwrap().source));
         }
+        token
     }
 
     fn preprocess_flush_until(&self, until: &str, iter: &mut FragmentIterator) -> (String, Source) {
@@ -377,6 +399,15 @@ where
         }
     }
 
+    fn flush_whitespace(&mut self, iter: &mut FragmentIterator) {
+        loop {
+            match iter.peek() {
+                Some(' ') | Some('\t') => iter.next(),
+                _ => break
+            };
+        }
+    }
+
     /// Parse a macro (eg. #define FOO BAR) and store it for later, or act instantly in case of #if
     fn read_macro(&mut self, iter: &mut FragmentIterator) {
         let (ty, mut sub_iter, total_span) = self.get_macro_type(iter);
@@ -473,21 +504,14 @@ where
                 };
 
                 let content = (self.get_file)(is_quote, iter.current_filename(), filename.clone());
-                iter.split_and_push_file(&filename, &content);
+                iter.split_and_push_file(&content.1, &content.0);
             }
             MacroType::Undef => {
                 let (left, _) = self.read_identifier_raw(&mut sub_iter);
                 self.symbols.remove(&left);
             }
-            MacroType::If => {
-                let value = self.evaluate_if(&mut sub_iter);
-
-                self.if_stack.push(Some(value));
-
-                if !value {
-                    self.skip_lines_to_else_or_endif(iter, true);
-                }
-            }
+            MacroType::If => self.handle_if(iter, &mut sub_iter), 
+            MacroType::Elif => self.handle_elif(iter, &mut sub_iter),
             MacroType::Ifdef | MacroType::Ifndef =>
                 self.handle_ifdef(iter, &mut sub_iter, ty == MacroType::Ifndef),
             MacroType::Else => self.handle_else(iter),
@@ -499,8 +523,15 @@ where
 
     fn get_macro_type(&mut self, iter: &mut FragmentIterator) -> (MacroType, FragmentIterator, Source) {
         let (row_string, total_span) = self.preprocess_get_macro_line(iter);
-        let file = iter.current_filename();
-        let mut sub_iter = FragmentIterator::with_offset(&file, &row_string, total_span.span.lo);
+        dbg!(&total_span);
+        dbg!(iter.source_to_str(&total_span));
+        let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), &row_string, total_span.span.lo, &iter);
+        dbg!(sub_iter.source_to_str(&total_span));
+        assert_eq!(sub_iter.peek(), Some('#'));
+        assert_eq!(
+            self.get_some_token(&mut sub_iter, false).0.ty,
+            MacroTokenType::Operator(Operator::Macro));
+        self.flush_whitespace(&mut sub_iter);
         let (ty, _) = self.read_identifier_raw(&mut sub_iter);
         let macro_type = match ty.as_ref() {
             "if" => MacroType::If,
@@ -526,17 +557,16 @@ where
         while sub_iter.peek().is_some() {
             if let Some(token) = self.get_token(sub_iter, false).0 {
                 if token.get_identifier_str() == Some("defined".to_string()) {
-                    let next = self.get_token(sub_iter, false).0.unwrap();
+                    let next = self.get_some_token(sub_iter, false).0;
                     let (ident, source) = if next.ty == MacroTokenType::Punctuation(Punctuation::OpenParen) {
-                        let ident_token = self.get_token(sub_iter, false).0.unwrap();
+                        let ident_token = self.get_some_token(sub_iter, false).0;
                         let tmp_ident = ident_token.get_identifier_str().unwrap().to_string();
-                        let close_paren = self.get_token(sub_iter, false).0.unwrap().ty;
+                        let close_paren = self.get_some_token(sub_iter, false).0.ty;
                         assert!(close_paren == MacroTokenType::Punctuation(Punctuation::CloseParen));
                         (tmp_ident, ident_token.source)
                     } else {
-                        let ident_token = self.get_token(sub_iter, false).0.unwrap();
-                        let tmp_ident = ident_token.get_identifier_str().unwrap().to_string();
-                        (tmp_ident, ident_token.source)
+                        let tmp_ident = next.get_identifier_str().unwrap().to_string();
+                        (tmp_ident, next.source)
                     };
                     let tok = if self.symbols.contains_key(&ident) {
                         MacroToken {
@@ -568,6 +598,36 @@ where
         eval_expression(&tokens)
     }
 
+    fn handle_if(&mut self, iter: &mut FragmentIterator, sub_iter: &mut FragmentIterator) {
+        let value = self.evaluate_if(sub_iter);
+
+        self.if_stack.push(Some(value));
+
+        if !value {
+            self.skip_lines_to_else_or_endif(iter, true);
+        }
+    }
+
+    fn handle_elif(&mut self, iter: &mut FragmentIterator, sub_iter: &mut FragmentIterator) {
+        let popped = self.if_stack.pop();
+        match popped {
+            Some(Some(false)) => {
+                let value = self.evaluate_if(sub_iter);
+                self.if_stack.push(Some(value));
+
+                if value {
+                    self.skip_lines_to_else_or_endif(iter, true);
+                }
+            }
+            Some(Some(true)) => {
+                self.if_stack.push(Some(true));
+                self.skip_lines_to_else_or_endif(iter, false);
+            }
+            Some(None) => panic!("Cannot handle #elif after #else"),
+            None => panic!("Spurious #else")
+        }
+    }
+
     fn handle_ifdef(&mut self, iter: &mut FragmentIterator, sub_iter: &mut FragmentIterator, is_ifndef: bool) {
         loop {
             match sub_iter.peek() {
@@ -590,23 +650,33 @@ where
 
     fn skip_lines_to_else_or_endif(&mut self, iter: &mut FragmentIterator, accept_else: bool) {
         while iter.peek().is_some() {
-            let (next_row, _) = self.preprocess_get_macro_line(iter);
-            let mut sub_iter = FragmentIterator::new("", &next_row);
-            let tok = self.get_token(&mut sub_iter, false).0;
-            if tok.map(|t| t.ty) == Some(MacroTokenType::Operator(Operator::Macro)) {
-                match (accept_else, self.get_macro_type(&mut sub_iter).0) {
-                    (true, MacroType::Else) => {
-                        self.handle_else(iter);
-                        return;
-                    }
-                    (false, MacroType::Else) => panic!(),
-                    (_, MacroType::Endif) => {
-                        self.handle_endif();
-                        return;
-                    }
-                    _ => {}
-                };
-            }
+            let (next_row, line_src) = self.preprocess_get_macro_line(iter);
+            dbg!(iter.source_to_str(&line_src));
+            let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), &next_row, line_src.span.lo, &iter);
+            dbg!(sub_iter.source_to_str(&line_src));
+            match sub_iter.peek() {
+                Some('#') => {
+                    match (accept_else, self.get_macro_type(&mut sub_iter).0) {
+                        (true, MacroType::Elif) => {
+                            self.handle_elif(&mut sub_iter, iter);
+                            return;
+                        }
+                        (true, MacroType::Else) => {
+                            self.handle_else(iter);
+                            return;
+                        }
+                        (false, MacroType::Else) => panic!(),
+                        (_, MacroType::Endif) => {
+                            self.handle_endif();
+                            return;
+                        }
+                        _ => {}
+                    };
+                }
+                _ => {
+                    self.get_token(&mut sub_iter, false);
+                }
+            };
         }
         if iter.peek().is_none() {
             panic!("Unexpected eof");
@@ -731,6 +801,7 @@ where
                         &t.source,
                         &body,
                         used_names,
+                        iter.2
                     );
 
                     let mut rest = iter.0.split_off(iter.1 + 1);
@@ -828,6 +899,7 @@ where
         ident_span: &Source,
         body: &Vec<MacroToken>,
         used_names: &HashSet<String>,
+        frag_iter: &FragmentIterator
     ) -> Vec<(MacroToken, HashSet<String>)> {
         let mut more_used_names = used_names.clone();
         more_used_names.insert(ident.to_string());
@@ -843,7 +915,7 @@ where
                 {
                     iter.next(); // MacroPaste
                     let mut next = iter.next().unwrap().clone();
-                    combine_tokens(&t, &t.source, &next)
+                    combine_tokens(&t, &t.source, &next, frag_iter)
                 } else {
                     t
                 }
@@ -974,7 +1046,7 @@ where
             {
                 let map = res[i].1.clone();
                 let mut replacement =
-                    combine_tokens(&res[i].0, &res[i + 1].0.source, &res[i + 2].0);
+                    combine_tokens(&res[i].0, &res[i + 1].0.source, &res[i + 2].0, &iter.2);
                 replacement.respan_back(&total_span);
                 res.splice(i..i + 3, std::iter::once((replacement, map)))
                     .last();
@@ -1099,7 +1171,7 @@ where
     }
 }
 
-fn combine_tokens(left: &MacroToken, source: &Source, right: &MacroToken) -> MacroToken {
+fn combine_tokens(left: &MacroToken, source: &Source, right: &MacroToken, iter: &FragmentIterator) -> MacroToken {
     let left_str = left.get_identifier_str().unwrap();
     let right_str = right.get_identifier_str().unwrap();
 
@@ -1109,7 +1181,7 @@ fn combine_tokens(left: &MacroToken, source: &Source, right: &MacroToken) -> Mac
 
     // This part feels like a bit of an overkill to parse a single token...
     let combined = format!("{}{}", left_str, right_str);
-    let mut tmp_iter = FragmentIterator::new("", &combined);
+    let mut tmp_iter = FragmentIterator::with_offset(&iter.current_filename(), &combined, total_source.span.lo, iter);
     let parsed_token = MacroContext {
         get_file: unreachable_file_open,
         if_stack: Vec::new(),
@@ -1126,6 +1198,6 @@ fn combine_tokens(left: &MacroToken, source: &Source, right: &MacroToken) -> Mac
     }
 }
 
-fn unreachable_file_open(_: bool, _: String, _: String) -> String {
+fn unreachable_file_open(_: bool, _: String, _: String) -> (String, String) {
     unreachable!()
 }

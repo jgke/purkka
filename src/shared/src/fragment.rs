@@ -194,11 +194,18 @@ impl Drop for FragmentIterator {
 impl FragmentIterator {
     /// Initialize the iterator.
     pub fn new(filename: &str, content: &str) -> FragmentIterator {
-        FragmentIterator::with_offset(filename, content, 0)
+        FragmentIterator::_with_offset(filename, content, 0, HashMap::new())
     }
 
     /// Initialize the iterator with a predetermined offset.
-    pub fn with_offset(filename: &str, content: &str, offset: usize) -> FragmentIterator {
+    pub fn with_offset(filename: &str, content: &str, offset: usize,
+                       parent: &FragmentIterator) -> FragmentIterator {
+        FragmentIterator::_with_offset(filename, content, offset, parent.contents.clone())
+    }
+
+    /// Initialize the iterator with a predetermined offset.
+    fn _with_offset(filename: &str, content: &str, offset: usize,
+                       mut contents: HashMap<String, String>) -> FragmentIterator {
         let mut interner = StringInterner { strs: Vec::new() };
         let static_content = interner.intern_str(content);
         let mut fragments = Vec::new();
@@ -206,8 +213,9 @@ impl FragmentIterator {
             content: static_content,
             offset: offset,
         });
-        let mut contents = HashMap::new();
-        contents.insert(filename.to_string(), content.to_string());
+        if !contents.contains_key(filename) {
+            contents.insert(filename.to_string(), content.to_string());
+        }
         let iter = static_content.char_indices();
         FragmentIterator {
             fragments,
@@ -448,11 +456,15 @@ impl FragmentIterator {
         }
     }
 
-    /// Get the user-readable source string for a source recursively.
+    /// Get the user-readable source string for a source recursively. This panics frequently if
+    /// given sources from a different iterator, or if self is made using `with_offset`.
     pub fn source_to_str(&self, source: &Source) -> String {
         let mut lines: Vec<(String, (&str, usize, usize))> = Vec::new();
         let mut out = "".to_string();
         let s = &self.contents[&source.filename];
+        //dbg!(s.len());
+        //dbg!(s);
+        //dbg!(&source.filename);
         out.push_str(s[source.span.lo..=source.span.hi].trim());
         lines.push((
             format!("{}", s[source.span.lo..=source.span.hi].trim()),
