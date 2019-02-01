@@ -255,13 +255,20 @@ pub static PRECEDENCE: &[(usize, &Operator)] = &[
 ];
 
 // return (precedence, is-right-to-left)
-pub fn get_precedence(punc: &Operator) -> usize {
+pub fn get_precedence(op: &Operator) -> usize {
     for (precedence, ty) in PRECEDENCE {
-        if *ty == punc {
+        if *ty == op {
             return *precedence;
         }
     }
     panic!();
+}
+
+pub fn is_left_associative(op: &Operator) -> bool {
+    match op {
+        Terniary | TerniaryAlternative => false,
+        _ => true
+    }
 }
 
 pub static PUNCTUATION: &'static [(&'static str, &'static Punctuation)] = &[
@@ -272,8 +279,6 @@ pub static PUNCTUATION: &'static [(&'static str, &'static Punctuation)] = &[
     ("{", &Punctuation::OpenBrace),
     ("}", &Punctuation::CloseBrace),
     (",", &Punctuation::Comma),
-    (":", &Punctuation::Colon),
-    ("=", &Punctuation::Assign),
     (";", &Punctuation::Semicolon),
     ("...", &Punctuation::Varargs),
     //("#", &Punctuation::Macro)

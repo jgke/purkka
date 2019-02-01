@@ -1,6 +1,6 @@
 use macrotoken::{MacroToken, MacroTokenType};
 use tokentype;
-use tokentype::Operator;
+use tokentype::{Operator};
 use std::str::FromStr;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -39,27 +39,16 @@ fn const_expr_token_from_macro(ty: &MacroTokenType) -> ConstExprToken {
     match ty {
         MacroTokenType::Identifier(_) => Number(1),
         MacroTokenType::Number(num) => Number(parse_number(num)),
-        MacroTokenType::StringLiteral(num) => panic!(),
+        MacroTokenType::StringLiteral(_) => panic!(),
         MacroTokenType::Operator(op) => Op(*op),
         MacroTokenType::Punctuation(tokentype::Punctuation::OpenParen) => Paren(OpenParen),
         MacroTokenType::Punctuation(tokentype::Punctuation::CloseParen) => Paren(CloseParen),
-        MacroTokenType::Punctuation(_) => panic!(),
-        MacroTokenType::Other(_) => panic!(),
+        MacroTokenType::Punctuation(_) => panic!("Invalid character in expression: {:?}", ty),
+        MacroTokenType::Other(_) => panic!("Invalid character in expression: {:?}", ty),
     }
 }
 
-fn op_one_bool(operand: i64, func: impl Fn(i64) -> bool) -> i64 {
-    if func(operand) { 1 } else {0}
-}
-
-fn op_two_id(left: i64, right: i64, func: impl Fn(i64, i64) -> bool) -> i64 {
-    if func(left, right) { 1 } else {0}
-}
-
-fn op_two_bool(left: i64, right: i64, func: impl Fn(i64, i64) -> bool) -> i64 {
-    if func(left, right) { 1 } else {0}
-}
-
+// int -> bool
 macro_rules! expr1b {
     ($stack:ident, $func:expr) => {{
         let right = $stack.pop().unwrap();
@@ -70,6 +59,7 @@ macro_rules! expr1b {
     }}
 }
 
+// int -> int
 macro_rules! expr1i {
     ($stack:ident, $func:expr) => {{
         let right = $stack.pop().unwrap();
@@ -80,6 +70,7 @@ macro_rules! expr1i {
     }}
 }
 
+// (int, int) -> bool
 macro_rules! expr2b {
     ($stack:ident, $func:expr) => {{
         let right = $stack.pop().unwrap();
@@ -89,6 +80,7 @@ macro_rules! expr2b {
     }}
 }
 
+// (int, int) -> int
 macro_rules! expr2i {
     ($stack:ident, $func:expr) => {{
         let right = $stack.pop().unwrap();
@@ -98,9 +90,12 @@ macro_rules! expr2i {
     }}
 }
 
-fn eval_expression_postfix(expr: Vec<ConstExprToken>, index: &mut usize) -> i64 {
+fn eval_expression_postfix(expr: Vec<ConstExprToken>) -> i64 {
+    dbg!(&expr);
     let mut stack: Vec<i64> = Vec::new();
-    for tok in expr {
+    let mut iter = expr.into_iter().peekable();
+    while iter.peek().is_some() {
+        let tok = iter.next().unwrap();
         match tok {
             Number(t) => stack.push(t),
             // unary
@@ -121,19 +116,31 @@ fn eval_expression_postfix(expr: Vec<ConstExprToken>, index: &mut usize) -> i64 
             Op(Operator::LessThan) => expr2b!(stack, |l, r| l < r),
             Op(Operator::MoreEqThan) => expr2b!(stack, |l, r| l >= r),
             Op(Operator::LessEqThan) => expr2b!(stack, |l, r| l <= r),
+            Op(Operator::Equals) => expr2b!(stack, |l, r| l == r),
 
             // numerical
             Op(Operator::Plus) => expr2i!(stack, |l, r| l + r),
-            Op(Operator::Minus) => expr2i!(stack, |l, r| l + r),
+            Op(Operator::Minus) => expr2i!(stack, |l, r| l - r),
             Op(Operator::Mod) => expr2i!(stack, |l, r| l % r),
             Op(Operator::Times) => expr2i!(stack, |l, r| l * r),
             Op(Operator::Divide) => expr2i!(stack, |l, r| l / r),
 
             // ternary
-            Op(Operator::Terniary) => unimplemented!(),
-            Op(Operator::TerniaryAlternative) => unimplemented!(),
+            Op(Operator::Terniary) => panic!(),
+            Op(Operator::TerniaryAlternative) => {
+                assert_eq!(iter.next(), Some(Op(Operator::Terniary)));
+                dbg!(&stack);
+                let right = stack.pop().unwrap();
+                let left = stack.pop().unwrap();
+                let condition = stack.pop().unwrap();
+                if condition == 0 {
+                    stack.push(left);
+                } else {
+                    stack.push(right);
+                }
+            },
 
-            Op(_) => panic!(),
+            Op(op) => panic!("Unsupported operator in macro expression: {:?}", op),
 
             Paren(_) => unreachable!()
         }
@@ -173,8 +180,13 @@ fn shunt(expr: &Vec<ConstExprToken>) -> Vec<ConstExprToken> {
                         Some(Paren(OpenParen)) => break,
                         None => break,
                         Some(Op(stack_op)) => {
+                            /*
+        while ((there is an operator at the top of the operator stack with greater precedence)
+               or (the operator at the top of the operator stack has equal precedence and is left associative))
+              :
+                             */
                             let stack_op_prec = tokentype::get_precedence(&stack_op);
-                            if stack_op_prec < op_prec {
+                            if !(stack_op_prec < op_prec || (stack_op_prec == op_prec && tokentype::is_left_associative(&stack_op))) {
                                 break;
                             }
                         }
@@ -214,7 +226,99 @@ pub fn eval_expression(expr: &Vec<MacroToken>) -> bool {
     assert!(expr.len() > 0);
     let tokens: Vec<ConstExprToken> = expr.iter().map(|t| const_expr_token_from_macro(&t.ty)).collect();
     let shunted = shunt(&tokens);
-    let result = eval_expression_postfix(shunted, &mut 0);
+    let result = eval_expression_postfix(shunted);
 
     result != 0
+}
+
+#[test]
+fn shunt_const() {
+    assert_eq!(
+        shunt(&vec![Number(0)]),
+        vec![Number(0)]
+        );
+}
+
+#[test]
+fn shunt_plus() {
+    assert_eq!(
+        shunt(&vec![Number(0), Op(Operator::Plus), Number(1), Op(Operator::Plus), Number(2)]),
+        vec![Number(0), Number(1), Op(Operator::Plus), Number(2), Op(Operator::Plus)],
+        );
+}
+
+#[test]
+fn shunt_ternary() {
+    assert_eq!(
+        shunt(&vec![Number(0), Op(Operator::Plus), Number(0),
+            Op(Operator::Terniary), Number(1), Op(Operator::Plus), Number(2),
+            Op(Operator::TerniaryAlternative), Number(3), Op(Operator::Minus), Number(4)]),
+            vec![
+            Number(0), Number(0), Op(Operator::Plus),
+            Number(1), Number(2), Op(Operator::Plus),
+            Number(3), Number(4), Op(Operator::Minus),
+            Op(Operator::TerniaryAlternative), Op(Operator::Terniary)
+            ],
+        );
+}
+
+
+#[test]
+fn eval_ternary() {
+    assert_eq!(
+        eval_expression_postfix(shunt(&vec![Number(0), Op(Operator::Plus), Number(1),
+            Op(Operator::Terniary), Number(1), Op(Operator::Plus), Number(2),
+            Op(Operator::TerniaryAlternative), Number(3), Op(Operator::Minus), Number(4)])),
+            -1
+        );
+}
+
+// testing utils
+
+#[cfg(test)]
+use tokentype::OPERATORS;
+
+#[cfg(test)]
+fn get_op(op: &str) -> Option<Operator> {
+    for (s, operator) in OPERATORS {
+        if s == &op {
+            return Some(**operator)
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+fn get_paren(paren: &str) -> Option<Paren> {
+    match paren {
+        "(" => Some(OpenParen),
+        ")" => Some(CloseParen),
+        _ => None
+    }
+}
+
+#[cfg(test)]
+fn to_token(s: &str) -> ConstExprToken {
+    get_op(s).map(|t| Op(t))
+        .or_else(|| get_paren(s).map(|t| Paren(t)))
+        .unwrap_or_else(|| Number(parse_number(s)))
+}
+
+#[cfg(test)]
+fn check(expr: &str, expected: i64) {
+    let vec: Vec<ConstExprToken> = expr.split(' ').map(to_token).collect();
+    assert_eq!(eval_expression_postfix(shunt(&vec)), expected);
+}
+
+#[test]
+fn common_operations() {
+    check("1 + 2 + 3", 6);
+    check("1 + 2 - 3", 0);
+    check("1 - 3 + 2", 0);
+    check("1 * 3 + 2", 5);
+    check("1 + 3 * 2", 7);
+    check("6 / 3 + 2", 4);
+    check("6 / 4 + 2", 3);
+    check("0 ? 1 : 2", 1);
+    check("1 ? 1 : 2", 2);
 }
