@@ -801,14 +801,78 @@ fn if_1_gt_2() {
 
 #[test]
 fn if_defined() {
-    process("#define foo\n#if defined ( foo ) \nbar\n#endif", vec![
-            mt("foo.c", 33, 35, MacroTokenType::Identifier("bar".to_string()))
+    process("#define foo\n#if defined ( foo )\nbar\n#endif", vec![
+            mt("foo.c", 32, 34, MacroTokenType::Identifier("bar".to_string()))
     ]);
     process("#if defined foo\nfoo\n#endif", vec![
     ]);
     process("#if defined(foo)\nfoo\n#endif", vec![
     ]);
-    process("#if defined ( foo ) \nfoo\n#endif", vec![
+    process("#if defined ( foo )\nfoo\n#endif", vec![
+    ]);
+}
+
+#[test]
+fn if_nested() {
+    process("
+#if defined FOO
+# if defined BAR
+  bar
+# elif defined BAZ
+  baz
+# else
+  foo
+# endif
+#endif
+",
+    vec![
+    ]);
+    process("
+#define FOO
+#define BAR
+#if defined FOO
+# if defined BAR
+  bar
+# elif defined BAZ
+  baz
+# else
+  foo
+# endif
+#endif
+",
+    vec![
+            mt("foo.c", 60, 62, MacroTokenType::Identifier("bar".to_string()))
+    ]);
+    process("
+#define FOO
+#define BAZ
+#if defined FOO
+# if defined BAR
+  bar
+# elif defined BAZ
+  baz
+# else
+  foo
+# endif
+#endif
+",
+    vec![
+            mt("foo.c", 85, 87, MacroTokenType::Identifier("baz".to_string()))
+    ]);
+    process("
+#define FOO
+#if defined FOO
+# if defined BAR
+  bar
+# elif defined BAZ
+  baz
+# else
+  foo
+# endif
+#endif
+",
+    vec![
+            mt("foo.c", 86, 88, MacroTokenType::Identifier("foo".to_string()))
     ]);
 }
 

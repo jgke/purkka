@@ -164,7 +164,7 @@ pub struct FragmentIterator {
     /// Can be reset with next_new_span().
     current_source: Source,
     /// Iterator for the current fragments.
-    iter: CharIndices<'static>,
+    pub iter: CharIndices<'static>,
     /// All inserted files
     contents: HashMap<String, String>,
     /// Hack: list of interned strings. Fragments actually point to a leaked Box<String>.
@@ -225,8 +225,8 @@ impl FragmentIterator {
             current_source: Source {
                 filename: filename.to_string(),
                 span: Span {
-                    lo: 0,
-                    hi: 0,
+                    lo: offset,
+                    hi: offset,
                     source: None,
                 },
             },
@@ -235,24 +235,14 @@ impl FragmentIterator {
     }
 
     /// Get next char, resetting the current span to the char's location.
-    /// Possibly advances to the next fragment, if the current fragment is empty.
+    /// Does not advance to the next fragment, even if the current fragment is empty.
     pub fn next_new_span(&mut self) -> Option<char> {
         if let Some((s, c)) = self.iter.next() {
             self.current_source.span.lo = s + self.current_fragment().offset;
             self.current_source.span.hi = s + self.current_fragment().offset;
             Some(c)
         } else {
-            if self.current_fragment + 1 < self.fragments.len() {
-                self.advance_fragment();
-
-                // We want to remove a nested span here.
-                let mut nested: Option<Box<Source>> = None;
-                std::mem::swap(&mut self.current_source.span.source, &mut nested);
-                self.current_source = *nested.unwrap();
-                self.next_new_span()
-            } else {
-                None
-            }
+            None
         }
     }
 
@@ -278,14 +268,16 @@ impl FragmentIterator {
         self.current_fragment().content = cur_frag_content.0;
 
         // Add the middle (new) frag
-        self.fragments.push(frag);
+        self.fragments.insert(self.current_fragment + 1, frag);
 
         // Add the right side (rest of original frag)
         rest_frag.content = cur_frag_content.1;
         rest_frag.offset = split_offset;
 
-        self.fragments.push(rest_frag);
+        self.fragments.insert(self.current_fragment + 2, rest_frag);
         self.advance_fragment();
+
+        let old_source = self.current_source.clone();
 
         // We want to nest the span here.
         self.current_source = Source {
@@ -293,7 +285,7 @@ impl FragmentIterator {
             span: Span {
                 lo: 0,
                 hi: 0,
-                source: Some(Box::new(self.current_source.clone())),
+                source: Some(Box::new(old_source)),
             },
         };
 
@@ -421,6 +413,11 @@ impl FragmentIterator {
         out
     }
 
+    /// Get the current span with history.
+    pub fn full_current_source(&self) -> Source {
+        self.current_source.clone()
+    }
+
     /// Get the current filename.
     pub fn current_filename(&self) -> String {
         self.current_source.filename.clone()
@@ -462,9 +459,6 @@ impl FragmentIterator {
         let mut lines: Vec<(String, (&str, usize, usize))> = Vec::new();
         let mut out = "".to_string();
         let s = &self.contents[&source.filename];
-        //dbg!(s.len());
-        //dbg!(s);
-        //dbg!(&source.filename);
         out.push_str(s[source.span.lo..=source.span.hi].trim());
         lines.push((
             format!("{}", s[source.span.lo..=source.span.hi].trim()),
@@ -497,6 +491,12 @@ impl FragmentIterator {
     pub fn top_source_to_str(&self, source: &Source) -> String {
         let s = &self.contents[&source.filename];
         s[source.span.lo..=source.span.hi].trim().to_string()
+    }
+
+    /// Get the current content
+    pub fn get_current_content(&self) -> String {
+        let s = &self.contents[&self.current_source().filename];
+        s.to_string()
     }
 }
 

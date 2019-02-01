@@ -194,9 +194,9 @@ where
                 None => (None, parse_macro),
             },
         };
-        //dbg!(&token);
         if token.0.is_some() {
-            println!("{}", iter.source_to_str(&token.0.as_ref().unwrap().source));
+            //dbg!(&token.0.as_ref().unwrap().source);
+            //println!("{}", iter.source_to_str(&token.0.as_ref().unwrap().source));
         }
         token
     }
@@ -523,10 +523,7 @@ where
 
     fn get_macro_type(&mut self, iter: &mut FragmentIterator) -> (MacroType, FragmentIterator, Source) {
         let (row_string, total_span) = self.preprocess_get_macro_line(iter);
-        dbg!(&total_span);
-        dbg!(iter.source_to_str(&total_span));
         let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), &row_string, total_span.span.lo, &iter);
-        dbg!(sub_iter.source_to_str(&total_span));
         assert_eq!(sub_iter.peek(), Some('#'));
         assert_eq!(
             self.get_some_token(&mut sub_iter, false).0.ty,
@@ -554,6 +551,7 @@ where
 
     fn evaluate_if(&mut self, sub_iter: &mut FragmentIterator) -> bool {
         let mut tokens = vec![];
+        dbg!(sub_iter.iter.as_str());
         while sub_iter.peek().is_some() {
             if let Some(token) = self.get_token(sub_iter, false).0 {
                 if token.get_identifier_str() == Some("defined".to_string()) {
@@ -610,18 +608,19 @@ where
 
     fn handle_elif(&mut self, iter: &mut FragmentIterator, sub_iter: &mut FragmentIterator) {
         let popped = self.if_stack.pop();
+        dbg!(popped);
         match popped {
             Some(Some(false)) => {
                 let value = self.evaluate_if(sub_iter);
                 self.if_stack.push(Some(value));
 
-                if value {
+                if !value {
                     self.skip_lines_to_else_or_endif(iter, true);
                 }
             }
             Some(Some(true)) => {
                 self.if_stack.push(Some(true));
-                self.skip_lines_to_else_or_endif(iter, false);
+                self.skip_lines_to_else_or_endif(iter, true);
             }
             Some(None) => panic!("Cannot handle #elif after #else"),
             None => panic!("Spurious #else")
@@ -649,33 +648,41 @@ where
     }
 
     fn skip_lines_to_else_or_endif(&mut self, iter: &mut FragmentIterator, accept_else: bool) {
+        let mut skip_to = 0;
         while iter.peek().is_some() {
             let (next_row, line_src) = self.preprocess_get_macro_line(iter);
-            dbg!(iter.source_to_str(&line_src));
+            dbg!(&next_row);
             let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), &next_row, line_src.span.lo, &iter);
-            dbg!(sub_iter.source_to_str(&line_src));
             match sub_iter.peek() {
                 Some('#') => {
-                    match (accept_else, self.get_macro_type(&mut sub_iter).0) {
-                        (true, MacroType::Elif) => {
-                            self.handle_elif(&mut sub_iter, iter);
+                    match (skip_to, accept_else, self.get_macro_type(&mut sub_iter)) {
+                        (0, true, (MacroType::Elif, mut sub_iter, _)) => {
+                            dbg!(sub_iter.iter.as_str());
+                            self.handle_elif(iter, &mut sub_iter);
                             return;
                         }
-                        (true, MacroType::Else) => {
+                        (0, true, (MacroType::Else, _, _)) => {
                             self.handle_else(iter);
                             return;
                         }
-                        (false, MacroType::Else) => panic!(),
-                        (_, MacroType::Endif) => {
+                        (0, false, (MacroType::Else, _, _)) => panic!(),
+                        (0, _, (MacroType::Endif, _, _)) => {
                             self.handle_endif();
                             return;
+                        }
+                        (_, _, (MacroType::If, _, _)) | (_, _, (MacroType::Ifdef, _, _)) | (_, _, (MacroType::Ifndef, _, _)) => {
+                            skip_to += 1;
+                        }
+                        (_, _, (MacroType::Endif, _, _)) => {
+                            skip_to -= 1;
                         }
                         _ => {}
                     };
                 }
-                _ => {
-                    self.get_token(&mut sub_iter, false);
-                }
+                _ => {}
+                //_ => {
+                //    self.get_token(&mut sub_iter, false);
+                //}
             };
         }
         if iter.peek().is_none() {

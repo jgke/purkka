@@ -211,6 +211,7 @@ fn shunt(expr: &Vec<ConstExprToken>) -> Vec<ConstExprToken> {
 }
 
 pub fn eval_expression(expr: &Vec<MacroToken>) -> bool {
+    assert!(expr.len() > 0);
     let tokens: Vec<ConstExprToken> = expr.iter().map(|t| const_expr_token_from_macro(&t.ty)).collect();
     let shunted = shunt(&tokens);
     let result = eval_expression_postfix(shunted, &mut 0);

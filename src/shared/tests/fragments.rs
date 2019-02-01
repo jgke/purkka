@@ -20,9 +20,11 @@ fn fragment_push() {
     assert_eq!(iter.next(), Some('a'));
     assert_eq!(iter.next(), Some('r'));
     assert_eq!(iter.next(), None);
+    assert_eq!(iter.advance_and_reset_span(), true);
     assert_eq!(iter.next_new_span(), Some('o'));
     assert_eq!(iter.next(), Some('o'));
     assert_eq!(iter.next(), None);
+    assert_eq!(iter.advance_and_reset_span(), false);
 }
 
 #[test]
