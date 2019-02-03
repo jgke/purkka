@@ -5,5 +5,6 @@ authors = ["Jaakko Hannikainen <jaakko.hannikainen@solita.fi>"]
 
 [dependencies]
 lalr = { path="../lalr" }
+lalr_runtime = { path="../lalr_runtime" }
 preprocessor = { path="../preprocessor" }
 shared = { path="../shared" }
