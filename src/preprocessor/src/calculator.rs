@@ -91,7 +91,6 @@ macro_rules! expr2i {
 }
 
 fn eval_expression_postfix(expr: Vec<ConstExprToken>) -> i64 {
-    dbg!(&expr);
     let mut stack: Vec<i64> = Vec::new();
     let mut iter = expr.into_iter().peekable();
     while iter.peek().is_some() {
@@ -129,7 +128,6 @@ fn eval_expression_postfix(expr: Vec<ConstExprToken>) -> i64 {
             Op(Operator::Terniary) => panic!(),
             Op(Operator::TerniaryAlternative) => {
                 assert_eq!(iter.next(), Some(Op(Operator::Terniary)));
-                dbg!(&stack);
                 let right = stack.pop().unwrap();
                 let left = stack.pop().unwrap();
                 let condition = stack.pop().unwrap();

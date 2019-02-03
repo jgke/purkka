@@ -874,6 +874,17 @@ fn if_nested() {
     vec![
             mt("foo.c", 86, 88, MacroTokenType::Identifier("foo".to_string()))
     ]);
+    process("
+#if defined FOO && defined BAR
+bar
+
+#else
+baz
+#endif
+",
+    vec![
+            mt("foo.c", 43, 45, MacroTokenType::Identifier("baz".to_string()))
+    ]);
 }
 
 // todo: test for eof after "#define foo" and "#define"

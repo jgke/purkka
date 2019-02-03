@@ -177,7 +177,8 @@ impl Iterator for FragmentIterator {
     /// Get next char in the current fragment.
     fn next(&mut self) -> Option<char> {
         if let Some((s, c)) = self.iter.next() {
-            self.current_source.span.hi = s + self.current_fragment().offset;
+            let hi = s + self.current_fragment().offset;
+            self.current_source.span.hi = hi;
             Some(c)
         } else {
             None
@@ -238,8 +239,9 @@ impl FragmentIterator {
     /// Does not advance to the next fragment, even if the current fragment is empty.
     pub fn next_new_span(&mut self) -> Option<char> {
         if let Some((s, c)) = self.iter.next() {
-            self.current_source.span.lo = s + self.current_fragment().offset;
-            self.current_source.span.hi = s + self.current_fragment().offset;
+            let pos = s + self.current_fragment().offset;
+            self.current_source.span.lo = pos;
+            self.current_source.span.hi = pos;
             Some(c)
         } else {
             None
@@ -261,7 +263,7 @@ impl FragmentIterator {
         // XXX: We want to split this with an inclusive range, and split_at is exclusive for the
         // first half. As this practically happens at newlines, +1 should be next character, so
         // this shouldn't matter...
-        let split_offset = self.current_source.span.hi + 1;
+        let split_offset = self.current_source.span.hi + 1 - self.current_fragment().offset;
         let cur_frag_content = rest_frag.content.split_at(split_offset);
 
         // Update the current frag's content to only include the left side

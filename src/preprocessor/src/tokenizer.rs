@@ -42,7 +42,10 @@ enum MacroType {
     Error,
 
     // common extension
-    Warning
+    Warning,
+
+    // Unknown macro
+    Unknown
 }
 
 /// Macro context.
@@ -194,10 +197,6 @@ where
                 None => (None, parse_macro),
             },
         };
-        if token.0.is_some() {
-            //dbg!(&token.0.as_ref().unwrap().source);
-            //println!("{}", iter.source_to_str(&token.0.as_ref().unwrap().source));
-        }
         token
     }
 
@@ -216,6 +215,11 @@ where
     }
 
     fn preprocess_get_macro_line(&self, iter: &mut FragmentIterator) -> (String, Source) {
+        if iter.peek() == Some('\n') {
+            let val = iter.next_new_span().unwrap();
+            let source = iter.current_source();
+            return (val.to_string(), source);
+        }
         iter.collect_while_flatmap(|c, i| match c {
             '\\' => {
                 i.next();
@@ -544,14 +548,13 @@ where
             "pragma" => MacroType::Pragma,
             "error" => MacroType::Error,
             "warning" => MacroType::Warning,
-            _ => panic!("Unknown macro: {}", ty)
+            _ => MacroType::Unknown
         };
         (macro_type, sub_iter, total_span)
     }
 
     fn evaluate_if(&mut self, sub_iter: &mut FragmentIterator) -> bool {
         let mut tokens = vec![];
-        dbg!(sub_iter.iter.as_str());
         while sub_iter.peek().is_some() {
             if let Some(token) = self.get_token(sub_iter, false).0 {
                 if token.get_identifier_str() == Some("defined".to_string()) {
@@ -582,7 +585,8 @@ where
                     // Undefined behaviour: defined() appearing as the result of an expansion.
                     // Resolution: pass it forward as an identifier, for simplicity. GCC resolves
                     // it 'normally'. Probably change later to follow GCC's example.
-                    tokens.extend(self.maybe_expand_identifier(token, sub_iter).into_iter())
+                    let expanded = self.maybe_expand_identifier(token, sub_iter);
+                    tokens.extend(expanded)
                 }
             }
         }
@@ -608,7 +612,6 @@ where
 
     fn handle_elif(&mut self, iter: &mut FragmentIterator, sub_iter: &mut FragmentIterator) {
         let popped = self.if_stack.pop();
-        dbg!(popped);
         match popped {
             Some(Some(false)) => {
                 let value = self.evaluate_if(sub_iter);
@@ -651,13 +654,11 @@ where
         let mut skip_to = 0;
         while iter.peek().is_some() {
             let (next_row, line_src) = self.preprocess_get_macro_line(iter);
-            dbg!(&next_row);
             let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), &next_row, line_src.span.lo, &iter);
             match sub_iter.peek() {
                 Some('#') => {
                     match (skip_to, accept_else, self.get_macro_type(&mut sub_iter)) {
                         (0, true, (MacroType::Elif, mut sub_iter, _)) => {
-                            dbg!(sub_iter.iter.as_str());
                             self.handle_elif(iter, &mut sub_iter);
                             return;
                         }
@@ -1188,7 +1189,7 @@ fn combine_tokens(left: &MacroToken, source: &Source, right: &MacroToken, iter: 
 
     // This part feels like a bit of an overkill to parse a single token...
     let combined = format!("{}{}", left_str, right_str);
-    let mut tmp_iter = FragmentIterator::with_offset(&iter.current_filename(), &combined, total_source.span.lo, iter);
+    let mut tmp_iter = FragmentIterator::new(&iter.current_filename(), &combined);
     let parsed_token = MacroContext {
         get_file: unreachable_file_open,
         if_stack: Vec::new(),
