@@ -13,7 +13,7 @@ use std::path;
 use macrotoken::MacroToken;
 use tokenizer::{MacroContext, ParseResult};
 
-static INCLUDE_PATH: &[&str] = &["/usr/local/include", "/usr/include"];
+static INCLUDE_PATH: &[&str] = &["/usr/local/include", "/usr/lib/gcc/x86_64-linux-gnu/7/include", "/usr/include"];
 
 pub fn preprocess<CB>(get_file: CB, filename: &str) -> ParseResult<Vec<MacroToken>>
 where

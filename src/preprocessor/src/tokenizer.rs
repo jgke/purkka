@@ -200,18 +200,16 @@ where
         token
     }
 
-    fn preprocess_flush_until(&self, until: &str, iter: &mut FragmentIterator) -> (String, Source) {
-        let mut out =
+    fn preprocess_flush_until(&self, until: &str, iter: &mut FragmentIterator) {
+        if !iter.iter.as_str().starts_with(until) {
             iter.collect_while_map(|c, i| if i.starts_with(until) { None } else { Some(c) });
+        }
         for _ in 0..until.len() {
             match iter.next() {
-                Some(c) => {
-                    out.0.push(c);
-                }
+                Some(_) => {}
                 None => panic!("Unexpected end of file"),
             }
         }
-        out
     }
 
     fn preprocess_get_macro_line(&self, iter: &mut FragmentIterator) -> (String, Source) {

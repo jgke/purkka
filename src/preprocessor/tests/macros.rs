@@ -206,7 +206,7 @@ fn period() {
 #[test]
 fn comments() {
     process(
-        "/* foo */ bar //baz \nqux // bax \\\nbux",
+        "/* foo */ bar //baz \nqux // bax \\\nbux \n/**/ asd",
         vec![
             mt(
                 "foo.c",
@@ -219,6 +219,12 @@ fn comments() {
                 21,
                 23,
                 MacroTokenType::Identifier("qux".to_string()),
+            ),
+            mt(
+                "foo.c",
+                44,
+                46,
+                MacroTokenType::Identifier("asd".to_string()),
             ),
         ],
     );
