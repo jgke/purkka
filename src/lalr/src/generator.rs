@@ -254,7 +254,7 @@ pub fn lr_parsing_table(
         let elapsed = now.duration_since(start);
         let items_per_millisecond: f64 = (count as f64) / (elapsed.as_millis() as f64);
         let to_go: f64 = (total - count) as f64;
-        
+
         println!("{} / {} ({:.1}s to go)", count, total, to_go / (items_per_millisecond * 1000.0));
         table.actions.push(HashMap::new());
 
@@ -383,8 +383,8 @@ pub fn compute_lalr(
     items(tm, &mut lr_items, &symbols);
     println!("Item set building done");
 
-    let mut lalr_items = Vec::new();
-    get_lalr_items(&mut lalr_items, &lr_items);
+    //let mut lalr_items = Vec::new();
+    //get_lalr_items(&mut lalr_items, &lr_items);
 
 
     //println!("LR(1) items:");
@@ -397,13 +397,13 @@ pub fn compute_lalr(
     //    println!("]");
     //}
 
-    let mut table = lr_parsing_table(tm, &lalr_items, &rule_names);
-    //let table = lr_parsing_table(tm,
-    //                             &lr_items.iter()
-    //                             .map(|x| (x.clone(), x.clone()))
-    //                             .collect(),
-    //                             &rule_names);
-    //
+    //let mut table = lr_parsing_table(tm, &lalr_items, &rule_names);
+    let table = lr_parsing_table(tm,
+                                 &lr_items.iter()
+                                 .map(|x| (x.clone(), x.clone()))
+                                 .collect(),
+                                 &rule_names);
+    
 
     //let starting_rule = &tm.rules["S"].data[0].1[0].identifier;
     //for rule in &tm.rules[starting_rule].data {

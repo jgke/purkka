@@ -15,20 +15,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "kieli"
 version = "0.1.0"
 dependencies = [
- "lalr 0.1.0",
+ "parser 0.1.0",
  "preprocessor 0.1.0",
  "shared 0.1.0",
 ]
 
 [[package]]
 name = "lalr"
-version = "0.1.0"
-dependencies = [
- "lalr_runtime 0.1.0",
-]
-
-[[package]]
-name = "lalr_runtime"
 version = "0.1.0"
 
 [[package]]
@@ -49,6 +42,15 @@ dependencies = [
  "cfg-if 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.45 (registry+https://github.com/rust-lang/crates.io-index)",
  "version_check 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "parser"
+version = "0.1.0"
+dependencies = [
+ "lalr 0.1.0",
+ "preprocessor 0.1.0",
+ "shared 0.1.0",
 ]
 
 [[package]]

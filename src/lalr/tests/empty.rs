@@ -3,29 +3,36 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
-extern crate lalr_runtime;
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Constant(),
+    Plus(),
 }
 
 lalr! {
-    S -> A;
-    A -> #Token::Constant
-       | Epsilon;
+    S  -> A | B;
+    A  -> #Token::Constant
+        | Epsilon;
+    B  -> #Token::Plus Bb;
+    Bb -> #Token::Plus Bb
+        | Epsilon;
 }
 
 #[test]
 fn parse_empty() {
-    let tree_2 = driver(&mut [Token::Constant()].iter());
+    println!("1");
     assert_eq!(
-        tree_2,
+        driver(&mut [Token::Constant()].iter()),
         Some(S::A(S_A(A::Constant(A_Constant(Token::Constant())))))
     );
-    let tree = driver(&mut [].iter());
+    println!("2");
     assert_eq!(
-        tree,
+        driver(&mut [Token::Constant()].iter()),
+        Some(S::A(S_A(A::Constant(A_Constant(Token::Constant())))))
+    );
+    println!("3");
+    assert_eq!(
+        driver(&mut [].iter()),
         None
     );
 }

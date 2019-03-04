@@ -575,44 +575,66 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         name: &str,
         data: &Vec<(String, Vec<RuleData>)>,
     ) -> P<ast::Expr> {
+        dbg!(&name);
+        dbg!(&data.len());
         let bodies = data
             .iter()
             .enumerate()
             .map(|(subindex, (variant_name, ruledata))| {
-                self.cx.arm(
-                    self.span,
-                    vec![self.reduction_match_data(subindex, ruledata)],
-                    self.box_expr(self.cx.expr_call(
+                if ruledata.len() == 1 && ruledata[0].identifier == "Epsilon" {
+                    self.cx.arm(
                         self.span,
-                        self.cx.expr_path(self.cx.path(
-                            self.span,
-                            vec![self.cx.ident_of("_Data"), self.cx.ident_of(name)],
-                        )),
-                        vec![self.cx.expr_call(
+                        vec![self.cx.pat_wild(self.span)],
+                        self.box_expr(self.cx.expr_call(
                             self.span,
                             self.cx.expr_path(self.cx.path(
                                 self.span,
-                                vec![self.cx.ident_of(name), self.cx.ident_of(variant_name)],
+                                vec![self.cx.ident_of("_Data"), self.cx.ident_of("Epsilon")],
                             )),
                             vec![
-                        self.cx.expr_call(
-                            self.span,
-                            self.cx.expr_path(self.cx.path_ident(
+                                self.cx.expr_path(self.cx.path(
                                     self.span,
-                                    self.cx.ident_of(&format!("{}_{}", name, variant_name)))),
-                            ruledata.iter().enumerate()
-                            .map(|(i, data)|
-                                 self.box_or_star(
-                                     data.indirect,
-                                     self.cx.expr_ident(self.span,
-                                                        self.cx.ident_of(
-                                                            &format!("pat_{}", i)))))
-                            .collect())],
-                        )],
-                    )),
-                )
+                                    vec![self.cx.ident_of("Epsilon"), self.cx.ident_of("Epsilon")],
+                                )),
+                            ],
+                        ))
+                    )
+                } else {
+                    self.cx.arm(
+                        self.span,
+                        vec![self.reduction_match_data(subindex, ruledata)],
+                        self.box_expr(self.cx.expr_call(
+                            self.span,
+                            self.cx.expr_path(self.cx.path(
+                                self.span,
+                                vec![self.cx.ident_of("_Data"), self.cx.ident_of(name)],
+                            )),
+                            vec![self.cx.expr_call(
+                                self.span,
+                                self.cx.expr_path(self.cx.path(
+                                    self.span,
+                                    vec![self.cx.ident_of(name), self.cx.ident_of(variant_name)],
+                                )),
+                                vec![
+                            self.cx.expr_call(
+                                self.span,
+                                self.cx.expr_path(self.cx.path_ident(
+                                        self.span,
+                                        self.cx.ident_of(&format!("{}_{}", name, variant_name)))),
+                                ruledata.iter().enumerate()
+                                .map(|(i, data)|
+                                     self.box_or_star(
+                                         data.indirect,
+                                         self.cx.expr_ident(self.span,
+                                                            self.cx.ident_of(
+                                                                &format!("pat_{}", i)))))
+                                .collect())],
+                            )],
+                        )),
+                    )
+                }
             });
-        let eps_chain = if name == "Epsilon" {
+        let eps_chain = if name == "Epsilon" || name == "$" {
             iter::once(
                 self.cx.arm(
                     self.span,
@@ -621,12 +643,12 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                         self.span,
                         self.cx.expr_path(self.cx.path(
                             self.span,
-                            vec![self.cx.ident_of("_Data"), self.cx.ident_of(name)],
+                            vec![self.cx.ident_of("_Data"), self.cx.ident_of("Epsilon")],
                         )),
-                        vec![                            
+                        vec![
                             self.cx.expr_path(self.cx.path(
                                 self.span,
-                                vec![self.cx.ident_of(name), self.cx.ident_of(name)],
+                                vec![self.cx.ident_of("Epsilon"), self.cx.ident_of("Epsilon")],
                             )),
                         ],
                     ))

@@ -3,8 +3,6 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
-extern crate lalr_runtime;
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Constant(),
@@ -37,7 +35,7 @@ lalr! {
 fn it_compiles() {}
 
 #[test]
-fn token_parsing() {
+fn parse_simple() {
     use Token::*;
 
     //let tree = driver(&mut [Times(), Times(), Plus(), Plus()].iter());
