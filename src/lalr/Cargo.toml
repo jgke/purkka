@@ -8,5 +8,3 @@ crate-type = ["dylib"]
 plugin = true
 
 [dependencies]
-lalr_runtime = { path="../lalr_runtime" }
-

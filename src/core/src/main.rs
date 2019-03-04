@@ -1,18 +1,10 @@
-#![feature(plugin, box_patterns)]
-#![plugin(lalr)]
-#![allow(dead_code)]
-#![allow(non_camel_case_types)]
-
-
-extern crate lalr_runtime;
+extern crate parser;
 extern crate preprocessor;
 extern crate shared;
 
 use std::env;
 
-mod parser;
 mod parsetree;
-mod token;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -23,9 +15,9 @@ fn main() {
         let result = preprocessor::preprocess_file(&args[1]);
         match result {
             Ok(output) => {
-                for token in output {
-                    println!("{:?}", token)
-                }
+                println!{"{:?}", output}
+                let parsed = parser::parse(output);
+                println!("{:?}", parsed);
             }
             Err(e) => panic!(e),
         }

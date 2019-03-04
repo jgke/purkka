@@ -144,7 +144,7 @@ where
         let next = iter.peek_n(2);
         let token = match next.as_ref() {
             "//" => {
-                self.preprocess_get_macro_line(iter);
+                self.preprocess_get_macro_line(iter, false);
                 (None, true)
             }
             "/*" => {
@@ -212,7 +212,7 @@ where
         }
     }
 
-    fn preprocess_get_macro_line(&self, iter: &mut FragmentIterator) -> (String, Source) {
+    fn preprocess_get_macro_line(&self, iter: &mut FragmentIterator, parse_comments: bool) -> (String, Source) {
         if iter.peek() == Some('\n') {
             let val = iter.next_new_span().unwrap();
             let source = iter.current_source();
@@ -232,7 +232,31 @@ where
                 None
             }
             '\t' => Some(vec![' ']),
-            c => Some(vec![c]),
+            c => {
+                if c == '/' && parse_comments {
+                    let next = i.peek_n(2);
+                    match next.as_ref() {
+                        "//" => {
+                            self.preprocess_get_macro_line(i, false);
+                            None
+                        }
+                        "/*" => {
+                            i.next(); // /
+                            i.next(); // *
+                            self.preprocess_flush_until("*/", i);
+                            if i.peek() == Some('\n') {
+                                i.next();
+                                None
+                            } else {
+                                Some(vec![])
+                            }
+                        }
+                        _ => Some(vec![c])
+                    }
+                } else {
+                    Some(vec![c])
+                }
+            }
         })
     }
 
@@ -524,7 +548,7 @@ where
     }
 
     fn get_macro_type(&mut self, iter: &mut FragmentIterator) -> (MacroType, FragmentIterator, Source) {
-        let (row_string, total_span) = self.preprocess_get_macro_line(iter);
+        let (row_string, total_span) = self.preprocess_get_macro_line(iter, false);
         let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), &row_string, total_span.span.lo, &iter);
         assert_eq!(sub_iter.peek(), Some('#'));
         assert_eq!(
@@ -648,10 +672,48 @@ where
         }
     }
 
+    fn flush_until_pound_or_newline(&self, iter: &mut FragmentIterator) {
+        'outer: loop {
+            match iter.peek() {
+                Some('#') | Some('\n') => return,
+                Some(' ') | Some('\t') => {
+                    iter.next();
+                    continue 'outer;
+                }
+                Some(_) => {
+                    loop {
+                        let next = iter.peek_n(2);
+                        match (next.as_ref(), iter.peek()) {
+                            ("//", _) => {
+                                self.preprocess_get_macro_line(iter, false);
+                                continue 'outer;
+                            }
+                            ("/*", _) => {
+                                iter.next(); // /
+                                iter.next(); // *
+                                self.preprocess_flush_until("*/", iter);
+                                continue 'outer;
+                            }
+                            (_, Some('\n')) => {
+                                iter.next();
+                                continue 'outer;
+                            }
+                            (_, None) => return,
+                            _ => {}
+                        };
+                        iter.next();
+                    }
+                }
+                None => return,
+            }
+        }
+    }
+
     fn skip_lines_to_else_or_endif(&mut self, iter: &mut FragmentIterator, accept_else: bool) {
         let mut skip_to = 0;
         while iter.peek().is_some() {
-            let (next_row, line_src) = self.preprocess_get_macro_line(iter);
+            self.flush_until_pound_or_newline(iter);
+            let (next_row, line_src) = self.preprocess_get_macro_line(iter, true);
             let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), &next_row, line_src.span.lo, &iter);
             match sub_iter.peek() {
                 Some('#') => {

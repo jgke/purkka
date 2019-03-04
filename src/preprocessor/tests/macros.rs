@@ -782,6 +782,31 @@ baz
 }
 
 #[test]
+fn trailing_comments() {
+    process("
+#ifdef FOO /*
+FOO */
+#endif /* FOO || BAR || BAZ
+FOO */",
+        vec![],
+    );
+    process("
+#if 0
+#define FOO /* Ignore */
+#endif",
+        vec![],
+    );
+    process("
+#ifndef FOO
+foo
+#endif /* sys/bar */",
+        vec![
+            mt("foo.c", 13, 15, MacroTokenType::Identifier("foo".to_string()))
+        ],
+    );
+}
+
+#[test]
 fn undef() {
     process("#undef FOO\n#define FOO\n#undef FOO", vec![]);
 }

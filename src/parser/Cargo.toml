@@ -1,9 +1,10 @@
 [package]
-name = "kieli"
+name = "parser"
 version = "0.1.0"
 authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 
 [dependencies]
-parser = { path="../parser" }
+lalr = { path="../lalr" }
+lalr_runtime = { path="../lalr_runtime" }
 preprocessor = { path="../preprocessor" }
 shared = { path="../shared" }

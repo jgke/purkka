@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::time::{Instant};
+use std::env;
 
 use types::{rule_name_compare, Action, Item, LRTable, RuleData, RuleTranslationMap};
 
@@ -13,7 +15,7 @@ fn first(
         return false;
     }
     cache.insert(rule_index.to_string());
-    let rule = &tm.rules[rule_index];
+    let rule = &tm.rules.get(rule_index).unwrap_or_else(|| panic!("No rule found for index {}", rule_index));
     let mut has_e = false;
     // E -> A | B
     for (i, _) in rule.data.iter().enumerate() {
@@ -73,7 +75,8 @@ pub fn closure(tm: &RuleTranslationMap, items: &mut HashSet<Item>) {
                 None => {}
                 Some(RuleData { terminal: true, .. }) => {}
                 Some(current_production) => {
-                    let inner_production = &tm.rules[&current_production.identifier];
+                    let inner_production = &tm.rules.get(&current_production.identifier)
+                        .unwrap_or_else(|| panic!("No rule found for {}", &current_production.identifier));
                     // for each production [B -> g] in G
                     for (i, _) in inner_production.data.iter().enumerate() {
                         let mut set = HashSet::new();
@@ -140,6 +143,7 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
         lookahead: "$".to_string(),
     });
     closure(&tm, &mut initial);
+    println!("Closure computation done");
     items.push(initial.clone());
     let mut added = Vec::new();
     let mut added_next: Vec<HashSet<Item>> = Vec::new();
@@ -147,6 +151,7 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
     let mut prevsize = 0;
 
     while prevsize < items.len() {
+        println!("Building items... {}", items.len());
         prevsize = items.len();
         for set in &added {
             for symbol in symbols {
@@ -168,10 +173,63 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct Core {
+    index: String,
+    subindex: usize,
+    position: usize
+}
+
+fn get_cores(items: &HashSet<Item>) -> HashSet<Core> {
+    items.iter().map(|item| Core {index: item.index.clone(), subindex: item.subindex, position: item.position}).collect()
+}
+
+pub fn get_lalr_items(lalr_items: &mut Vec<(HashSet<Item>, HashSet<Item>)>, lr_items: &Vec<HashSet<Item>>) {
+    // for each set a in lr_items:
+    //      set union := a
+    //      for each set b != a in lr_items:
+    //          if set of cores in a == set of cores in b
+    //              add b to union;
+    //              mark b as used;
+    //      else:
+    //          add a to lalr_items
+    let mut used_items = HashSet::new();
+    for (a, left) in lr_items.iter().enumerate() {
+        if used_items.contains(&a) {
+            continue;
+        }
+        used_items.insert(a);
+        let mut union = left.clone();
+        let left_cores = get_cores(left);
+        for (b, right) in lr_items.iter().enumerate() {
+            if used_items.contains(&b) {
+                continue;
+            }
+            let right_cores = get_cores(right);
+            if left_cores == right_cores {
+                used_items.insert(b);
+                for i in right.into_iter() {
+                    union.insert(i.clone());
+                }
+            }
+        }
+
+        lalr_items.push((left.clone(), union));
+    }
+}
+
 pub fn panic_insert(map: &mut HashMap<String, Action>, identifier: String, action: Action) {
     if let Some(act) = map.get(&identifier) {
         if act != &action {
-            panic!("Conflict, not LR: tried to replace {} with {}", act, action);
+            match (act, &action) {
+                (Action::Reduce(_, _, _), Action::Shift(_)) =>
+                    println!("Conflict, not LR: tried to replace {} with {}. Shift took precedence.", act, action),
+                (Action::Shift(_), Action::Reduce(_, _, _)) => {
+                    println!("Conflict, not LR: tried to replace {} with {}. Shift took precedence.", act, action);
+                    return;
+                },
+                _ => panic!("Conflict, not LR: tried to replace {} with {}", act, action),
+            }
         }
     }
     map.insert(identifier, action);
@@ -179,32 +237,56 @@ pub fn panic_insert(map: &mut HashMap<String, Action>, identifier: String, actio
 
 pub fn lr_parsing_table(
     tm: &RuleTranslationMap,
-    lr_items: &Vec<HashSet<Item>>,
+    lr_items: &Vec<(HashSet<Item>, HashSet<Item>)>,
     nonterminals: &Vec<String>,
 ) -> Box<LRTable> {
     let mut table = Box::new(LRTable { actions: vec![] });
+    println!("Generating LR parsing table");
 
-    for (i, ref items) in lr_items.iter().enumerate() {
+    let start = Instant::now();
+
+    let total = lr_items.iter().fold(0, |total, (_, ref items)| total + items.len() * items.len());
+    let mut count = 0;
+
+    for (i, (ref _left, ref items)) in lr_items.iter().enumerate() {
+        count += items.len() * items.len();
+        let now = Instant::now();
+        let elapsed = now.duration_since(start);
+        let items_per_millisecond: f64 = (count as f64) / (elapsed.as_millis() as f64);
+        let to_go: f64 = (total - count) as f64;
+        
+        println!("{} / {} ({:.1}s to go)", count, total, to_go / (items_per_millisecond * 1000.0));
         table.actions.push(HashMap::new());
 
-        for item in *items {
+        for item in items {
             let rule = &tm.rules[&item.index].data[item.subindex].1;
             if rule.len() > item.position {
                 if !rule[item.position].terminal {
+                    if rule[item.position].identifier == "Epsilon" {
+                        panic_insert(
+                            &mut table.actions[i],
+                            item.lookahead.to_string(),
+                            Action::Reduce(
+                                item.index.to_string(),
+                                item.subindex,
+                                0
+                            ),
+                        );
+                    }
                     continue;
                 }
                 let mut goto_items = HashSet::new();
                 goto(
                     &tm,
                     &mut goto_items,
-                    &items,
+                    items,
                     rule[item.position].full_path.to_string(),
-                );
-                if let Some(pos) = lr_items.iter().position(|ref x| x == &&goto_items) {
+                    );
+                if let Some(pos) = lr_items.iter().position(|(ref x, ref _y)| x == &goto_items) {
                     panic_insert(
                         &mut table.actions[i],
                         rule[item.position].full_path.to_string(),
-                        Action::Shift(pos),
+                        Action::Shift(pos)
                     );
                 }
             } else {
@@ -228,7 +310,7 @@ pub fn lr_parsing_table(
             let mut goto_items = HashSet::new();
             goto(&tm, &mut goto_items, &items, symbol.to_string());
 
-            if let Some(pos) = lr_items.iter().position(|ref x| x == &&goto_items) {
+            if let Some(pos) = lr_items.iter().position(|(ref x, ref _y)| x == &goto_items) {
                 table.actions[i].insert(symbol.to_string(), Action::Goto(pos));
             }
         }
@@ -241,9 +323,9 @@ pub fn compute_lalr(
     tm: &RuleTranslationMap,
     terminals: &HashSet<(String, String)>,
 ) -> Box<LRTable> {
-    //for item in parser_items {
-    //    println!("{}", item);
-    //}
+    println!("Computing lalr table");
+    //dbg!(tm);
+    //dbg!(terminals);
 
     //println!("\nFirst S:");
     //let mut set = HashSet::new();
@@ -299,6 +381,11 @@ pub fn compute_lalr(
         .collect();
     symbols.sort_unstable_by(rule_name_compare);
     items(tm, &mut lr_items, &symbols);
+    println!("Item set building done");
+
+    let mut lalr_items = Vec::new();
+    get_lalr_items(&mut lalr_items, &lr_items);
+
 
     //println!("LR(1) items:");
     //for set in &lr_items {
@@ -310,23 +397,39 @@ pub fn compute_lalr(
     //    println!("]");
     //}
 
-    let table = lr_parsing_table(tm, &lr_items, &rule_names);
-    println!("S: {}", tm.indices["S"]);
-    println!("$: {}", tm.indices["$"]);
-    print!("   ");
-    for symbol in terminal_names.iter().chain(rule_names.iter()) {
-        print!("{: >7.5}", &symbol);
-    }
-    println!("");
-    for (i, row) in table.actions.iter().enumerate() {
-        print!("{: <3}", i);
-        for symbol in terminal_full_names.iter().chain(rule_names.iter()) {
-            match row.get(symbol) {
-                Some(action) => print!("{}", action),
-                None => print!("{}", Action::Error),
-            }
+    let mut table = lr_parsing_table(tm, &lalr_items, &rule_names);
+    //let table = lr_parsing_table(tm,
+    //                             &lr_items.iter()
+    //                             .map(|x| (x.clone(), x.clone()))
+    //                             .collect(),
+    //                             &rule_names);
+    //
+
+    //let starting_rule = &tm.rules["S"].data[0].1[0].identifier;
+    //for rule in &tm.rules[starting_rule].data {
+    //    if rule.1.len() == 1 && rule.1[0].identifier == "Epsilon" {
+    //        table.actions[tm.indices["S"]].insert("$".to_string(), Action::Accept);
+    //    }
+    //}
+
+    if env::var("DEBUG_DUMP_TABLE").is_ok() {
+        println!("S: {}", tm.indices["S"]);
+        println!("$: {}", tm.indices["$"]);
+        print!("   ");
+        for symbol in terminal_names.iter().chain(rule_names.iter()) {
+            print!("{: >7.5}", &symbol);
         }
         println!("");
+        for (i, row) in table.actions.iter().enumerate() {
+            print!("{: <3}", i);
+            for symbol in terminal_full_names.iter().chain(rule_names.iter()) {
+                match row.get(symbol) {
+                    Some(action) => print!("{}", action),
+                    None => print!("{}", Action::Error),
+                }
+            }
+            println!("");
+        }
     }
 
     return table;

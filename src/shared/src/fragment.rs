@@ -36,6 +36,7 @@ use std::cmp::min;
 use std::collections::HashMap;
 use std::str::CharIndices;
 use traits::PeekableCharsExt;
+use std::env;
 
 /// This struct converts a &str to &'static str. Unsafe.
 struct StringInterner {
@@ -169,6 +170,8 @@ pub struct FragmentIterator {
     contents: HashMap<String, String>,
     /// Hack: list of interned strings. Fragments actually point to a leaked Box<String>.
     interner: StringInterner,
+    /// Debug output is enabled (env DEBUG_FRAGMENT is defined)
+    debug: bool,
 }
 
 impl Iterator for FragmentIterator {
@@ -179,6 +182,10 @@ impl Iterator for FragmentIterator {
         if let Some((s, c)) = self.iter.next() {
             let hi = s + self.current_fragment().offset;
             self.current_source.span.hi = hi;
+            if(self.debug) {
+                dbg!(self.current_source());
+                dbg!(c);
+            }
             Some(c)
         } else {
             None
@@ -218,6 +225,7 @@ impl FragmentIterator {
             contents.insert(filename.to_string(), content.to_string());
         }
         let iter = static_content.char_indices();
+        let debug = env::var("DEBUG_FRAGMENT").is_ok();
         FragmentIterator {
             fragments,
             current_fragment: 0,
@@ -232,6 +240,7 @@ impl FragmentIterator {
                 },
             },
             interner,
+            debug
         }
     }
 

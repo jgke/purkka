@@ -5,10 +5,8 @@
 
 extern crate lalr_runtime;
 
-use std::fmt;
-
 #[derive(Clone, Debug, PartialEq)]
-enum Token {
+pub enum Token {
     Constant(),
     Plus(),
     Minus(),
@@ -29,6 +27,11 @@ lalr! {
     PrimaryExpr -> #Token::Constant
                  | #Token::OpenParen &PlusExpr #Token::CloseParen;
 }
+//lalr! {
+//    S -> A;
+//    A -> C C;
+//    C -> #Token::Times C | #Token::Plus;
+//}
 
 #[test]
 fn it_compiles() {}
@@ -37,6 +40,7 @@ fn it_compiles() {}
 fn token_parsing() {
     use Token::*;
 
+    //let tree = driver(&mut [Times(), Times(), Plus(), Plus()].iter());
     let tree = driver(&mut [Constant(), Plus(), OpenParen(), Constant(), CloseParen()].iter());
     assert_eq!(
         tree,

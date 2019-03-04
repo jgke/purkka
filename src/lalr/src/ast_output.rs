@@ -1,3 +1,4 @@
+use rustc_target::spec::abi::Abi;
 use smallvec::SmallVec;
 use syntax::ast;
 use syntax::ext::base::{ExtCtxt, MacEager, MacResult};
@@ -5,7 +6,7 @@ use syntax::ext::build::AstBuilder;
 use syntax_pos::{FileName, Span};
 use syntax::parse;
 use syntax::ptr::P;
-use syntax::source_map::{respan, Spanned};
+use syntax::source_map::{dummy_spanned, respan, Spanned};
 use syntax_pos::symbol;
 
 use std::collections::HashSet;
@@ -42,7 +43,9 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                 ],
             ),
         );
-        self.cx.item(span, ident, vec![derive], kind)
+        let mut item = self.cx.item(span, ident, vec![derive], kind);
+        item.vis = respan(span.shrink_to_lo(), ast::VisibilityKind::Public);
+        item
     }
     fn item_enum_derive(
         &self,
@@ -213,7 +216,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                     self.cx.expr_usize(self.span, self.tm.indices[terminal]),
                                 )
                             })
-                            .chain(iter::once(self.wild_arm_fail("index_panic")))
+                            .chain(iter::once(self.wild_arm_unreachable()))
                             .collect(),
                     ),
                 ),
@@ -239,17 +242,40 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             ast::Mutability::Immutable,
         );
         let body = self.get_translation_fn_body();
-        self.cx.item_fn(
+        let span = self.span;
+        let name = self.cx.ident_of("_convert_token_to_index");
+        let inputs = vec![self.cx.arg(
             self.span,
-            self.cx.ident_of("_convert_token_to_index"),
-            vec![self.cx.arg(
+            self.cx.ident_of("token"),
+            self.cx.ty_option(ty_return),
+            )];
+        let output = ty_usize;
+
+        // #[allow(unreachable_patterns)]
+        let unreachable_patterns = self.cx.attribute(
+            self.span,
+            self.cx.meta_list(
                 self.span,
-                self.cx.ident_of("token"),
-                self.cx.ty_option(ty_return),
-            )],
-            ty_usize,
-            body,
-        )
+                symbol::Symbol::intern("allow"),
+                vec![
+                    self.cx
+                        .meta_list_item_word(self.span, symbol::Symbol::intern("unreachable_patterns")),
+                ],
+            ),
+        );
+
+        self.cx.item(span,
+                  name,
+                  vec![unreachable_patterns],
+                  ast::ItemKind::Fn(self.cx.fn_decl(inputs, ast::FunctionRetTy::Ty(output)),
+                              ast::FnHeader {
+                                  unsafety: ast::Unsafety::Normal,
+                                  asyncness: ast::IsAsync::NotAsync,
+                                  constness: dummy_spanned(ast::Constness::NotConst),
+                                  abi: Abi::Rust,
+                              },
+                              ast::Generics::default(),
+                              body))
     }
 
     pub fn get_translation_enum(&self) -> P<ast::Item> {
@@ -432,7 +458,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                 )),
                             )
                         })
-                        .chain(iter::once(self.wild_arm_fail("index_panic")))
+                        .chain(iter::once(self.wild_arm_unreachable()))
                         .collect(),
                 ),
                 // }
@@ -479,7 +505,6 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
 
     fn reduction_match_data(
         &self,
-        name: &str,
         subindex: usize,
         data: &Vec<RuleData>,
     ) -> P<ast::Pat> {
@@ -515,15 +540,18 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
          */
     }
     fn wild_arm_fail(&self, func: &str) -> ast::Arm {
-        self.cx.arm(
-            self.span,
-            vec![self.cx.pat_wild(self.span)],
-            self.cx.expr_call_global(
-                self.span,
-                vec![self.cx.ident_of("lalr_runtime"), self.cx.ident_of(func)],
-                vec![],
-            ),
-        )
+        let session = self.cx.parse_sess();
+        let filename = FileName::Custom("lalr_driver_fn_coerce_panic".to_string());
+        let unreachable_expr = format!("{{ panic!(\"{{}}, {{}} {{}}\", index, subindex, \"{}\") }}", func);
+        let expr = parse::new_parser_from_source_str(session, filename, unreachable_expr).parse_expr().unwrap();
+        self.cx.arm( self.span, vec![self.cx.pat_wild(self.span)], expr)
+    }
+    fn wild_arm_unreachable(&self) -> ast::Arm {
+        let session = self.cx.parse_sess();
+        let filename = FileName::Custom("lalr_driver_fn_unreachable".to_string());
+        let unreachable_expr = "{ unreachable!() }".to_string();
+        let expr = parse::new_parser_from_source_str(session, filename, unreachable_expr).parse_expr().unwrap();
+        self.cx.arm( self.span, vec![self.cx.pat_wild(self.span)], expr)
     }
     fn box_expr(&self, expr: P<ast::Expr>) -> P<ast::Expr> {
         self.cx.expr_call_global(
@@ -553,7 +581,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             .map(|(subindex, (variant_name, ruledata))| {
                 self.cx.arm(
                     self.span,
-                    vec![self.reduction_match_data(name, subindex, ruledata)],
+                    vec![self.reduction_match_data(subindex, ruledata)],
                     self.box_expr(self.cx.expr_call(
                         self.span,
                         self.cx.expr_path(self.cx.path(
@@ -584,6 +612,29 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                     )),
                 )
             });
+        let eps_chain = if name == "Epsilon" {
+            iter::once(
+                self.cx.arm(
+                    self.span,
+                    vec![self.cx.pat_wild(self.span)],
+                    self.box_expr(self.cx.expr_call(
+                        self.span,
+                        self.cx.expr_path(self.cx.path(
+                            self.span,
+                            vec![self.cx.ident_of("_Data"), self.cx.ident_of(name)],
+                        )),
+                        vec![                            
+                            self.cx.expr_path(self.cx.path(
+                                self.span,
+                                vec![self.cx.ident_of(name), self.cx.ident_of(name)],
+                            )),
+                        ],
+                    ))
+                ),
+            )
+        } else {
+            iter::once( self.wild_arm_fail("coerce_panic"))
+        };
         self.cx.expr_match(
             self.span,
             self.cx.expr_tuple(
@@ -594,7 +645,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                 ],
             ),
             bodies
-                .chain(iter::once(self.wild_arm_fail("coerce_panic")))
+                .chain(eps_chain)
                 .collect(),
         )
     }
@@ -619,7 +670,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                 self.reduction_match_body(&rule.identifier, &rule.data),
                             )
                         })
-                        .chain(iter::once(self.wild_arm_fail("coerce_panic")))
+                        .chain(iter::once(self.wild_arm_unreachable()))
                         .collect(),
                 ),
                 // }
@@ -703,7 +754,7 @@ pub fn output_parser(
         span,
         cx.ident_of("Epsilon"),
         ast::EnumDef {
-            variants: vec![cx.variant(span, cx.ident_of("Error"), vec![])],
+            variants: vec![cx.variant(span, cx.ident_of("Epsilon"), vec![])],
         },
     ));
 
@@ -718,20 +769,34 @@ pub fn output_parser(
     items.push(builder.get_reduction_fn(rules));
 
     let mut driver_fn = r#"
-fn driver(tokenstream: &mut Iterator<Item = &Token>) -> Option<S> {
+pub fn driver(tokenstream: &mut Iterator<Item = &Token>) -> Option<S> {
     let mut tokens = tokenstream.peekable();
     let mut stack: Vec<(usize, Box<_Data>)> =
-        vec![(_STARTER_VALUE, Box::new(_Data::Epsilon(Epsilon::Error)))];
+        vec![(_STARTER_VALUE, Box::new(_Data::Epsilon(Epsilon::Epsilon)))];
+    let debug_output = std::env::var("DEBUG_LALR_RUNTIME").is_ok();
     loop {
         let (s, _) = stack[stack.len() - 1];
         let a_ = tokens.peek().map(|x| *x);
+        if debug_output {
+            println!("Current state: {}", s);
+            println!("Peeked token: {:?}", &a_);
+        }
         let a = _convert_token_to_index(a_);
+        if debug_output {
+            println!("Peeked token index: {}", a);
+        }
         let action = &_STATE_TABLE[s][a];
+        if debug_output {
+            println!("Action: {:?}", action);
+        }
         match action {
-            _Act::Error => panic!("Error"),
+            _Act::Error => panic!("Error state reached"),
             _Act::Shift(t) => {
                 stack.push((*t, _token_to_data(a, a_.unwrap())));
-                tokens.next();
+                let t = tokens.next();
+                if debug_output {
+                    println!("Consumed token: {:?}", t);
+                }
             }
             _Act::Reduce(goto, subrule, count) => {
                 let rem_range = stack.len() - count..;
@@ -748,7 +813,7 @@ fn driver(tokenstream: &mut Iterator<Item = &Token>) -> Option<S> {
             _Act::Accept => {
                 break;
             }
-            _Act::Goto(i) => panic!("Unreachable"),
+            _Act::Goto(_) => panic!("Unreachable"),
         }
     }
 

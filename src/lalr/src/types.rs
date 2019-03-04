@@ -22,7 +22,7 @@ pub struct Rule {
     pub data: Vec<(String, Vec<RuleData>)>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct RuleTranslationMap {
     pub rules: HashMap<String, Rule>,
     pub indices: HashMap<String, usize>,
@@ -136,7 +136,7 @@ impl fmt::Display for Action {
                 String::from("r") + rule + &subrule.to_string()
             ),
             Action::Accept => write!(f, "{: >7.5}", "acc"),
-            Action::Goto(to) => write!(f, "g{: >6.4}", to),
+            Action::Goto(to) => write!(f, "{: >7.5}", String::from("g") + &to.to_string()),
         }
     }
 }

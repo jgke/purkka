@@ -3,6 +3,7 @@
 
 extern crate rustc;
 extern crate rustc_plugin;
+extern crate rustc_target;
 extern crate smallvec;
 extern crate syntax;
 extern crate syntax_pos;
@@ -171,7 +172,7 @@ fn parse_item(
         .push_rule(rule.identifier.clone(), rule.clone())
         .is_none()
     {
-        cx.span_err(s.to(rsp), "Duplicate rule");
+        cx.span_err(s.to(rsp), "Duplicate rule (Hint: Mark the expression A -> B; A -> C; with A -> B | C;)");
         return ParseResult::Failure(Some(s.to(rsp)));
     }
 

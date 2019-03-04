@@ -1,4 +1,4 @@
-use preprocessor;
+use preprocessor::macrotoken::MacroToken;
 use token::Token;
 
 lalr! {
@@ -186,8 +186,8 @@ lalr! {
         ;
 
     StructOrUnionSpecifier
-       -> List. StructOrUnion #Token::Identifier #Token::OpenBracket StructDeclarationList #Token::CloseBracket
-        | Empty. StructOrUnion #Token::OpenBracket StructDeclarationList #Token::CloseBracket
+       -> List. StructOrUnion #Token::Identifier #Token::OpenBrace StructDeclarationList #Token::CloseBrace
+        | Empty. StructOrUnion #Token::OpenBrace StructDeclarationList #Token::CloseBrace
         | NameOnly. StructOrUnion #Token::Identifier
         ;
 
@@ -224,8 +224,8 @@ lalr! {
         ;
 
     EnumSpecifier
-       -> List. #Token::Enum #Token::OpenBracket EnumeratorList #Token::CloseBracket
-        | Empty. #Token::Enum #Token::Identifier #Token::OpenBracket EnumeratorList #Token::CloseBracket
+       -> List. #Token::Enum #Token::OpenBrace EnumeratorList #Token::CloseBrace
+        | Empty. #Token::Enum #Token::Identifier #Token::OpenBrace EnumeratorList #Token::CloseBrace
         | NameOnly. #Token::Enum #Token::Identifier
         ;
 
@@ -318,8 +318,8 @@ lalr! {
 
     Initializer
        -> AssignmentExpression
-        | #Token::OpenBracket InitializerList #Token::CloseBracket
-        | TrailingComma. #Token::OpenBracket InitializerList #Token::Comma #Token::CloseBracket
+        | #Token::OpenBrace InitializerList #Token::CloseBrace
+        | TrailingComma. #Token::OpenBrace InitializerList #Token::Comma #Token::CloseBrace
         ;
 
     InitializerList
@@ -343,10 +343,10 @@ lalr! {
         ;
 
     CompoundStatement
-       -> Empty. #Token::OpenBracket #Token::CloseBracket
-        | Statements. #Token::OpenBracket &StatementList #Token::CloseBracket
-        | Declarations. #Token::OpenBracket &DeclarationList #Token::CloseBracket
-        | Both. #Token::OpenBracket &DeclarationList &StatementList #Token::CloseBracket
+       -> Empty. #Token::OpenBrace #Token::CloseBrace
+        | Statements. #Token::OpenBrace &StatementList #Token::CloseBrace
+        | Declarations. #Token::OpenBrace &DeclarationList #Token::CloseBrace
+        | Both. #Token::OpenBrace &DeclarationList &StatementList #Token::CloseBrace
         ;
 
     DeclarationList
@@ -388,6 +388,7 @@ lalr! {
     TranslationUnit
        -> ExternalDeclaration
         | TranslationUnit ExternalDeclaration
+        | Epsilon
         ;
 
     ExternalDeclaration
