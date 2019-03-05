@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "src/core",
+    "src/cparser",
+    "src/ctoken",
     "src/lalr",
     "src/parser",
     "src/preprocessor",

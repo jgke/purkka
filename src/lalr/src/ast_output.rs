@@ -9,17 +9,19 @@ use syntax::ptr::P;
 use syntax::source_map::{dummy_spanned, respan, Spanned};
 use syntax_pos::symbol;
 
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::iter;
 
-use types::{Action, LRTable, Rule, RuleData, RuleTranslationMap};
+use types::{Action, LRTable, Rule, RuleData, RuleTranslationMap, Terminal};
 
 struct AstBuilderCx<'a, 'c> {
     cx: &'a ExtCtxt<'c>,
     span: Span,
     tm: &'a RuleTranslationMap,
     lalr_table: &'a LRTable,
-    terminals: &'a HashSet<(String, String)>,
+    terminals: &'a HashSet<Terminal>,
+    special_rules: &'a HashMap<String, String>,
+    special_provides: &'a HashMap<String, (String, String)>,
 }
 
 impl<'a, 'c> AstBuilderCx<'a, 'c> {
@@ -115,13 +117,16 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                         //let (n, x, s) = item;
                         let ident_arr = item.full_path.rsplitn(2, "::");
                         // .unwrap() here is always safe
-                        let ident_ty = self.ty_ident(ident_arr.last().unwrap());
-                        let ty;
-                        if item.indirect || &item.identifier == enum_name {
-                            ty = self.boxed(ident_ty);
-                        } else {
-                            ty = ident_ty;
-                        }
+                        let ident_str = ident_arr.last().unwrap();
+                        let ident_ty = self.ty_ident(ident_str);
+                        let ty = match self.special_rules.get(ident_str) {
+                            Some(dependant) => self.ty_ident("Token"),
+                            None => if item.indirect || &item.identifier == enum_name {
+                                self.boxed(ident_ty)
+                            } else {
+                                ident_ty
+                            }
+                        };
                         ast::StructField {
                             span: item.span,
                             ty,
@@ -177,6 +182,31 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         )
     }
 
+    fn translation_fn_maybe_with_conversion(&self, term: &Terminal) -> P<ast::Expr> {
+        let default_case = self.cx.expr_usize(self.span, self.tm.indices[&term.full_path]);
+        let token_unwrap = self.cx.expr_method_call(
+            self.span,
+            self.cx.expr_ident(self.span, self.cx.ident_of("token")),
+            self.cx.ident_of("unwrap"),
+            vec![],
+        );
+        match self.special_provides.get(&term.full_path) {
+            Some((actual, function)) => {
+                let is_special = self.cx.expr_call_ident(
+                    self.span,
+                    self.cx.ident_of(function),
+                    vec![token_unwrap],
+                );
+                let special_case = self.cx.expr_usize(self.span, self.tm.indices[actual]);
+                self.cx.expr_if(self.span,
+                                is_special,
+                                special_case,
+                                Some(default_case))
+            }
+            None => default_case
+        }
+    }
+
     fn get_translation_fn_body(&self) -> P<ast::Block> {
         let dollar_id = self.usize_expr(self.tm.indices["$"]);
         let token_unwrap = self.cx.expr_method_call(
@@ -209,11 +239,12 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                         token_unwrap,
                         self.terminals
                             .iter()
-                            .map(|(_, terminal)| {
+                            .filter(|term| term.conversion_fn.is_none())
+                            .map(|term| {
                                 self.cx.arm(
                                     self.span,
-                                    vec![self.terminal_pattern(&terminal)],
-                                    self.cx.expr_usize(self.span, self.tm.indices[terminal]),
+                                    vec![self.terminal_pattern(&term.full_path)],
+                                    self.translation_fn_maybe_with_conversion(&term)
                                 )
                             })
                             .chain(iter::once(self.wild_arm_unreachable()))
@@ -229,9 +260,10 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         let terminal_base = &self
             .terminals
             .iter()
+            .filter(|term| term.conversion_fn.is_none())
             .next()
             .unwrap()
-            .1
+            .full_path
             .rsplitn(2, "::")
             .last()
             .unwrap();
@@ -428,7 +460,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         )
     }
 
-    fn get_wrapper_fn_body(&self, terminals: &HashSet<(String, String)>) -> P<ast::Block> {
+    fn get_wrapper_fn_body(&self, terminals: &HashSet<Terminal>) -> P<ast::Block> {
         self.cx.block(
             self.span,
             vec![self.cx.stmt_expr(
@@ -438,18 +470,18 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                     self.cx.expr_ident(self.span, self.cx.ident_of("index")),
                     terminals
                         .iter()
-                        .map(|(name, p)| {
+                        .map(|term| {
                             // 3 => reduction_match_body
                             self.cx.arm(
                                 self.span,
                                 vec![self
                                     .cx
-                                    .pat_lit(self.span, self.usize_expr(self.tm.indices[p]))],
+                                    .pat_lit(self.span, self.usize_expr(self.tm.indices[&term.full_path]))],
                                 self.box_expr(self.cx.expr_call(
                                     self.span,
                                     self.cx.expr_path(self.cx.path(
                                         self.span,
-                                        vec![self.cx.ident_of("_Data"), self.cx.ident_of(name)],
+                                        vec![self.cx.ident_of("_Data"), self.cx.ident_of(&term.identifier)],
                                     )),
                                     vec![self.box_or_star(
                                         false,
@@ -465,7 +497,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             )],
         )
     }
-    pub fn get_wrapper_fn(&self, terminals: &HashSet<(String, String)>) -> P<ast::Item> {
+    pub fn get_wrapper_fn(&self, terminals: &HashSet<Terminal>) -> P<ast::Item> {
         let ty_return = self.boxed(self.ty_ident("_Data"));
         let body = self.get_wrapper_fn_body(terminals);
         self.cx.item_fn(
@@ -735,15 +767,36 @@ pub fn output_parser(
     span: Span,
     tm: &RuleTranslationMap,
     rules: &Vec<Rule>,
-    terminals: &HashSet<(String, String)>,
+    terminals: &HashSet<Terminal>,
     lalr_table: &LRTable,
 ) -> Box<MacResult + 'static> {
+    let special_rules: HashMap<String, String> = terminals.iter()
+        .filter(|term| term.conversion_fn.is_some())
+        .map(|term| {
+            let identifier = term.identifier.clone();
+            let dependant = term.conversion_fn.as_ref().unwrap().1.clone();
+            (identifier, dependant)
+        })
+        .collect();
+
+    let special_provides: HashMap<String, (String, String)> = terminals.iter()
+        .filter(|term| term.conversion_fn.is_some())
+        .map(|term| {
+            let identifier = term.identifier.clone();
+            let dependant = term.conversion_fn.as_ref().unwrap().1.clone();
+            let provider = term.conversion_fn.as_ref().unwrap().0.clone();
+            (dependant, (identifier, provider))
+        })
+        .collect();
+
     let builder = AstBuilderCx {
         cx,
         span,
         tm,
         lalr_table,
         terminals,
+        special_rules: &special_rules,
+        special_provides: &special_provides
     };
 
     let mut items: SmallVec<[P<ast::Item>; 1]> = rules
@@ -756,10 +809,10 @@ pub fn output_parser(
         variants: rules
             .iter()
             .map(|rule| builder.get_plain_variant(span, &rule.identifier))
-            .chain(terminals.iter().map(|(name, _)| {
+            .chain(terminals.iter().map(|term| {
                 cx.variant(
                     span,
-                    cx.ident_of(name),
+                    cx.ident_of(&term.identifier),
                     vec![cx.ty_path(cx.path(
                         span,
                         vec![

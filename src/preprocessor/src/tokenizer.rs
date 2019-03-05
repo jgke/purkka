@@ -548,7 +548,7 @@ where
     }
 
     fn get_macro_type(&mut self, iter: &mut FragmentIterator) -> (MacroType, FragmentIterator, Source) {
-        let (row_string, total_span) = self.preprocess_get_macro_line(iter, false);
+        let (row_string, total_span) = self.preprocess_get_macro_line(iter, true);
         let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), &row_string, total_span.span.lo, &iter);
         assert_eq!(sub_iter.peek(), Some('#'));
         assert_eq!(

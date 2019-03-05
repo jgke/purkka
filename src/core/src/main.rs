@@ -15,9 +15,9 @@ fn main() {
         let result = preprocessor::preprocess_file(&args[1]);
         match result {
             Ok(output) => {
-                println!{"{:?}", output}
+                //println!{"{:?}", output}
                 let parsed = parser::parse(output);
-                println!("{:?}", parsed);
+                //println!("{:?}", parsed);
             }
             Err(e) => panic!(e),
         }

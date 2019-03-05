@@ -1,5 +1,4 @@
-use preprocessor::macrotoken::MacroToken;
-use token::Token;
+use ctoken::token::Token;
 
 lalr! {
     S -> TranslationUnit;
@@ -183,6 +182,7 @@ lalr! {
         | #Token::Unsigned
         | &StructOrUnionSpecifier
         | &EnumSpecifier
+        | #Token::Identifier
         ;
 
     StructOrUnionSpecifier

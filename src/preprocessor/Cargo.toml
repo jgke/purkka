@@ -5,4 +5,5 @@ authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 
 [dependencies]
 shared = { path="../shared" }
+ctoken = { path="../ctoken" }
 regex = "1.1.0"

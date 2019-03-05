@@ -1,12 +1,9 @@
 [package]
-name = "lalr"
+name = "cparser"
 version = "0.1.0"
 authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 
-[lib]
-crate-type = ["dylib"]
-plugin = true
-
 [dependencies]
+ctoken = { path="../ctoken" }
+lalr = { path="../lalr" }
 shared = { path="../shared" }
-

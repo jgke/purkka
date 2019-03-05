@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 
 [dependencies]
-lalr = { path="../lalr" }
+cparser = { path="../cparser" }
+ctoken = { path="../ctoken" }
 preprocessor = { path="../preprocessor" }
 shared = { path="../shared" }

@@ -1,3 +1,4 @@
+extern crate ctoken;
 extern crate regex;
 extern crate shared;
 
@@ -12,6 +13,7 @@ use std::path;
 
 use macrotoken::MacroToken;
 use tokenizer::{MacroContext, ParseResult};
+use shared::utils::{if_debug, DebugVal::{IncludeName}};
 
 static INCLUDE_PATH: &[&str] = &["/usr/local/include", "/usr/lib/gcc/x86_64-linux-gnu/7/include", "/usr/include"];
 
@@ -25,6 +27,9 @@ where
 pub fn preprocess_file(filename: &str) -> ParseResult<Vec<MacroToken>> {
     let get_file = |is_local, current_file, filename: String| {
         let mut contents = String::new();
+        if_debug(IncludeName,
+            || println!("opening {} from {}, local: {}", filename, current_file, is_local)
+        );
         if is_local {
             let mut path = path::PathBuf::from(current_file);
             path.pop();

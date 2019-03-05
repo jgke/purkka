@@ -5,6 +5,7 @@ use syntax_pos::Span;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone)]
 pub struct RuleData {
@@ -13,6 +14,7 @@ pub struct RuleData {
     pub span: Span,
     pub terminal: bool,
     pub indirect: bool,
+    pub conversion_fn: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -20,6 +22,14 @@ pub struct Rule {
     pub identifier: String,
     pub span: Span,
     pub data: Vec<(String, Vec<RuleData>)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Terminal {
+    pub identifier: String,
+    pub full_path: String,
+    pub span: Span,
+    pub conversion_fn: Option<(String, String)>,
 }
 
 #[derive(Debug, Default)]
@@ -97,6 +107,20 @@ impl fmt::Display for Rule {
         write!(f, "{} -> {}", self.identifier, output)
     }
 }
+
+impl Hash for Terminal {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.identifier.hash(state);
+        self.full_path.hash(state);
+    }
+}
+
+impl PartialEq for Terminal {
+    fn eq(&self, other: &Terminal) -> bool {
+        self.identifier == other.identifier && self.full_path == other.full_path
+    }
+}
+impl Eq for Terminal {}
 
 impl RuleTranslationMap {
     pub fn push_rule(&mut self, name: String, rule: Rule) -> Option<()> {

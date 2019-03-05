@@ -796,12 +796,15 @@ FOO */",
 #endif",
         vec![],
     );
+}
+
+#[test]
+fn trailing_comments_true() {
     process("
-#ifndef FOO
-foo
-#endif /* sys/bar */",
+#if 1
+#endif /*
+*/",
         vec![
-            mt("foo.c", 13, 15, MacroTokenType::Identifier("foo".to_string()))
         ],
     );
 }

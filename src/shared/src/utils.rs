@@ -2,6 +2,7 @@
 
 use std::mem::swap;
 use std::ops::Range;
+use std::env;
 
 use regex::Regex;
 
@@ -19,4 +20,27 @@ pub fn num_val(c: char) -> u8 {
 /// Return char value for octal value, for example `char_from_octal('1', '0', '1') -> 'A'.
 pub fn char_from_octal(c1: char, c2: char, c3: char) -> char {
     return (8 * 8 * num_val(c1) + 8 * num_val(c2) + num_val(c3)) as char;
+}
+
+pub enum DebugVal {
+    IncludeName,
+    DumpLalrTable,
+    LalrRuntime,
+    DebugFragment,
+}
+
+static DEBUG_VALS: &[&str] = &[
+    "DEBUG_INCLUDE_NAME",
+    "DEBUG_DUMP_LALR_TABLE",
+    "DEBUG_LALR_RUNTIME",
+    "DEBUG_FRAGMENT"
+];
+
+pub fn if_debug<CB>(ident: DebugVal, cb: CB)
+where
+    CB: Fn() -> ()
+{
+    if env::var(DEBUG_VALS[ident as usize]).is_ok() {
+        cb();
+    }
 }

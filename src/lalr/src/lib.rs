@@ -8,6 +8,8 @@ extern crate smallvec;
 extern crate syntax;
 extern crate syntax_pos;
 
+extern crate shared;
+
 use rustc_plugin::Registry;
 use syntax::ext::base::{DummyResult, ExtCtxt, MacResult};
 use syntax_pos::Span;
@@ -24,7 +26,7 @@ mod types;
 
 use ast_output::output_parser;
 use generator::compute_lalr;
-use types::{Rule, RuleData, RuleTranslationMap};
+use types::{Rule, RuleData, RuleTranslationMap, Terminal};
 
 fn is_semi_r(tree: Option<&TokenTree>) -> bool {
     match tree {
@@ -40,12 +42,12 @@ fn is_semi(tree: Option<&&TokenTree>) -> bool {
     }
 }
 
-enum ParseResult {
-    Success(Rule),
+enum ParseResult<SuccessType> {
+    Success(SuccessType),
     Failure(Option<Span>),
 }
 
-fn parse_failure(cx: &mut ExtCtxt, outer_span: Span, tt: Option<&TokenTree>) -> ParseResult {
+fn parse_failure<SuccessType>(cx: &mut ExtCtxt, outer_span: Span, tt: Option<&TokenTree>) -> ParseResult<SuccessType> {
     match tt {
         Some(TokenTree::Token(span, t)) => {
             let s: Span = *span;
@@ -63,13 +65,95 @@ fn parse_failure(cx: &mut ExtCtxt, outer_span: Span, tt: Option<&TokenTree>) -> 
         }
     }
 }
+fn parse_special(
+    cx: &mut ExtCtxt,
+    outer_span: Span,
+    iter: &mut Peekable<Iter<'_, TokenTree>>,
+    tm: &mut RuleTranslationMap,
+) -> ParseResult<Terminal> {
+    let mut rsp = outer_span;
+    let mut terminal = false;
+    let mut indirect = false;
+    let mut s = match iter.next() {
+        Some(TokenTree::Token(s, token::Not)) => s,
+        tt => return parse_failure(cx, outer_span, tt),
+    };
+    let rule_name = match iter.next() {
+        Some(TokenTree::Token(_, token::Ident(t, _))) => t,
+        tt => return parse_failure(cx, *s, tt),
+    };
+    match iter.next() {
+        Some(TokenTree::Token(_, token::RArrow)) => {}
+        Some(TokenTree::Token(span, _)) => {
+            let s: Span = *span;
+            cx.span_err(s, "Special rule name must be followed by ->");
+            return ParseResult::Failure(Some(s));
+        }
+        tt => return parse_failure(cx, *s, tt),
+    }
+
+    let function_name = match iter.next() {
+        Some(TokenTree::Token(s, token::Ident(tt, _))) => tt.name.to_string(),
+        tt => return parse_failure(cx, *s, tt),
+    };
+
+    match iter.next() {
+        Some(TokenTree::Token(_, token::Pound)) => {}
+        tt => return parse_failure(cx, *s, tt),
+    };
+
+    let mut special_component = match iter.next() {
+        Some(TokenTree::Token(s, token::Ident(tt, _))) => {
+            rsp = *s;
+            Terminal {
+                identifier: tt.name.to_string(),
+                full_path: tt.name.to_string(),
+                span: s.to(rsp),
+                conversion_fn: None
+            }
+        }
+        tt => return parse_failure(cx, s.to(rsp), tt)
+    };
+
+    while !is_semi(iter.peek()) {
+        match iter.next() {
+            Some(TokenTree::Token(s, token::ModSep)) => {
+                rsp = *s;
+                match iter.next() {
+                    Some(TokenTree::Token(s, token::Ident(tt, _))) => {
+                        rsp = *s;
+                        let right = tt.name.to_string();
+                        special_component.full_path.push_str("::");
+                        special_component.full_path.push_str(&right);
+                        special_component.identifier = right;
+                        special_component.span = special_component.span.to(*s);
+                    }
+                    tt => return parse_failure(cx, s.to(rsp), tt),
+                }
+            }
+            Some(TokenTree::Token(s, token::Pound)) => {
+                rsp = *s;
+                terminal = true;
+            }
+            tt => return parse_failure(cx, s.to(rsp), tt),
+        }
+    }
+
+    special_component.conversion_fn = Some((function_name, special_component.full_path));
+    special_component.identifier = rule_name.to_string();
+    special_component.full_path = rule_name.to_string();
+
+    assert!(is_semi_r(iter.next()));
+
+    ParseResult::Success(special_component)
+}
 
 fn parse_item(
     cx: &mut ExtCtxt,
     outer_span: Span,
     iter: &mut Peekable<Iter<'_, TokenTree>>,
     tm: &mut RuleTranslationMap,
-) -> ParseResult {
+) -> ParseResult<Rule> {
     let mut rsp = outer_span;
     let mut terminal = false;
     let mut indirect = false;
@@ -101,6 +185,7 @@ fn parse_item(
                     span: rsp,
                     terminal,
                     indirect: indirect || tt.name.as_str() == t.name.as_str(),
+                    conversion_fn: None
                 });
                 terminal = false;
                 indirect = false;
@@ -183,7 +268,7 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult 
     let mut tm = RuleTranslationMap {
         ..Default::default()
     };
-    let mut terminals = HashSet::new();
+    let mut terminals: HashSet<Terminal> = HashSet::new();
 
     let mut iter = args.iter().peekable();
 
@@ -202,18 +287,32 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult 
         tm.push_rule(rule.identifier.clone(), rule.clone());
     }
 
-    while iter.peek().is_some() {
-        match parse_item(cx, sp, &mut iter, &mut tm) {
-            ParseResult::Success(item) => {
-                item.data.iter().for_each(|rules| {
-                    rules.1.iter().filter(|x| x.terminal).for_each(|x| {
-                        terminals.insert((x.identifier.clone(), x.full_path.clone()));
-                    })
-                });
-
-                items.push(item);
+    loop {
+        match iter.peek() {
+            Some(TokenTree::Token(_, token::Not)) => match parse_special(cx, sp, &mut iter, &mut tm) {
+                ParseResult::Success(item) => {
+                    terminals.insert(item);
+                }
+                ParseResult::Failure(span) => return DummyResult::any(span.unwrap_or(sp)),
             }
-            ParseResult::Failure(span) => return DummyResult::any(span.unwrap_or(sp)),
+            Some(_) => match parse_item(cx, sp, &mut iter, &mut tm) {
+                ParseResult::Success(item) => {
+                    item.data.iter().for_each(|rules| {
+                        rules.1.iter().filter(|x| x.terminal).for_each(|x| {
+                            terminals.insert(Terminal {
+                                identifier: x.identifier.clone(),
+                                full_path: x.full_path.clone(),
+                                span: sp,
+                                conversion_fn: None
+                            });
+                        })
+                    });
+
+                    items.push(item);
+                }
+                ParseResult::Failure(span) => return DummyResult::any(span.unwrap_or(sp)),
+            }
+            None => break,
         }
     }
 

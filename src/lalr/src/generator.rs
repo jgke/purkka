@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::time::{Instant};
-use std::env;
+use shared::utils::{if_debug, DebugVal::DumpLalrTable};
 
-use types::{rule_name_compare, Action, Item, LRTable, RuleData, RuleTranslationMap};
+use types::{rule_name_compare, Action, Item, LRTable, RuleData, RuleTranslationMap, Terminal};
 
 fn first(
     tm: &RuleTranslationMap,
@@ -321,11 +321,9 @@ pub fn lr_parsing_table(
 
 pub fn compute_lalr(
     tm: &RuleTranslationMap,
-    terminals: &HashSet<(String, String)>,
+    terminals: &HashSet<Terminal>,
 ) -> Box<LRTable> {
     println!("Computing lalr table");
-    //dbg!(tm);
-    //dbg!(terminals);
 
     //println!("\nFirst S:");
     //let mut set = HashSet::new();
@@ -359,8 +357,8 @@ pub fn compute_lalr(
     //    }
     //}
 
-    let mut terminal_names: Vec<String> = terminals.iter().map(|(x, _)| x.clone()).collect();
-    let mut terminal_full_names: Vec<String> = terminals.iter().map(|(_, x)| x.clone()).collect();
+    let mut terminal_names: Vec<String> = terminals.iter().map(|term| term.identifier.clone()).collect();
+    let mut terminal_full_names: Vec<String> = terminals.iter().map(|term| term.full_path.clone()).collect();
     terminal_names.sort_unstable_by(rule_name_compare);
     terminal_full_names.sort_unstable_by(rule_name_compare);
 
@@ -385,7 +383,7 @@ pub fn compute_lalr(
 
     //let mut lalr_items = Vec::new();
     //get_lalr_items(&mut lalr_items, &lr_items);
-
+    let lalr_items = &lr_items.iter().map(|x| (x.clone(), x.clone())).collect();
 
     //println!("LR(1) items:");
     //for set in &lr_items {
@@ -397,13 +395,7 @@ pub fn compute_lalr(
     //    println!("]");
     //}
 
-    //let mut table = lr_parsing_table(tm, &lalr_items, &rule_names);
-    let table = lr_parsing_table(tm,
-                                 &lr_items.iter()
-                                 .map(|x| (x.clone(), x.clone()))
-                                 .collect(),
-                                 &rule_names);
-    
+    let table = lr_parsing_table(tm, &lalr_items, &rule_names);
 
     //let starting_rule = &tm.rules["S"].data[0].1[0].identifier;
     //for rule in &tm.rules[starting_rule].data {
@@ -412,7 +404,7 @@ pub fn compute_lalr(
     //    }
     //}
 
-    if env::var("DEBUG_DUMP_TABLE").is_ok() {
+    if_debug(DumpLalrTable, || {
         println!("S: {}", tm.indices["S"]);
         println!("$: {}", tm.indices["$"]);
         print!("   ");
@@ -430,7 +422,7 @@ pub fn compute_lalr(
             }
             println!("");
         }
-    }
+    });
 
     return table;
 }
