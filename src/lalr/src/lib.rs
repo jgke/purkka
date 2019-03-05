@@ -26,7 +26,7 @@ mod types;
 
 use ast_output::output_parser;
 use generator::compute_lalr;
-use types::{Rule, RuleData, RuleTranslationMap, Terminal};
+use types::{Component, Rule, RuleData, RuleTranslationMap, Terminal};
 
 fn is_semi_r(tree: Option<&TokenTree>) -> bool {
     match tree {
@@ -72,9 +72,7 @@ fn parse_special(
     tm: &mut RuleTranslationMap,
 ) -> ParseResult<Terminal> {
     let mut rsp = outer_span;
-    let mut terminal = false;
-    let mut indirect = false;
-    let mut s = match iter.next() {
+    let s = match iter.next() {
         Some(TokenTree::Token(s, token::Not)) => s,
         tt => return parse_failure(cx, outer_span, tt),
     };
@@ -131,10 +129,6 @@ fn parse_special(
                     tt => return parse_failure(cx, s.to(rsp), tt),
                 }
             }
-            Some(TokenTree::Token(s, token::Pound)) => {
-                rsp = *s;
-                terminal = true;
-            }
             tt => return parse_failure(cx, s.to(rsp), tt),
         }
     }
@@ -171,12 +165,20 @@ fn parse_item(
         tt => return parse_failure(cx, s.to(rsp), tt),
     }
 
-    let mut components: Vec<(String, Vec<RuleData>)> = Vec::new();
+    let mut components: Vec<Component> = Vec::new();
     let mut real_name: Option<String> = None;
     let mut current_components: Vec<RuleData> = Vec::new();
+    let mut action = None;
 
     while !is_semi(iter.peek()) {
         match iter.next() {
+            Some(TokenTree::Token(_, token::Not)) => {
+                action = match iter.next() {
+                    Some(TokenTree::Token(s, token::Ident(tt, _))) =>
+                        Some(tt.name.to_string()),
+                    tt => return parse_failure(cx, s.to(rsp), tt)
+                };
+            }
             Some(TokenTree::Token(s, token::Ident(tt, _))) => {
                 rsp = *s;
                 current_components.push(RuleData {
@@ -222,7 +224,12 @@ fn parse_item(
                 let real_real_name = real_name
                     .unwrap_or_else(|| current_components.get(0).unwrap().identifier.clone());
                 real_name = None;
-                components.push((real_real_name, current_components));
+                components.push(Component {
+                    real_name: real_real_name,
+                    action,
+                    rules: current_components
+                });
+                action = None;
                 current_components = vec![];
             }
             Some(TokenTree::Token(s, token::Dot)) => {
@@ -239,7 +246,11 @@ fn parse_item(
     if current_components.len() > 0 {
         let real_real_name =
             real_name.unwrap_or_else(|| current_components.get(0).unwrap().identifier.clone());
-        components.push((real_real_name, current_components));
+        components.push(Component {
+            real_name: real_real_name,
+            action,
+            rules: current_components
+        });
     }
 
     assert!(is_semi_r(iter.next()));
@@ -298,7 +309,7 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult 
             Some(_) => match parse_item(cx, sp, &mut iter, &mut tm) {
                 ParseResult::Success(item) => {
                     item.data.iter().for_each(|rules| {
-                        rules.1.iter().filter(|x| x.terminal).for_each(|x| {
+                        rules.rules.iter().filter(|x| x.terminal).for_each(|x| {
                             terminals.insert(Terminal {
                                 identifier: x.identifier.clone(),
                                 full_path: x.full_path.clone(),

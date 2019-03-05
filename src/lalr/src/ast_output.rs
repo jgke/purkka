@@ -12,7 +12,7 @@ use syntax_pos::symbol;
 use std::collections::{HashSet, HashMap};
 use std::iter;
 
-use types::{Action, LRTable, Rule, RuleData, RuleTranslationMap, Terminal};
+use types::{Action, Component, LRTable, Rule, RuleData, RuleTranslationMap, Terminal};
 
 struct AstBuilderCx<'a, 'c> {
     cx: &'a ExtCtxt<'c>,
@@ -108,9 +108,9 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             .data
             .clone()
             .into_iter()
-            .map(|(variant_identifier, components)| {
-                let mut total_span = components.get(0).unwrap().span;
-                let vals = components
+            .map(|Component {real_name, rules, ..}| {
+                let mut total_span = rules.get(0).unwrap().span;
+                let vals = rules
                     .into_iter()
                     .map(|item| {
                         total_span = total_span.to(item.span);
@@ -137,7 +137,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                         }
                     })
                     .collect();
-                let struct_name = format!("{}_{}", rule.identifier, variant_identifier);
+                let struct_name = format!("{}_{}", rule.identifier, real_name);
                 let item = self.item_struct_derive(
                     total_span,
                     self.cx.ident_of(&struct_name),
@@ -151,12 +151,12 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                 .data
                 .clone()
                 .into_iter()
-                .map(|(variant_identifier, components)| {
-                    let var_id = &format!("{}_{}", rule.identifier, variant_identifier);
-                    let total_span = components.get(0).unwrap().span;
+                .map(|Component {real_name, rules, ..}| {
+                    let var_id = &format!("{}_{}", rule.identifier, real_name);
+                    let total_span = rules.get(0).unwrap().span;
                     self.cx.variant(
                         total_span,
-                        self.cx.ident_of(&variant_identifier),
+                        self.cx.ident_of(&real_name),
                         vec![self.ty_ident(var_id)],
                     )
                 })
@@ -335,9 +335,9 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                     let tmp: Vec<_> = rule
                         .data
                         .iter()
-                        .map(|(variant, components)| {
-                            let var_id = self.cx.ident_of(&format!("{}_{}", name, variant));
-                            let span = components.get(0).unwrap().span;
+                        .map(|Component {real_name, rules, ..}| {
+                            let var_id = self.cx.ident_of(&format!("{}_{}", name, real_name));
+                            let span = rules.get(0).unwrap().span;
                             self.cx
                                 .variant(span, var_id, vec![self.cx.ty_ident(self.span, var_id)])
                         })
@@ -620,15 +620,15 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
     fn reduction_match_body(
         &self,
         name: &str,
-        data: &Vec<(String, Vec<RuleData>)>,
+        data: &Vec<Component>,
     ) -> P<ast::Expr> {
         dbg!(&name);
         dbg!(&data.len());
         let bodies = data
             .iter()
             .enumerate()
-            .map(|(subindex, (variant_name, ruledata))| {
-                if ruledata.len() == 1 && ruledata[0].identifier == "Epsilon" {
+            .map(|(subindex, Component {real_name, rules, action})| {
+                if rules.len() == 1 && rules[0].identifier == "Epsilon" {
                     self.cx.arm(
                         self.span,
                         vec![self.cx.pat_wild(self.span)],
@@ -647,10 +647,15 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                         ))
                     )
                 } else {
-                    self.cx.arm(
-                        self.span,
-                        vec![self.reduction_match_data(subindex, ruledata)],
-                        self.box_expr(self.cx.expr_call(
+                    let args: Vec<P<ast::Expr>> = rules.iter().enumerate()
+                        .map(|(i, data)|
+                             self.box_or_star(
+                                 data.indirect,
+                                 self.cx.expr_ident(self.span,
+                                                    self.cx.ident_of(
+                                                        &format!("pat_{}", i)))))
+                        .collect();
+                    let result = self.box_expr(self.cx.expr_call(
                             self.span,
                             self.cx.expr_path(self.cx.path(
                                 self.span,
@@ -660,25 +665,43 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                 self.span,
                                 self.cx.expr_path(self.cx.path(
                                     self.span,
-                                    vec![self.cx.ident_of(name), self.cx.ident_of(variant_name)],
+                                    vec![self.cx.ident_of(name), self.cx.ident_of(real_name)],
                                 )),
                                 vec![
                             self.cx.expr_call(
                                 self.span,
                                 self.cx.expr_path(self.cx.path_ident(
                                         self.span,
-                                        self.cx.ident_of(&format!("{}_{}", name, variant_name)))),
-                                ruledata.iter().enumerate()
-                                .map(|(i, data)|
-                                     self.box_or_star(
-                                         data.indirect,
-                                         self.cx.expr_ident(self.span,
-                                                            self.cx.ident_of(
-                                                                &format!("pat_{}", i)))))
-                                .collect())],
+                                        self.cx.ident_of(&format!("{}_{}", name, real_name)))),
+                                args.clone()
+                                )],
                             )],
-                        )),
-                    )
+                    ));
+
+                    match action {
+                        Some(callback) => self.cx.arm(
+                            self.span,
+                            vec![self.reduction_match_data(subindex, rules)],
+                            self.cx.expr_block(
+                                self.cx.block(
+                                    self.span,
+                                    vec![
+                                    self.cx.stmt_expr(self.cx.expr_call_ident(
+                                            self.span,
+                                            self.cx.ident_of(callback),
+                                            iter::once(self.cx.expr_ident(self.span, self.cx.ident_of("state")))
+                                                .chain(args.into_iter())
+                                                .collect()
+                                            )),
+                                    self.cx.stmt_expr(result)
+                                    ]))
+                            ),
+                        None => self.cx.arm(
+                            self.span,
+                            vec![self.reduction_match_data(subindex, rules)],
+                            result),
+                    }
+
                 }
             });
         let eps_chain = if name == "Epsilon" || name == "$" {
@@ -768,6 +791,16 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                         self.cx.ty(self.span, ast::TyKind::Slice(ty_return.clone())),
                         None,
                         ast::Mutability::Immutable,
+                    ),
+                ),
+                self.cx.arg(
+                    self.span,
+                    self.cx.ident_of("state"),
+                    self.cx.ty_rptr(
+                        self.span,
+                        self.ty_ident("State"),
+                        None,
+                        ast::Mutability::Mutable,
                     ),
                 ),
             ],
@@ -894,7 +927,7 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> O
                 let (t, _) = stack[stack.len() - 1];
                 match _STATE_TABLE[t][*goto] {
                     _Act::Goto(g) => {
-                        let result = _reduce_to_ast(*goto, *subrule, &drain);
+                        let result = _reduce_to_ast(*goto, *subrule, &drain, state);
                         stack.push((g, result));
                     }
                     _ => panic!("Unreachable"),
@@ -918,7 +951,7 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> O
     }} else {{
         None
     }} }}",
-        tm.rules["S"].data[0].1[0].identifier
+        tm.rules["S"].data[0].rules[0].identifier
     ));
 
     let session = cx.parse_sess();

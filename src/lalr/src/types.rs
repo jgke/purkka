@@ -21,7 +21,14 @@ pub struct RuleData {
 pub struct Rule {
     pub identifier: String,
     pub span: Span,
-    pub data: Vec<(String, Vec<RuleData>)>,
+    pub data: Vec<Component>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Component {
+    pub real_name: String,
+    pub action: Option<String>,
+    pub rules: Vec<RuleData>
 }
 
 #[derive(Debug, Clone)]
@@ -84,14 +91,14 @@ impl fmt::Display for Rule {
         let mut output = String::new();
         let indentation = " ".repeat(self.identifier.len() + 2);
         let mut first = true;
-        for (name, rules) in &self.data {
+        for Component {real_name, rules, ..} in &self.data {
             if !first {
                 output.push_str("\n");
                 output.push_str(&indentation);
                 output.push_str("| ");
             }
             first = false;
-            output.push_str(&name);
+            output.push_str(&real_name);
             output.push_str(". ");
             for ruledata in rules {
                 if ruledata.indirect {
@@ -129,7 +136,7 @@ impl RuleTranslationMap {
         }
 
         self.push_symbol(&name);
-        rule.data.iter().for_each(|(_, rules)| {
+        rule.data.iter().for_each(|Component {rules, ..}| {
             rules
                 .iter()
                 .for_each(|ruledata| self.push_symbol(&ruledata.full_path))
@@ -169,8 +176,8 @@ impl<'a> fmt::Display for ItemWithTr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut output = String::new();
         let ItemWithTr(tm, item) = self;
-        let (ref _name, ref symbols) = tm.rules[&item.index].data[item.subindex];
-        for (i, symbol) in symbols.iter().enumerate() {
+        let Component {ref real_name, ref rules, ..} = tm.rules[&item.index].data[item.subindex];
+        for (i, symbol) in rules.iter().enumerate() {
             if i == item.position {
                 output.push_str(" . ");
             } else {
@@ -181,7 +188,7 @@ impl<'a> fmt::Display for ItemWithTr<'a> {
             }
             output.push_str(&symbol.identifier);
         }
-        if item.position == symbols.len() {
+        if item.position == rules.len() {
             output.push_str(" . ");
         }
         write!(f, "[{} ->{}, {}]", item.index, output, item.lookahead)

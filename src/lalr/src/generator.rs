@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::time::{Instant};
 use shared::utils::{if_debug, DebugVal::DumpLalrTable};
 
-use types::{rule_name_compare, Action, Item, LRTable, RuleData, RuleTranslationMap, Terminal};
+use types::{rule_name_compare, Action, Component, Item, LRTable, RuleData, RuleTranslationMap, Terminal};
 
 fn first(
     tm: &RuleTranslationMap,
@@ -32,10 +32,10 @@ fn first_loop(
 ) -> bool {
     let (rule_index, rule_subindex, position) = rule;
     let rule = &tm.rules[rule_index];
-    let (_, symbols) = &rule.data[rule_subindex];
+    let Component {rules, ..} = &rule.data[rule_subindex];
     let mut has_e = true;
     // E -> A
-    for (i, ruledata) in symbols.iter().enumerate() {
+    for (i, ruledata) in rules.iter().enumerate() {
         if i < position {
             continue;
         }
@@ -70,8 +70,8 @@ pub fn closure(tm: &RuleTranslationMap, items: &mut HashSet<Item>) {
         prevsize = items.len() + 1;
         // for each item [A -> a.Bb, a] in I
         for item in &added {
-            let (_, production_rules) = &tm.rules[&item.index].data[item.subindex];
-            match &production_rules.get(item.position) {
+            let Component {rules, ..} = &tm.rules[&item.index].data[item.subindex];
+            match &rules.get(item.position) {
                 None => {}
                 Some(RuleData { terminal: true, .. }) => {}
                 Some(current_production) => {
@@ -124,8 +124,8 @@ pub fn goto(
     rule: String,
 ) {
     for item in items {
-        let (_, ruledata) = &tm.rules[&item.index].data[item.subindex];
-        if ruledata.len() > item.position && ruledata[item.position].full_path == rule {
+        let Component {rules, ..} = &tm.rules[&item.index].data[item.subindex];
+        if rules.len() > item.position && rules[item.position].full_path == rule {
             let mut goto_item = item.clone();
             goto_item.position += 1;
             goto_items.insert(goto_item);
@@ -259,10 +259,10 @@ pub fn lr_parsing_table(
         table.actions.push(HashMap::new());
 
         for item in items {
-            let rule = &tm.rules[&item.index].data[item.subindex].1;
-            if rule.len() > item.position {
-                if !rule[item.position].terminal {
-                    if rule[item.position].identifier == "Epsilon" {
+            let Component {rules, ..} = &tm.rules[&item.index].data[item.subindex];
+            if rules.len() > item.position {
+                if !rules[item.position].terminal {
+                    if rules[item.position].identifier == "Epsilon" {
                         panic_insert(
                             &mut table.actions[i],
                             item.lookahead.to_string(),
@@ -280,12 +280,12 @@ pub fn lr_parsing_table(
                     &tm,
                     &mut goto_items,
                     items,
-                    rule[item.position].full_path.to_string(),
+                    rules[item.position].full_path.to_string(),
                     );
                 if let Some(pos) = lr_items.iter().position(|(ref x, ref _y)| x == &goto_items) {
                     panic_insert(
                         &mut table.actions[i],
-                        rule[item.position].full_path.to_string(),
+                        rules[item.position].full_path.to_string(),
                         Action::Shift(pos)
                     );
                 }
@@ -299,7 +299,7 @@ pub fn lr_parsing_table(
                         Action::Reduce(
                             item.index.to_string(),
                             item.subindex,
-                            tm.rules[&item.index].data[item.subindex].1.len(),
+                            tm.rules[&item.index].data[item.subindex].rules.len(),
                         ),
                     );
                 }

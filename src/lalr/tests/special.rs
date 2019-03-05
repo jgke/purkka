@@ -6,6 +6,7 @@
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Constant(i32),
+    Plus(),
 }
 
 pub struct State {
@@ -19,9 +20,10 @@ fn is_special(token: &Token, state: &State) -> bool {
     }
 }
 
-fn make_special(token: &Token, state: &mut State) {
+fn make_special(state: &mut State, token: Token) {
+    dbg!(&token);
     match token {
-        Token::Constant(i) => state.special = *i,
+        Token::Constant(i) => state.special = i,
         _ => panic!()
     }
 }
@@ -30,25 +32,21 @@ lalr! {
     !Special -> is_special #Token::Constant;
 
     S  -> T;
-    T -> B | A;
-    A  -> #Token::Constant;
+    T -> A #Token::Plus B;
+    A  -> !make_special #Token::Constant;
     B  -> #Special;
 }
 
 #[test]
 fn parse_special() {
     let mut state = State {
-        special: 2,
+        special: 0,
     };
-    println!("1");
     assert_eq!(
-        driver(&mut [Token::Constant(1)].iter(), &mut state),
-        Some(S::T(S_T(T::A(T_A(A::Constant(A_Constant(Token::Constant(1))))))))
-    );
-    println!("2");
-    make_special(&Token::Constant(2), &mut state);
-    assert_eq!(
-        driver(&mut [Token::Constant(2)].iter(), &mut state),
-        Some(S::T(S_T(T::B(T_B(B::Special(B_Special(Token::Constant(2))))))))
+        driver(&mut [Token::Constant(1), Token::Plus(), Token::Constant(1)].iter(), &mut state),
+        Some(S::T(S_T(T::A(T_A(
+                            A::Constant(A_Constant(Token::Constant(1))),
+                            Token::Plus(),
+                            B::Special(B_Special(Token::Constant(1))))))))
     );
 }
