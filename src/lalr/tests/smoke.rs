@@ -3,6 +3,8 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
+type State = ();
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Constant(),
@@ -39,7 +41,7 @@ fn parse_simple() {
     use Token::*;
 
     //let tree = driver(&mut [Times(), Times(), Plus(), Plus()].iter());
-    let tree = driver(&mut [Constant(), Plus(), OpenParen(), Constant(), CloseParen()].iter());
+    let tree = driver(&mut [Constant(), Plus(), OpenParen(), Constant(), CloseParen()].iter(), &mut ());
     assert_eq!(
         tree,
         Some(S::PlusExpr(S_PlusExpr(PlusExpr::Plus(PlusExpr_Plus(

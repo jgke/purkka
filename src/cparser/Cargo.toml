@@ -7,3 +7,4 @@ authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 ctoken = { path="../ctoken" }
 lalr = { path="../lalr" }
 shared = { path="../shared" }
+lazy_static = "1.3.0"

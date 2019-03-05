@@ -1,6 +1,28 @@
+use std::sync::Mutex;
+
 use ctoken::token::Token;
 
+lazy_static! {
+    static ref TYPES: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+}
+
+fn add_type(token: &Token) {
+    match token {
+        Token::Identifier(i) => TYPES.lock().unwrap().insert(i).is_some(),
+        _ => panic!()
+    }
+}
+
+fn is_type(token: &Token) -> bool {
+    match token {
+        Token::Identifier(i) => TYPES.lock().unwrap().get(i).is_some(),
+        _ => panic!()
+    }
+}
+
 lalr! {
+    !TypeName -> is_type #Token::Identifier;
+
     S -> TranslationUnit;
 
     PrimaryExpression
@@ -182,7 +204,7 @@ lalr! {
         | #Token::Unsigned
         | &StructOrUnionSpecifier
         | &EnumSpecifier
-        | #Token::Identifier
+        | #TypeName
         ;
 
     StructOrUnionSpecifier

@@ -3,6 +3,9 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
+#[macro_use]
+extern crate lazy_static;
+
 extern crate ctoken;
 extern crate shared;
 

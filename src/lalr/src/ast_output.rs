@@ -195,7 +195,10 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                 let is_special = self.cx.expr_call_ident(
                     self.span,
                     self.cx.ident_of(function),
-                    vec![token_unwrap],
+                    vec![
+                        token_unwrap,
+                        self.cx.expr_ident(self.span, self.cx.ident_of("state")),
+                    ],
                 );
                 let special_case = self.cx.expr_usize(self.span, self.tm.indices[actual]);
                 self.cx.expr_if(self.span,
@@ -273,14 +276,26 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             None,
             ast::Mutability::Immutable,
         );
+        let ty_state = self.cx.ty_rptr(
+            self.span,
+            self.ty_ident("State"),
+            None,
+            ast::Mutability::Mutable,
+        );
         let body = self.get_translation_fn_body();
         let span = self.span;
         let name = self.cx.ident_of("_convert_token_to_index");
-        let inputs = vec![self.cx.arg(
-            self.span,
-            self.cx.ident_of("token"),
-            self.cx.ty_option(ty_return),
-            )];
+        let inputs = vec![
+            self.cx.arg(
+                self.span,
+                self.cx.ident_of("token"),
+                self.cx.ty_option(ty_return),
+            ),
+            self.cx.arg(
+                self.span,
+                self.cx.ident_of("state"),
+                ty_state,
+        )];
         let output = ty_usize;
 
         // #[allow(unreachable_patterns)]
@@ -844,7 +859,7 @@ pub fn output_parser(
     items.push(builder.get_reduction_fn(rules));
 
     let mut driver_fn = r#"
-pub fn driver(tokenstream: &mut Iterator<Item = &Token>) -> Option<S> {
+pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> Option<S> {
     let mut tokens = tokenstream.peekable();
     let mut stack: Vec<(usize, Box<_Data>)> =
         vec![(_STARTER_VALUE, Box::new(_Data::Epsilon(Epsilon::Epsilon)))];
@@ -856,7 +871,7 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>) -> Option<S> {
             println!("Current state: {}", s);
             println!("Peeked token: {:?}", &a_);
         }
-        let a = _convert_token_to_index(a_);
+        let a = _convert_token_to_index(a_, state);
         if debug_output {
             println!("Peeked token index: {}", a);
         }

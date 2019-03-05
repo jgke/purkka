@@ -8,3 +8,9 @@ members = [
     "src/preprocessor",
     "src/shared"
 ]
+
+[profile.dev]
+opt-level = 3
+
+[profile.test]
+opt-level = 3
