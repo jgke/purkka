@@ -100,7 +100,7 @@ pub fn preprocessor_to_parser(t: &MacroTokenType) -> Token {
                 "void" => Void(),
                 "volatile" => Volatile(),
                 "while" => While(),
-                _ => Identifier(),
+                s => Identifier(s.to_string()),
             }
         }
 

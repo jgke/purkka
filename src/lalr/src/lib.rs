@@ -69,7 +69,6 @@ fn parse_special(
     cx: &mut ExtCtxt,
     outer_span: Span,
     iter: &mut Peekable<Iter<'_, TokenTree>>,
-    tm: &mut RuleTranslationMap,
 ) -> ParseResult<Terminal> {
     let mut rsp = outer_span;
     let s = match iter.next() {
@@ -91,7 +90,7 @@ fn parse_special(
     }
 
     let function_name = match iter.next() {
-        Some(TokenTree::Token(s, token::Ident(tt, _))) => tt.name.to_string(),
+        Some(TokenTree::Token(_, token::Ident(tt, _))) => tt.name.to_string(),
         tt => return parse_failure(cx, *s, tt),
     };
 
@@ -174,7 +173,7 @@ fn parse_item(
         match iter.next() {
             Some(TokenTree::Token(_, token::Not)) => {
                 action = match iter.next() {
-                    Some(TokenTree::Token(s, token::Ident(tt, _))) =>
+                    Some(TokenTree::Token(_, token::Ident(tt, _))) =>
                         Some(tt.name.to_string()),
                     tt => return parse_failure(cx, s.to(rsp), tt)
                 };
@@ -300,7 +299,7 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult 
 
     loop {
         match iter.peek() {
-            Some(TokenTree::Token(_, token::Not)) => match parse_special(cx, sp, &mut iter, &mut tm) {
+            Some(TokenTree::Token(_, token::Not)) => match parse_special(cx, sp, &mut iter) {
                 ParseResult::Success(item) => {
                     terminals.insert(item);
                 }
@@ -326,8 +325,6 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult 
             None => break,
         }
     }
-
-    println!("{:?}", tm.indices);
 
     let lalr_table = compute_lalr(&tm, &terminals);
     return output_parser(cx, sp, &tm, &items, &terminals, &lalr_table);

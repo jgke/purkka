@@ -1,5 +1,5 @@
 #[allow(dead_code)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token {
     // Operator
     Dot(),
@@ -88,7 +88,7 @@ pub enum Token {
     Semicolon(),
     Varargs(),
 
-    Identifier(),
+    Identifier(String),
     StringLiteral(),
     Number(),
 }

@@ -13,7 +13,7 @@ pub struct State {
     special: i32
 }
 
-fn is_special(token: &Token, state: &State) -> bool {
+fn is_special(state: &State, token: &Token) -> bool {
     match token {
         Token::Constant(i) => state.special == *i,
         _ => panic!()

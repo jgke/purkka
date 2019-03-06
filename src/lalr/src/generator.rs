@@ -371,19 +371,20 @@ pub fn compute_lalr(
     //    }
     //}
 
-    let mut lr_items = Vec::new();
     let mut symbols: Vec<String> = rule_names
         .iter()
         .chain(terminal_full_names.iter())
         .map(|x| x.clone())
         .collect();
     symbols.sort_unstable_by(rule_name_compare);
+    let mut lr_items = Vec::new();
     items(tm, &mut lr_items, &symbols);
     println!("Item set building done");
 
     //let mut lalr_items = Vec::new();
     //get_lalr_items(&mut lalr_items, &lr_items);
     let lalr_items = &lr_items.iter().map(|x| (x.clone(), x.clone())).collect();
+    //let lalr_items = vec![];
 
     //println!("LR(1) items:");
     //for set in &lr_items {

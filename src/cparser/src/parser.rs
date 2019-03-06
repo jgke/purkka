@@ -1,27 +1,72 @@
-use std::sync::Mutex;
+use std::collections::HashSet;
 
 use ctoken::token::Token;
 
-lazy_static! {
-    static ref TYPES: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
-}
+type State = HashSet<String>;
 
-fn add_type(token: &Token) {
-    match token {
-        Token::Identifier(i) => TYPES.lock().unwrap().insert(i).is_some(),
-        _ => panic!()
+fn get_decls(decl: InitDeclaratorList) -> Vec<InitDeclarator> {
+    match decl {
+        InitDeclaratorList::InitDeclarator(InitDeclaratorList_InitDeclarator(decl)) => vec![decl],
+        InitDeclaratorList::Comma(InitDeclaratorList_Comma(more, _, decl)) => {
+            let mut decls = get_decls(*more);
+            decls.push(decl);
+            decls
+        }
     }
 }
 
-fn is_type(token: &Token) -> bool {
+fn get_direct_decl_identifier(decl: DirectDeclarator) -> String {
+    match decl {
+        DirectDeclarator::Identifier(DirectDeclarator_Identifier(Token::Identifier(s))) => s,
+        DirectDeclarator::Identifier(DirectDeclarator_Identifier(_)) => unreachable!(),
+        DirectDeclarator::OpenParen(DirectDeclarator_OpenParen(_, decl, _)) => get_decl_identifier(*decl),
+        DirectDeclarator::SizedArray(DirectDeclarator_SizedArray(decl, ..)) => get_direct_decl_identifier(*decl),
+        DirectDeclarator::Array(DirectDeclarator_Array(decl, ..)) => get_direct_decl_identifier(*decl),
+        DirectDeclarator::FunctionParams(DirectDeclarator_FunctionParams(decl, ..)) => get_direct_decl_identifier(*decl),
+        DirectDeclarator::FunctionIdents(DirectDeclarator_FunctionIdents(decl, ..)) => get_direct_decl_identifier(*decl),
+        DirectDeclarator::Function(DirectDeclarator_Function(decl, ..)) => get_direct_decl_identifier(*decl),
+    }
+}
+
+fn get_decl_identifier(decl: Declarator) -> String {
+    let direct_decl = match decl {
+        Declarator::Pointer(Declarator_Pointer(_, direct_decl)) => direct_decl,
+        Declarator::DirectDeclarator(Declarator_DirectDeclarator(direct_decl)) => direct_decl,
+    };
+    get_direct_decl_identifier(direct_decl)
+}
+
+fn add_decl(state: &mut State, init_decl: InitDeclarator) {
+    let decl = match init_decl {
+        InitDeclarator::Declarator(InitDeclarator_Declarator(decl)) => decl,
+        InitDeclarator::Assign(InitDeclarator_Assign(..)) => panic!("Assignment to a typedef")
+    };
+    let name = get_decl_identifier(decl);
+    state.insert(name);
+}
+
+fn add_type(state: &mut State, declaration: TypeDeclaration) {
+    let (spec, list) = match declaration {
+        TypeDeclaration::Typedef(TypeDeclaration_Typedef(_, spec, ..)) => {
+            println!("Warning: useless typedef");
+            return;
+        },
+        TypeDeclaration::List(TypeDeclaration_List(_, spec, list, ..)) => (spec, list)
+    };
+    
+    let decls = get_decls(list);
+    decls.into_iter().for_each(|decl| add_decl(state, decl));
+}
+
+fn is_type(state: &State, token: &Token) -> bool {
     match token {
-        Token::Identifier(i) => TYPES.lock().unwrap().get(i).is_some(),
+        Token::Identifier(i) => state.get(i).is_some(),
         _ => panic!()
     }
 }
 
 lalr! {
-    !TypeName -> is_type #Token::Identifier;
+    !TypeNameStr -> is_type #Token::Identifier;
 
     S -> TranslationUnit;
 
@@ -165,6 +210,11 @@ lalr! {
         | List. DeclarationSpecifiers InitDeclaratorList #Token::Semicolon
         ;
 
+    TypeDeclaration
+       -> #Token::Typedef DeclarationSpecifiers #Token::Semicolon
+        | List. #Token::Typedef DeclarationSpecifiers InitDeclaratorList #Token::Semicolon
+        ;
+
     DeclarationSpecifiers
        -> StorageClassSpecifier
         | StorageList. StorageClassSpecifier DeclarationSpecifiers
@@ -185,8 +235,7 @@ lalr! {
         ;
 
     StorageClassSpecifier
-       -> #Token::Typedef
-        | #Token::Extern
+       -> #Token::Extern
         | #Token::Static
         | #Token::Auto
         | #Token::Register
@@ -204,7 +253,7 @@ lalr! {
         | #Token::Unsigned
         | &StructOrUnionSpecifier
         | &EnumSpecifier
-        | #TypeName
+        | #TypeNameStr
         ;
 
     StructOrUnionSpecifier
@@ -416,6 +465,7 @@ lalr! {
     ExternalDeclaration
        -> FunctionDefinition
         | Declaration
+        | !add_type TypeDeclaration
         ;
 
     FunctionDefinition

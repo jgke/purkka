@@ -3,17 +3,17 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
-#[macro_use]
-extern crate lazy_static;
-
 extern crate ctoken;
 extern crate shared;
 
 pub mod parser;
 
+use std::collections::HashSet;
+
 use parser::driver;
 use ctoken::token::Token;
 
 pub fn parse(input: Vec<Token>) -> Option<parser::S> {
-    driver(&mut input.iter())
+    let mut types = HashSet::new();
+    driver(&mut input.iter(), &mut types)
 }

@@ -176,7 +176,7 @@ impl<'a> fmt::Display for ItemWithTr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut output = String::new();
         let ItemWithTr(tm, item) = self;
-        let Component {ref real_name, ref rules, ..} = tm.rules[&item.index].data[item.subindex];
+        let Component {ref rules, ..} = tm.rules[&item.index].data[item.subindex];
         for (i, symbol) in rules.iter().enumerate() {
             if i == item.position {
                 output.push_str(" . ");

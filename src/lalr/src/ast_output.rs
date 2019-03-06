@@ -120,7 +120,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                         let ident_str = ident_arr.last().unwrap();
                         let ident_ty = self.ty_ident(ident_str);
                         let ty = match self.special_rules.get(ident_str) {
-                            Some(dependant) => self.ty_ident("Token"),
+                            Some(_) => self.ty_ident("Token"),
                             None => if item.indirect || &item.identifier == enum_name {
                                 self.boxed(ident_ty)
                             } else {
@@ -182,26 +182,85 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         )
     }
 
-    fn translation_fn_maybe_with_conversion(&self, term: &Terminal) -> P<ast::Expr> {
-        let default_case = self.cx.expr_usize(self.span, self.tm.indices[&term.full_path]);
-        let token_unwrap = self.cx.expr_method_call(
+    pub fn get_debug_translation_fn(&self) -> P<ast::Item> {
+        let ty_return = self.cx.ty_rptr(
             self.span,
-            self.cx.expr_ident(self.span, self.cx.ident_of("token")),
+            self.ty_ident("str"),
+            Some(self.cx.lifetime(self.span, self.cx.ident_of("'static"))),
+            ast::Mutability::Immutable,
+        );
+        let name = self.cx.ident_of("_token_index_to_str");
+        let inputs = vec![
+            self.cx.arg(
+                self.span,
+                self.cx.ident_of("token"),
+                self.cx.ty_ident(self.span, self.cx.ident_of("usize")),
+            ),
+        ];
+        let output = ty_return;
+
+
+        let body = self.cx.block_expr(
+            self.cx.expr_match(
+                self.span,
+                self.cx.expr_ident(self.span, self.cx.ident_of("token")),
+                self.tm.rules
+                    .iter()
+                    .map(|(name, _)| name)
+                    .chain(self.terminals.iter().map(|term| &term.full_path))
+                    .map(|name| {
+                        println!("{}", name);
+                        let span = self.tm.rules.get(name).map(|rule| rule.span).unwrap_or(self.span);
+                        self.cx.arm(
+                            span,
+                            vec![self.cx.pat_lit(span, self.usize_expr(self.tm.indices[name]))],
+                            self.cx.expr_str(span, symbol::Symbol::intern(name))
+                        )
+                    })
+                    .chain(iter::once(self.wild_arm_unreachable()))
+                    .collect(),
+                ),
+        );
+
+        self.cx.item(self.span,
+                  name,
+                  vec![],
+                  ast::ItemKind::Fn(self.cx.fn_decl(inputs, ast::FunctionRetTy::Ty(output)),
+                              ast::FnHeader {
+                                  unsafety: ast::Unsafety::Normal,
+                                  asyncness: ast::IsAsync::NotAsync,
+                                  constness: dummy_spanned(ast::Constness::NotConst),
+                                  abi: Abi::Rust,
+                              },
+                              ast::Generics::default(),
+                              body
+        ))
+    }
+
+    fn translation_fn_maybe_with_conversion(&self, term: &Terminal) -> P<ast::Expr> {
+        let default_case = self.cx.expr_usize(term.span, self.tm.indices[&term.full_path]);
+        let token_unwrap = self.cx.expr_method_call(
+            term.span,
+            self.cx.expr_ident(term.span, self.cx.ident_of("token")),
             self.cx.ident_of("unwrap"),
             vec![],
         );
         match self.special_provides.get(&term.full_path) {
             Some((actual, function)) => {
+                if self.tm.indices.get(actual).is_none() {
+                    println!("Warning: unused special case: {}", actual);
+                    return default_case;
+                }
                 let is_special = self.cx.expr_call_ident(
-                    self.span,
+                    term.span,
                     self.cx.ident_of(function),
                     vec![
+                        self.cx.expr_ident(term.span, self.cx.ident_of("state")),
                         token_unwrap,
-                        self.cx.expr_ident(self.span, self.cx.ident_of("state")),
                     ],
                 );
-                let special_case = self.cx.expr_usize(self.span, self.tm.indices[actual]);
-                self.cx.expr_if(self.span,
+                let special_case = self.cx.expr_usize(term.span, self.tm.indices[actual]);
+                self.cx.expr_if(term.span,
                                 is_special,
                                 special_case,
                                 Some(default_case))
@@ -485,6 +544,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                     self.cx.expr_ident(self.span, self.cx.ident_of("index")),
                     terminals
                         .iter()
+                        .filter(|term| self.tm.indices.contains_key(&term.full_path))
                         .map(|term| {
                             // 3 => reduction_match_body
                             self.cx.arm(
@@ -619,28 +679,26 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
     }
     fn reduction_match_body(
         &self,
-        name: &str,
-        data: &Vec<Component>,
+        rule: &Rule
     ) -> P<ast::Expr> {
-        dbg!(&name);
-        dbg!(&data.len());
+        let Rule {identifier, span, data} = rule;
         let bodies = data
             .iter()
             .enumerate()
             .map(|(subindex, Component {real_name, rules, action})| {
                 if rules.len() == 1 && rules[0].identifier == "Epsilon" {
                     self.cx.arm(
-                        self.span,
-                        vec![self.cx.pat_wild(self.span)],
+                        *span,
+                        vec![self.cx.pat_wild(*span)],
                         self.box_expr(self.cx.expr_call(
-                            self.span,
+                            *span,
                             self.cx.expr_path(self.cx.path(
-                                self.span,
+                                *span,
                                 vec![self.cx.ident_of("_Data"), self.cx.ident_of("Epsilon")],
                             )),
                             vec![
                                 self.cx.expr_path(self.cx.path(
-                                    self.span,
+                                    *span,
                                     vec![self.cx.ident_of("Epsilon"), self.cx.ident_of("Epsilon")],
                                 )),
                             ],
@@ -651,28 +709,28 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                         .map(|(i, data)|
                              self.box_or_star(
                                  data.indirect,
-                                 self.cx.expr_ident(self.span,
+                                 self.cx.expr_ident(*span,
                                                     self.cx.ident_of(
                                                         &format!("pat_{}", i)))))
                         .collect();
                     let result = self.box_expr(self.cx.expr_call(
-                            self.span,
+                            *span,
                             self.cx.expr_path(self.cx.path(
-                                self.span,
-                                vec![self.cx.ident_of("_Data"), self.cx.ident_of(name)],
+                                *span,
+                                vec![self.cx.ident_of("_Data"), self.cx.ident_of(identifier)],
                             )),
                             vec![self.cx.expr_call(
-                                self.span,
+                                *span,
                                 self.cx.expr_path(self.cx.path(
-                                    self.span,
-                                    vec![self.cx.ident_of(name), self.cx.ident_of(real_name)],
+                                    *span,
+                                    vec![self.cx.ident_of(identifier), self.cx.ident_of(real_name)],
                                 )),
                                 vec![
                             self.cx.expr_call(
-                                self.span,
+                                *span,
                                 self.cx.expr_path(self.cx.path_ident(
-                                        self.span,
-                                        self.cx.ident_of(&format!("{}_{}", name, real_name)))),
+                                        *span,
+                                        self.cx.ident_of(&format!("{}_{}", identifier, real_name)))),
                                 args.clone()
                                 )],
                             )],
@@ -680,16 +738,16 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
 
                     match action {
                         Some(callback) => self.cx.arm(
-                            self.span,
+                            *span,
                             vec![self.reduction_match_data(subindex, rules)],
                             self.cx.expr_block(
                                 self.cx.block(
-                                    self.span,
+                                    *span,
                                     vec![
                                     self.cx.stmt_expr(self.cx.expr_call_ident(
-                                            self.span,
+                                            *span,
                                             self.cx.ident_of(callback),
-                                            iter::once(self.cx.expr_ident(self.span, self.cx.ident_of("state")))
+                                            iter::once(self.cx.expr_ident(*span, self.cx.ident_of("state")))
                                                 .chain(args.into_iter())
                                                 .collect()
                                             )),
@@ -697,27 +755,27 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                     ]))
                             ),
                         None => self.cx.arm(
-                            self.span,
+                            *span,
                             vec![self.reduction_match_data(subindex, rules)],
                             result),
                     }
 
                 }
             });
-        let eps_chain = if name == "Epsilon" || name == "$" {
+        let eps_chain = if identifier == "Epsilon" || identifier == "$" {
             iter::once(
                 self.cx.arm(
-                    self.span,
-                    vec![self.cx.pat_wild(self.span)],
+                    *span,
+                    vec![self.cx.pat_wild(*span)],
                     self.box_expr(self.cx.expr_call(
-                        self.span,
+                        *span,
                         self.cx.expr_path(self.cx.path(
-                            self.span,
+                            *span,
                             vec![self.cx.ident_of("_Data"), self.cx.ident_of("Epsilon")],
                         )),
                         vec![
                             self.cx.expr_path(self.cx.path(
-                                self.span,
+                                *span,
                                 vec![self.cx.ident_of("Epsilon"), self.cx.ident_of("Epsilon")],
                             )),
                         ],
@@ -728,12 +786,12 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             iter::once( self.wild_arm_fail("coerce_panic"))
         };
         self.cx.expr_match(
-            self.span,
+            *span,
             self.cx.expr_tuple(
-                self.span,
+                *span,
                 vec![
-                    self.cx.expr_ident(self.span, self.cx.ident_of("subindex")),
-                    self.cx.expr_ident(self.span, self.cx.ident_of("data")),
+                    self.cx.expr_ident(*span, self.cx.ident_of("subindex")),
+                    self.cx.expr_ident(*span, self.cx.ident_of("data")),
                 ],
             ),
             bodies
@@ -754,12 +812,12 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                         .map(|rule| {
                             // 3 => reduction_match_body
                             self.cx.arm(
-                                self.span,
+                                rule.span,
                                 vec![self.cx.pat_lit(
-                                    self.span,
+                                    rule.span,
                                     self.usize_expr(self.tm.indices[&rule.identifier]),
                                 )],
-                                self.reduction_match_body(&rule.identifier, &rule.data),
+                                self.reduction_match_body(&rule),
                             )
                         })
                         .chain(iter::once(self.wild_arm_unreachable()))
@@ -884,6 +942,7 @@ pub fn output_parser(
     items.push(builder.item_enum_derive(span, cx.ident_of("_Data"), all_structs_enum));
 
     items.push(builder.get_lalr_table());
+    items.push(builder.get_debug_translation_fn());
     items.push(builder.get_translation_fn());
     items.push(builder.get_translation_enum());
     items.push(builder.get_action_enum());
@@ -913,7 +972,14 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> O
             println!("Action: {:?}", action);
         }
         match action {
-            _Act::Error => panic!("Error state reached"),
+            _Act::Error => {
+                println!("Error state reached for token {:?}", &a_);
+                println!("Expected one of tokens:");
+                &_STATE_TABLE[s].iter().enumerate()
+                    .filter(|(_, t)| if let _Act::Shift(..) = t { true } else { false })
+                    .for_each(|(i, _)| println!("{}", _token_index_to_str(i)));
+                panic!("Error state reached");
+            }
             _Act::Shift(t) => {
                 stack.push((*t, _token_to_data(a, a_.unwrap())));
                 let t = tokens.next();
