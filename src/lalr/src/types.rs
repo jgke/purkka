@@ -55,6 +55,42 @@ pub struct Item {
     pub lookahead: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Core {
+    pub index: String,
+    pub subindex: usize,
+    pub position: usize
+}
+
+impl Item {
+    pub fn display<'a>(&'a self, tm: &'a RuleTranslationMap) -> ItemWithTr<'a> {
+        ItemWithTr(tm, self)
+    }
+
+    pub fn to_core(self) -> Core {
+        Core {
+            index: self.index,
+            subindex: self.subindex,
+            position: self.position
+        }
+    }
+}
+
+impl Core {
+    pub fn display<'a>(&'a self, tm: &'a RuleTranslationMap) -> CoreWithTr<'a> {
+        CoreWithTr(tm, self)
+    }
+
+    pub fn to_item(self, lookahead: String) -> Item {
+        Item {
+            index: self.index,
+            subindex: self.subindex,
+            position: self.position,
+            lookahead
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Action {
     Error,
@@ -70,6 +106,7 @@ pub struct LRTable {
 }
 
 pub struct ItemWithTr<'a>(pub &'a RuleTranslationMap, pub &'a Item);
+pub struct CoreWithTr<'a>(pub &'a RuleTranslationMap, pub &'a Core);
 
 impl Ord for Item {
     fn cmp(&self, other: &Item) -> Ordering {
@@ -192,6 +229,29 @@ impl<'a> fmt::Display for ItemWithTr<'a> {
             output.push_str(" . ");
         }
         write!(f, "[{} ->{}, {}]", item.index, output, item.lookahead)
+    }
+}
+
+impl<'a> fmt::Display for CoreWithTr<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut output = String::new();
+        let CoreWithTr(tm, core) = self;
+        let Component {ref rules, ..} = tm.rules[&core.index].data[core.subindex];
+        for (i, symbol) in rules.iter().enumerate() {
+            if i == core.position {
+                output.push_str(" . ");
+            } else {
+                output.push_str(" ");
+            }
+            if symbol.terminal {
+                output.push_str("#");
+            }
+            output.push_str(&symbol.identifier);
+        }
+        if core.position == rules.len() {
+            output.push_str(" . ");
+        }
+        write!(f, "[{} ->{}]", core.index, output)
     }
 }
 

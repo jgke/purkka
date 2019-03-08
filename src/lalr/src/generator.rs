@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::time::{Instant};
 use shared::utils::{if_debug, DebugVal::DumpLalrTable};
 
-use types::{rule_name_compare, Action, Component, Item, LRTable, RuleData, RuleTranslationMap, Terminal};
+use types::{rule_name_compare, Action, Component, Core, Item, LRTable, RuleData, RuleTranslationMap, Terminal};
 
 fn first(
     tm: &RuleTranslationMap,
@@ -121,7 +121,7 @@ pub fn goto(
     tm: &RuleTranslationMap,
     goto_items: &mut HashSet<Item>,
     items: &HashSet<Item>,
-    rule: String,
+    rule: &str,
 ) {
     for item in items {
         let Component {rules, ..} = &tm.rules[&item.index].data[item.subindex];
@@ -156,7 +156,7 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
         for set in &added {
             for symbol in symbols {
                 let mut goto_items = HashSet::new();
-                goto(tm, &mut goto_items, set, symbol.to_string());
+                goto(tm, &mut goto_items, set, symbol);
                 if goto_items.len() > 0
                     && !items.contains(&goto_items)
                     && !added_next.contains(&goto_items)
@@ -173,15 +173,120 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct Core {
-    index: String,
-    subindex: usize,
-    position: usize
-}
-
 fn get_cores(items: &HashSet<Item>) -> HashSet<Core> {
     items.iter().map(|item| Core {index: item.index.clone(), subindex: item.subindex, position: item.position}).collect()
+}
+
+fn get_lookaheads(tm: &RuleTranslationMap, kernels: &HashSet<Core>, symbol: &str,
+    spontaneous: &mut HashMap<Core, HashSet<String>>,
+    propagate: &mut HashMap<Core, HashSet<Core>>)  {
+
+    for core in kernels {
+        let mut closure_items = HashSet::new();
+        let initial_item = core.clone().to_item("#".to_string());
+        closure_items.insert(initial_item.clone());
+        closure(tm, &mut closure_items);
+
+        let mut goto_items = HashSet::new();
+        goto(tm, &mut goto_items, &closure_items, symbol);
+        let goto_cores: HashSet<Core> = goto_items.iter()
+            .map(|item| item.clone().to_core()).collect();
+
+        for (i, maybe_item) in goto_items.iter().enumerate() {
+            let maybe_core = maybe_item.clone().to_core();
+            if goto_cores.contains(&maybe_core) &&
+            maybe_item.lookahead != "#" && maybe_item.position > 0 {
+                let lookahead = &maybe_item.lookahead;
+                let maybe_core = maybe_item.clone().to_core();
+
+                // spontaneous for maybe_item in goto(item, X)
+                let lookaheads = spontaneous.entry(maybe_item.clone().to_core()).or_insert(HashSet::new());
+                lookaheads.insert(lookahead.clone());
+            }
+            if maybe_item.lookahead == "#" && maybe_item.position > 0 {
+                let propagate_set = propagate.entry(core.clone()).or_insert(HashSet::new());
+                let mut maybe_core = maybe_item.clone().to_core();
+
+                propagate_set.insert(maybe_core);
+            }
+        }
+    }
+}
+
+pub fn get_lalr_items_fast(
+    tm: &RuleTranslationMap,
+    lalr_items: &mut Vec<(HashSet<Item>, HashSet<Item>)>,
+    lr_items: &Vec<HashSet<Item>>) -> HashMap<Core, HashSet<String>> {
+
+    let mut cores_list: Vec<HashSet<Core>> = Vec::new();
+    let mut items_list: Vec<HashSet<Item>> = Vec::new();
+    let mut orig_indices: Vec<usize> = Vec::new();
+    lr_items.iter().enumerate()
+        .map(|(i, set)| (set.into_iter()
+             .filter(|item| item.index == "S" || item.position > 0)
+             .map(|item| item.clone().to_core())
+             .collect::<HashSet<Core>>(), set, i))
+        .filter(|(cores, _, _)| cores.len() > 0)
+        .for_each(|(cores, items, i)| if !cores_list.contains(&cores) {
+            cores_list.push(cores); 
+            items_list.push(items.clone());
+            orig_indices.push(i);
+        });
+
+    let mut table: HashMap<Core, HashSet<String>> = HashMap::new();
+    table.insert(Core {index: "S".to_string(), subindex: 0, position: 0}, std::iter::once("$".to_string()).collect());
+
+    let mut spontaneous: HashMap<Core, HashSet<String>> = HashMap::new();
+    spontaneous.insert(Core {index: "S".to_string(), subindex: 0, position: 0}, std::iter::once("$".to_string()).collect());
+    let mut propagate: HashMap<Core, HashSet<Core>> = HashMap::new();
+
+    for (i, k) in cores_list.iter().enumerate() {
+        for key in tm.indices.keys() {
+            get_lookaheads(tm, k, key, &mut spontaneous, &mut propagate);
+        }
+    }
+
+    let mut had_new_lookaheads = true;
+
+    for (key, lookaheads) in &spontaneous {
+        let table_lookaheads = table.entry(key.clone()).or_insert(HashSet::new());
+        for lookahead in lookaheads.iter() {
+            table_lookaheads.insert(lookahead.clone());
+        }
+    }
+
+    while had_new_lookaheads {
+        had_new_lookaheads = false;
+        let mut new_table = table.clone();
+        for (core, lookaheads) in table.iter() {
+            match propagate.get(core) {
+                Some(set) => {
+                    for item in set.iter() {
+                        let new_set = new_table.entry(item.clone()).or_insert(HashSet::new());
+
+                        for lookahead in lookaheads {
+                            let inserted_new = new_set.insert(lookahead.clone());
+                            had_new_lookaheads = inserted_new || had_new_lookaheads;
+                        }
+                    }
+                }
+                None => {}
+            }
+        }
+        table = new_table;
+    }
+
+    for (i, cores) in cores_list.iter().enumerate() {
+        let mut collection = HashSet::new();
+        for core in cores {
+            for lookahead in &table[&core] {
+                collection.insert(core.clone().to_item(lookahead.to_string()));
+            }
+        }
+        lalr_items.push((lr_items[orig_indices[i]].clone(), collection));
+    }
+
+    table
 }
 
 pub fn get_lalr_items(lalr_items: &mut Vec<(HashSet<Item>, HashSet<Item>)>, lr_items: &Vec<HashSet<Item>>) {
@@ -280,7 +385,7 @@ pub fn lr_parsing_table(
                     &tm,
                     &mut goto_items,
                     items,
-                    rules[item.position].full_path.to_string(),
+                    &rules[item.position].full_path,
                     );
                 if let Some(pos) = lr_items.iter().position(|(ref x, ref _y)| x == &goto_items) {
                     panic_insert(
@@ -308,7 +413,7 @@ pub fn lr_parsing_table(
 
         for symbol in nonterminals {
             let mut goto_items = HashSet::new();
-            goto(&tm, &mut goto_items, &items, symbol.to_string());
+            goto(&tm, &mut goto_items, &items, symbol);
 
             if let Some(pos) = lr_items.iter().position(|(ref x, ref _y)| x == &goto_items) {
                 table.actions[i].insert(symbol.to_string(), Action::Goto(pos));
@@ -381,9 +486,33 @@ pub fn compute_lalr(
     items(tm, &mut lr_items, &symbols);
     println!("Item set building done");
 
-    //let mut lalr_items = Vec::new();
-    //get_lalr_items(&mut lalr_items, &lr_items);
-    let lalr_items = &lr_items.iter().map(|x| (x.clone(), x.clone())).collect();
+    let mut lalr_items = Vec::new();
+    let mut lalr_items_s = Vec::new();
+    get_lalr_items(&mut lalr_items_s, &lr_items);
+    get_lalr_items_fast(tm, &mut lalr_items, &lr_items);
+    for items in lr_items.iter() {
+        for item in items.iter() {
+            println!("{:?}", item);
+        }
+        println!();
+    }
+    println!();
+    println!();
+    for (items, _) in lalr_items_s.iter() {
+        for item in items.iter() {
+            println!("{:?}", item);
+        }
+        println!();
+    }
+    println!();
+    println!();
+    for (items, _) in lalr_items.iter() {
+        for item in items.iter() {
+            println!("{:?}", item);
+        }
+        println!();
+    }
+    //lalr_items = lr_items.iter().map(|x| (x.clone(), x.clone())).collect();
     //let lalr_items = vec![];
 
     //println!("LR(1) items:");
