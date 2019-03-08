@@ -215,7 +215,7 @@ fn get_lookaheads(tm: &RuleTranslationMap, kernels: &HashSet<Core>, symbol: &str
 
 pub fn get_lalr_items_fast(
     tm: &RuleTranslationMap,
-    lalr_items: &mut Vec<(HashSet<Item>, HashSet<Item>)>,
+    lalr_items: &mut Vec<HashSet<Item>>,
     lr_items: &Vec<HashSet<Item>>) -> HashMap<Core, HashSet<String>> {
 
     let mut cores_list: Vec<HashSet<Core>> = Vec::new();
@@ -283,13 +283,13 @@ pub fn get_lalr_items_fast(
                 collection.insert(core.clone().to_item(lookahead.to_string()));
             }
         }
-        lalr_items.push((lr_items[orig_indices[i]].clone(), collection));
+        lalr_items.push(collection);
     }
 
     table
 }
 
-pub fn get_lalr_items(lalr_items: &mut Vec<(HashSet<Item>, HashSet<Item>)>, lr_items: &Vec<HashSet<Item>>) {
+pub fn get_lalr_items(lalr_items: &mut Vec<HashSet<Item>>, lr_items: &Vec<HashSet<Item>>) {
     // for each set a in lr_items:
     //      set union := a
     //      for each set b != a in lr_items:
@@ -319,7 +319,7 @@ pub fn get_lalr_items(lalr_items: &mut Vec<(HashSet<Item>, HashSet<Item>)>, lr_i
             }
         }
 
-        lalr_items.push((left.clone(), union));
+        lalr_items.push(union);
     }
 }
 
@@ -342,7 +342,7 @@ pub fn panic_insert(map: &mut HashMap<String, Action>, identifier: String, actio
 
 pub fn lr_parsing_table(
     tm: &RuleTranslationMap,
-    lr_items: &Vec<(HashSet<Item>, HashSet<Item>)>,
+    lr_items: &Vec<HashSet<Item>>,
     nonterminals: &Vec<String>,
 ) -> Box<LRTable> {
     let mut table = Box::new(LRTable { actions: vec![] });
@@ -350,20 +350,21 @@ pub fn lr_parsing_table(
 
     let start = Instant::now();
 
-    let total = lr_items.iter().fold(0, |total, (_, ref items)| total + items.len() * items.len());
+    let total = lr_items.iter().fold(0, |total, ref items| total + items.len());
     let mut count = 0;
 
-    for (i, (ref _left, ref items)) in lr_items.iter().enumerate() {
-        count += items.len() * items.len();
+    for (i, ref items) in lr_items.iter().enumerate() {
+        count += items.len();
         let now = Instant::now();
         let elapsed = now.duration_since(start);
         let items_per_millisecond: f64 = (count as f64) / (elapsed.as_millis() as f64);
+        let items_per_second: f64 = items_per_millisecond * 1000.0;
         let to_go: f64 = (total - count) as f64;
 
-        println!("{} / {} ({:.1}s to go)", count, total, to_go / (items_per_millisecond * 1000.0));
+        println!("{} / {} ({:.1}s to go @ {} items/s)", count, total, to_go / items_per_second, items_per_second);
         table.actions.push(HashMap::new());
 
-        for item in items {
+        for item in items.iter() {
             let Component {rules, ..} = &tm.rules[&item.index].data[item.subindex];
             if rules.len() > item.position {
                 if !rules[item.position].terminal {
@@ -381,13 +382,17 @@ pub fn lr_parsing_table(
                     continue;
                 }
                 let mut goto_items = HashSet::new();
+                println!("\n{}", item.display(tm));
                 goto(
                     &tm,
                     &mut goto_items,
                     items,
                     &rules[item.position].full_path,
                     );
-                if let Some(pos) = lr_items.iter().position(|(ref x, ref _y)| x == &goto_items) {
+                for i in &goto_items {
+                    println!("{}", i.display(tm))
+                }
+                if let Some(pos) = lr_items.iter().position(|x| get_cores(x) == get_cores(&goto_items)) {
                     panic_insert(
                         &mut table.actions[i],
                         rules[item.position].full_path.to_string(),
@@ -415,7 +420,7 @@ pub fn lr_parsing_table(
             let mut goto_items = HashSet::new();
             goto(&tm, &mut goto_items, &items, symbol);
 
-            if let Some(pos) = lr_items.iter().position(|(ref x, ref _y)| x == &goto_items) {
+            if let Some(pos) = lr_items.iter().position(|x| get_cores(x) == get_cores(&goto_items)) {
                 table.actions[i].insert(symbol.to_string(), Action::Goto(pos));
             }
         }
@@ -496,17 +501,17 @@ pub fn compute_lalr(
         }
         println!();
     }
+    //println!();
+    //println!();
+    //for (items, _) in lalr_items_s.iter() {
+    //    for item in items.iter() {
+    //        println!("{:?}", item);
+    //    }
+    //    println!();
+    //}
     println!();
     println!();
-    for (items, _) in lalr_items_s.iter() {
-        for item in items.iter() {
-            println!("{:?}", item);
-        }
-        println!();
-    }
-    println!();
-    println!();
-    for (items, _) in lalr_items.iter() {
+    for items in lalr_items_s.iter() {
         for item in items.iter() {
             println!("{:?}", item);
         }
@@ -525,7 +530,7 @@ pub fn compute_lalr(
     //    println!("]");
     //}
 
-    let table = lr_parsing_table(tm, &lalr_items, &rule_names);
+    let table = lr_parsing_table(tm, &lalr_items_s, &rule_names);
 
     //let starting_rule = &tm.rules["S"].data[0].1[0].identifier;
     //for rule in &tm.rules[starting_rule].data {
@@ -535,8 +540,27 @@ pub fn compute_lalr(
     //}
 
     if_debug(DumpLalrTable, || {
-        println!("S: {}", tm.indices["S"]);
-        println!("$: {}", tm.indices["$"]);
+        println!("LR table");
+        let table = lr_parsing_table(tm, &lr_items, &rule_names);
+        print!("   ");
+        for symbol in terminal_names.iter().chain(rule_names.iter()) {
+            print!("{: >7.5}", &symbol);
+        }
+        println!("");
+        for (i, row) in table.actions.iter().enumerate() {
+            print!("{: <3}", i);
+            for symbol in terminal_full_names.iter().chain(rule_names.iter()) {
+                match row.get(symbol) {
+                    Some(action) => print!("{}", action),
+                    None => print!("{}", Action::Error),
+                }
+            }
+            println!("");
+        }
+    });
+
+    if_debug(DumpLalrTable, || {
+        println!("LALR table");
         print!("   ");
         for symbol in terminal_names.iter().chain(rule_names.iter()) {
             print!("{: >7.5}", &symbol);
