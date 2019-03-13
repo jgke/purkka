@@ -34,9 +34,10 @@
 
 use std::cmp::min;
 use std::collections::HashMap;
+use std::env;
+use std::fmt;
 use std::str::CharIndices;
 use traits::PeekableCharsExt;
-use std::env;
 
 /// This struct converts a &str to &'static str. Unsafe.
 struct StringInterner {
@@ -508,6 +509,19 @@ impl FragmentIterator {
     pub fn get_current_content(&self) -> String {
         let s = &self.contents[&self.current_source().filename];
         s.to_string()
+    }
+}
+
+impl fmt::Debug for FragmentIterator {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("FragmentIterator")
+            .field("fragments", &self.fragments)
+            .field("current_fragment", &self.current_fragment)
+            .field("current_source", &self.current_source)
+            .field("iter", &self.iter.as_str())
+            .field("contents", &self.contents)
+            .field("debug", &self.debug)
+            .finish()
     }
 }
 

@@ -44,7 +44,7 @@ fn parse_simple() {
     let tree = driver(&mut [Constant(), Plus(), OpenParen(), Constant(), CloseParen()].iter(), &mut ());
     assert_eq!(
         tree,
-        Some(S::PlusExpr(S_PlusExpr(PlusExpr::Plus(PlusExpr_Plus(
+        Ok(S::PlusExpr(S_PlusExpr(PlusExpr::Plus(PlusExpr_Plus(
             Box::new(PlusExpr::TimesExpr(PlusExpr_TimesExpr(
                 TimesExpr::PrimaryExpr(TimesExpr_PrimaryExpr(PrimaryExpr::Constant(
                     PrimaryExpr_Constant(Constant())

@@ -206,15 +206,88 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                 self.cx.expr_ident(self.span, self.cx.ident_of("token")),
                 self.tm.rules
                     .iter()
-                    .map(|(name, _)| name)
+                    .map(|(_, rule)| &rule.identifier)
                     .chain(self.terminals.iter().map(|term| &term.full_path))
                     .map(|name| {
-                        println!("{}", name);
-                        let span = self.tm.rules.get(name).map(|rule| rule.span).unwrap_or(self.span);
+                        let span = self.tm.indices.get(name)
+                            .and_then(|index| self.tm.rules.get(index))
+                            .map(|rule| rule.span)
+                            .unwrap_or(self.span);
                         self.cx.arm(
                             span,
                             vec![self.cx.pat_lit(span, self.usize_expr(self.tm.indices[name]))],
                             self.cx.expr_str(span, symbol::Symbol::intern(name))
+                        )
+                    })
+                    .chain(iter::once(self.wild_arm_unreachable()))
+                    .collect(),
+                ),
+        );
+
+        self.cx.item(self.span,
+                  name,
+                  vec![],
+                  ast::ItemKind::Fn(self.cx.fn_decl(inputs, ast::FunctionRetTy::Ty(output)),
+                              ast::FnHeader {
+                                  unsafety: ast::Unsafety::Normal,
+                                  asyncness: ast::IsAsync::NotAsync,
+                                  constness: dummy_spanned(ast::Constness::NotConst),
+                                  abi: Abi::Rust,
+                              },
+                              ast::Generics::default(),
+                              body
+        ))
+    }
+    pub fn get_debug_reduce_translation_fn(&self) -> P<ast::Item> {
+        let ty_return = self.cx.ty_rptr(
+            self.span,
+            self.ty_ident("str"),
+            Some(self.cx.lifetime(self.span, self.cx.ident_of("'static"))),
+            ast::Mutability::Immutable,
+        );
+        let name = self.cx.ident_of("_reduce_index_to_str");
+        let inputs = vec![
+            self.cx.arg(
+                self.span,
+                self.cx.ident_of("index"),
+                self.cx.ty_ident(self.span, self.cx.ident_of("usize")),
+            ),
+            self.cx.arg(
+                self.span,
+                self.cx.ident_of("subindex"),
+                self.cx.ty_ident(self.span, self.cx.ident_of("usize")),
+            ),
+        ];
+        let output = ty_return;
+
+        let body = self.cx.block_expr(
+            self.cx.expr_match(
+                self.span,
+                self.cx.expr_tuple(
+                    self.span,
+                    vec![
+                    self.cx.expr_ident(self.span, self.cx.ident_of("index")),
+                    self.cx.expr_ident(self.span, self.cx.ident_of("subindex"))
+                    ]),
+                self.tm.rules
+                    .iter()
+                    .flat_map(|(_, rule)| {
+                        let index = self.tm.indices[&rule.identifier];
+                        rule.data.iter().enumerate()
+                              .map(move |(i, data)| (index, i, data.real_name.clone(), rule.span.clone()))
+                    })
+                    .map(|(index, subindex, name, span)| {
+                        self.cx.arm(
+                            span,
+                            vec![self.cx.pat_tuple(
+                                span,
+                                vec![
+                                self.cx.pat_lit(self.span, self.usize_expr(index)),
+                                self.cx.pat_lit(self.span, self.usize_expr(subindex)),
+                                ],
+                                )
+                            ],
+                            self.cx.expr_str(span, symbol::Symbol::intern(&name))
                         )
                     })
                     .chain(iter::once(self.wild_arm_unreachable()))
@@ -255,7 +328,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                     term.span,
                     self.cx.ident_of(function),
                     vec![
-                        self.cx.expr_ident(term.span, self.cx.ident_of("state")),
+                        self.cx.expr_ident(term.span, self.cx.ident_of("_state")),
                         token_unwrap,
                     ],
                 );
@@ -352,7 +425,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             ),
             self.cx.arg(
                 self.span,
-                self.cx.ident_of("state"),
+                self.cx.ident_of("_state"),
                 ty_state,
         )];
         let output = ty_usize;
@@ -395,7 +468,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                         .data
                         .iter()
                         .map(|Component {real_name, rules, ..}| {
-                            let var_id = self.cx.ident_of(&format!("{}_{}", name, real_name));
+                            let var_id = self.cx.ident_of(&format!("{}_{}", self.tm.rev_indices[name], real_name));
                             let span = rules.get(0).unwrap().span;
                             self.cx
                                 .variant(span, var_id, vec![self.cx.ty_ident(self.span, var_id)])
@@ -458,7 +531,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             Action::Reduce(ident, subrule, count) => (
                 "Reduce",
                 Some(vec![
-                    self.usize_expr(self.tm.indices[ident]),
+                    self.usize_expr(*ident),
                     self.usize_expr(*subrule),
                     self.usize_expr(*count),
                 ]),
@@ -498,7 +571,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                             .actions
                             .get(index)
                             .unwrap()
-                            .get(*lookahead)
+                            .get(&self.tm.indices[*lookahead])
                             .unwrap_or(&Action::Error)
                     })
                     .map(|x| x.clone())
@@ -747,7 +820,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                     self.cx.stmt_expr(self.cx.expr_call_ident(
                                             *span,
                                             self.cx.ident_of(callback),
-                                            iter::once(self.cx.expr_ident(*span, self.cx.ident_of("state")))
+                                            iter::once(self.cx.expr_ident(*span, self.cx.ident_of("_state")))
                                                 .chain(args.into_iter())
                                                 .collect()
                                             )),
@@ -762,29 +835,9 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
 
                 }
             });
-        let eps_chain = if identifier == "Epsilon" || identifier == "$" {
-            iter::once(
-                self.cx.arm(
-                    *span,
-                    vec![self.cx.pat_wild(*span)],
-                    self.box_expr(self.cx.expr_call(
-                        *span,
-                        self.cx.expr_path(self.cx.path(
-                            *span,
-                            vec![self.cx.ident_of("_Data"), self.cx.ident_of("Epsilon")],
-                        )),
-                        vec![
-                            self.cx.expr_path(self.cx.path(
-                                *span,
-                                vec![self.cx.ident_of("Epsilon"), self.cx.ident_of("Epsilon")],
-                            )),
-                        ],
-                    ))
-                ),
-            )
-        } else {
-            iter::once( self.wild_arm_fail("coerce_panic"))
-        };
+        let has_eps = data.iter().any(|Component {rules, ..}| rules.len() == 1 && rules[0].identifier == "Epsilon");
+        let eps_chain = iter::once( self.wild_arm_fail("coerce_panic"))
+            .filter(|_| !has_eps);
         self.cx.expr_match(
             *span,
             self.cx.expr_tuple(
@@ -853,7 +906,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                 ),
                 self.cx.arg(
                     self.span,
-                    self.cx.ident_of("state"),
+                    self.cx.ident_of("_state"),
                     self.cx.ty_rptr(
                         self.span,
                         self.ty_ident("State"),
@@ -943,6 +996,7 @@ pub fn output_parser(
 
     items.push(builder.get_lalr_table());
     items.push(builder.get_debug_translation_fn());
+    items.push(builder.get_debug_reduce_translation_fn());
     items.push(builder.get_translation_fn());
     items.push(builder.get_translation_enum());
     items.push(builder.get_action_enum());
@@ -951,7 +1005,7 @@ pub fn output_parser(
     items.push(builder.get_reduction_fn(rules));
 
     let mut driver_fn = r#"
-pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> Option<S> {
+pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> Result<S, Option<Token>> {
     let mut tokens = tokenstream.peekable();
     let mut stack: Vec<(usize, Box<_Data>)> =
         vec![(_STARTER_VALUE, Box::new(_Data::Epsilon(Epsilon::Epsilon)))];
@@ -960,13 +1014,9 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> O
         let (s, _) = stack[stack.len() - 1];
         let a_ = tokens.peek().map(|x| *x);
         if debug_output {
-            println!("Current state: {}", s);
-            println!("Peeked token: {:?}", &a_);
+            println!("\nPeeked token: {:?}", &a_);
         }
         let a = _convert_token_to_index(a_, state);
-        if debug_output {
-            println!("Peeked token index: {}", a);
-        }
         let action = &_STATE_TABLE[s][a];
         if debug_output {
             println!("Action: {:?}", action);
@@ -978,14 +1028,15 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> O
                 &_STATE_TABLE[s].iter().enumerate()
                     .filter(|(_, t)| if let _Act::Shift(..) = t { true } else { false })
                     .for_each(|(i, _)| println!("{}", _token_index_to_str(i)));
-                panic!("Error state reached");
+                println!("Alternatively, would reduce for tokens:");
+                &_STATE_TABLE[s].iter().enumerate()
+                    .filter(|(_, t)| if let _Act::Reduce(..) = t { true } else { false })
+                    .for_each(|(i, _)| println!("{}", _token_index_to_str(i)));
+                return Err(a_.map(|t| t.clone()))
             }
             _Act::Shift(t) => {
                 stack.push((*t, _token_to_data(a, a_.unwrap())));
-                let t = tokens.next();
-                if debug_output {
-                    println!("Consumed token: {:?}", t);
-                }
+                tokens.next();
             }
             _Act::Reduce(goto, subrule, count) => {
                 let rem_range = stack.len() - count..;
@@ -994,6 +1045,9 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> O
                 match _STATE_TABLE[t][*goto] {
                     _Act::Goto(g) => {
                         let result = _reduce_to_ast(*goto, *subrule, &drain, state);
+                        if debug_output {
+                            println!("Reduced rule: {:?}", _reduce_index_to_str(*goto, *subrule));
+                        }
                         stack.push((g, result));
                     }
                     _ => panic!("Unreachable"),
@@ -1012,12 +1066,13 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> O
 
     driver_fn.push_str(&format!(
         "
+    dbg!(&t);
     if let box _Data::{0}(s) = t {{
-        Some(S::{0}(S_{0}(s)))
+        Ok(S::{0}(S_{0}(s)))
     }} else {{
-        None
+        Err(None)
     }} }}",
-        tm.rules["S"].data[0].rules[0].identifier
+        tm.rules[&tm.indices["S"]].data[0].rules[0].identifier
     ));
 
     let session = cx.parse_sess();

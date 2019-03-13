@@ -70,7 +70,7 @@ pub fn preprocessor_to_parser(t: &MacroTokenType) -> Token {
                 "return" => Return(),
                 "short" => Short(),
                 "signed" => Signed(),
-                "sizeof" => Sizeof(),
+                "sizeof" => panic!(), //Sizeof(),
                 "static" => Static(),
                 "struct" => Struct(),
                 "switch" => Switch(),

@@ -25,16 +25,16 @@ fn parse_empty() {
     println!("1");
     assert_eq!(
         driver(&mut [Token::Constant()].iter(), &mut ()),
-        Some(S::A(S_A(A::Constant(A_Constant(Token::Constant())))))
+        Ok(S::A(S_A(A::Constant(A_Constant(Token::Constant())))))
     );
     println!("2");
     assert_eq!(
         driver(&mut [Token::Constant()].iter(), &mut ()),
-        Some(S::A(S_A(A::Constant(A_Constant(Token::Constant())))))
+        Ok(S::A(S_A(A::Constant(A_Constant(Token::Constant())))))
     );
     println!("3");
     assert_eq!(
         driver(&mut [].iter(), &mut ()),
-        None
+        Err(None)
     );
 }

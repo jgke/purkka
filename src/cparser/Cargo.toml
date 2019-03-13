@@ -6,4 +6,3 @@ authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 [dependencies]
 ctoken = { path="../ctoken" }
 lalr = { path="../lalr" }
-shared = { path="../shared" }

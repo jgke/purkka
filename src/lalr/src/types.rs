@@ -41,23 +41,26 @@ pub struct Terminal {
 
 #[derive(Debug, Default)]
 pub struct RuleTranslationMap {
-    pub rules: HashMap<String, Rule>,
+    pub rules: HashMap<Index, Rule>,
     pub indices: HashMap<String, usize>,
+    pub rev_indices: HashMap<usize, String>,
 
     pub current_index: usize,
 }
 
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+pub type Index = usize;
+
+#[derive(Copy, PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Item {
-    pub index: String,
+    pub index: Index,
     pub subindex: usize,
     pub position: usize,
-    pub lookahead: String,
+    pub lookahead: Index,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Core {
-    pub index: String,
+    pub index: Index,
     pub subindex: usize,
     pub position: usize
 }
@@ -81,7 +84,7 @@ impl Core {
         CoreWithTr(tm, self)
     }
 
-    pub fn to_item(self, lookahead: String) -> Item {
+    pub fn to_item(self, lookahead: Index) -> Item {
         Item {
             index: self.index,
             subindex: self.subindex,
@@ -95,14 +98,14 @@ impl Core {
 pub enum Action {
     Error,
     Shift(usize),
-    Reduce(String, usize, usize),
+    Reduce(Index, usize, usize),
     Accept,
     Goto(usize),
 }
 
 #[derive(Debug)]
 pub struct LRTable {
-    pub actions: Vec<HashMap<String, Action>>,
+    pub actions: Vec<HashMap<Index, Action>>,
 }
 
 pub struct ItemWithTr<'a>(pub &'a RuleTranslationMap, pub &'a Item);
@@ -110,7 +113,7 @@ pub struct CoreWithTr<'a>(pub &'a RuleTranslationMap, pub &'a Core);
 
 impl Ord for Item {
     fn cmp(&self, other: &Item) -> Ordering {
-        rule_name_compare(&self.index, &other.index)
+        self.index.cmp(&other.index)
             .then(self.subindex.cmp(&other.subindex))
             .then(self.position.cmp(&other.position))
             .then(self.lookahead.cmp(&other.lookahead))
@@ -168,7 +171,7 @@ impl Eq for Terminal {}
 
 impl RuleTranslationMap {
     pub fn push_rule(&mut self, name: String, rule: Rule) -> Option<()> {
-        if self.rules.get(&name).is_some() {
+        if self.indices.get(&name).and_then(|index| self.rules.get(index)).is_some() {
             return None;
         }
 
@@ -179,7 +182,7 @@ impl RuleTranslationMap {
                 .for_each(|ruledata| self.push_symbol(&ruledata.full_path))
         });
 
-        self.rules.insert(name, rule);
+        self.rules.insert(self.indices[&name], rule);
         return Some(());
     }
 
@@ -189,6 +192,7 @@ impl RuleTranslationMap {
         }
 
         self.indices.insert(symbol.to_string(), self.current_index);
+        self.rev_indices.insert(self.current_index, symbol.to_string());
         self.current_index += 1;
     }
 }
@@ -201,7 +205,7 @@ impl fmt::Display for Action {
             Action::Reduce(rule, subrule, _length) => write!(
                 f,
                 "{: >7.5}",
-                String::from("r") + rule + &subrule.to_string()
+                format!("r{}{}", rule, subrule)
             ),
             Action::Accept => write!(f, "{: >7.5}", "acc"),
             Action::Goto(to) => write!(f, "{: >7.5}", String::from("g") + &to.to_string()),
@@ -252,19 +256,5 @@ impl<'a> fmt::Display for CoreWithTr<'a> {
             output.push_str(" . ");
         }
         write!(f, "[{} ->{}]", core.index, output)
-    }
-}
-
-pub fn rule_name_compare(this: &String, that: &String) -> Ordering {
-    if this == "S" {
-        Ordering::Less
-    } else if that == "S" {
-        Ordering::Greater
-    } else if this == "SS" {
-        Ordering::Less
-    } else if that == "SS" {
-        Ordering::Greater
-    } else {
-        this.cmp(that)
     }
 }

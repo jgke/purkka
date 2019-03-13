@@ -14,17 +14,19 @@ use std::path;
 use macrotoken::MacroToken;
 use tokenizer::{MacroContext, ParseResult};
 use shared::utils::{if_debug, DebugVal::{IncludeName}};
+use shared::fragment::FragmentIterator;
 
 static INCLUDE_PATH: &[&str] = &["/usr/local/include", "/usr/lib/gcc/x86_64-linux-gnu/7/include", "/usr/include"];
 
-pub fn preprocess<CB>(get_file: CB, filename: &str) -> ParseResult<Vec<MacroToken>>
+pub fn preprocess<CB>(get_file: CB, filename: &str) -> ParseResult<(Vec<MacroToken>, FragmentIterator)>
 where
     CB: Fn(bool, String, String) -> (String, String),
 {
-    Ok(MacroContext::new(get_file).preprocess(filename))
+    let mut context = MacroContext::new(get_file);
+    Ok(context.preprocess(filename))
 }
 
-pub fn preprocess_file(filename: &str) -> ParseResult<Vec<MacroToken>> {
+pub fn preprocess_file(filename: &str) -> ParseResult<(Vec<MacroToken>, FragmentIterator)> {
     let get_file = |is_local, current_file, filename: String| {
         let mut contents = String::new();
         if_debug(IncludeName,

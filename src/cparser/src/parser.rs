@@ -17,7 +17,7 @@ fn get_decls(decl: InitDeclaratorList) -> Vec<InitDeclarator> {
 
 fn get_direct_decl_identifier(decl: DirectDeclarator) -> String {
     match decl {
-        DirectDeclarator::Identifier(DirectDeclarator_Identifier(Token::Identifier(s))) => s,
+        DirectDeclarator::Identifier(DirectDeclarator_Identifier(Token::Identifier(_, s))) => s,
         DirectDeclarator::Identifier(DirectDeclarator_Identifier(_)) => unreachable!(),
         DirectDeclarator::OpenParen(DirectDeclarator_OpenParen(_, decl, _)) => get_decl_identifier(*decl),
         DirectDeclarator::SizedArray(DirectDeclarator_SizedArray(decl, ..)) => get_direct_decl_identifier(*decl),
@@ -36,16 +36,21 @@ fn get_decl_identifier(decl: Declarator) -> String {
     get_direct_decl_identifier(direct_decl)
 }
 
+fn add_type(state: &mut State, name: String) {
+    println!("Adding new type {}", name);
+    state.insert(name);
+}
+
 fn add_decl(state: &mut State, init_decl: InitDeclarator) {
     let decl = match init_decl {
         InitDeclarator::Declarator(InitDeclarator_Declarator(decl)) => decl,
         InitDeclarator::Assign(InitDeclarator_Assign(..)) => panic!("Assignment to a typedef")
     };
     let name = get_decl_identifier(decl);
-    state.insert(name);
+    add_type(state, name);
 }
 
-fn add_type(state: &mut State, declaration: TypeDeclaration) {
+fn add_typedef(state: &mut State, declaration: TypeDeclaration) {
     let (spec, list) = match declaration {
         TypeDeclaration::Typedef(TypeDeclaration_Typedef(_, spec, ..)) => {
             println!("Warning: useless typedef");
@@ -58,9 +63,48 @@ fn add_type(state: &mut State, declaration: TypeDeclaration) {
     decls.into_iter().for_each(|decl| add_decl(state, decl));
 }
 
+fn identifier_or_type_to_str(ty: IdentifierOrType) -> String {
+    match ty {
+        IdentifierOrType::Identifier(IdentifierOrType_Identifier(Token::Identifier(_, name))) => name,
+        IdentifierOrType::TypeNameStr(IdentifierOrType_TypeNameStr(Token::Identifier(_, name))) => name,
+        _ => panic!()
+    }
+}
+
+fn add_struct_type(state: &mut State, declaration: Box<StructOrUnionSpecifier>) {
+    match *declaration {
+        StructOrUnionSpecifier::NewType(StructOrUnionSpecifier_NewType(_, ty, ..)) =>
+            add_type(state, identifier_or_type_to_str(ty)),
+        StructOrUnionSpecifier::Anonymous(StructOrUnionSpecifier_Anonymous(..)) => {}
+        StructOrUnionSpecifier::NameOnly(StructOrUnionSpecifier_NameOnly(_, ty, ..)) =>
+            add_type(state, identifier_or_type_to_str(ty)),
+        _ => panic!()
+    };
+}
+
+fn add_enum_type(state: &mut State, declaration: Box<EnumSpecifier>) {
+    match *declaration {
+        EnumSpecifier::List(EnumSpecifier_List(_, Token::Identifier(_, name), ..)) => {}
+        EnumSpecifier::Empty(EnumSpecifier_Empty(_, Token::Identifier(_, name), ..)) =>
+            add_type(state, name),
+        EnumSpecifier::NameOnly(EnumSpecifier_NameOnly(_, Token::Identifier(_, name), ..)) =>
+            add_type(state, name),
+        _ => panic!()
+    };
+}
+
 fn is_type(state: &State, token: &Token) -> bool {
     match token {
-        Token::Identifier(i) => state.get(i).is_some(),
+        Token::Identifier(_, i) => match state.get(i) {
+            Some(_) => {
+                println!("Identifier {} is a type", i);
+                true
+            }
+            None => {
+                println!("Identifier {} is not a type", i);
+                false
+            }
+        }
         _ => panic!()
     }
 }
@@ -74,6 +118,7 @@ lalr! {
        -> #Token::Identifier
         | #Token::Number
         | #Token::StringLiteral
+        | #Token::Sizeof // Sizeofs are parsed in preprocessor
         | #Token::OpenParen &Expression #Token::CloseParen
         ;
 
@@ -83,7 +128,7 @@ lalr! {
         | Call. PostfixExpression #Token::OpenParen #Token::CloseParen
         | CallWithArguments.PostfixExpression #Token::OpenParen ArgumentExpressionList #Token::CloseParen
         | Member. PostfixExpression #Token::Dot #Token::Identifier
-        | Dereference. PostfixExpression #Token::Times #Token::Identifier
+        | Dereference. PostfixExpression #Token::Arrow #Token::Identifier
         | Increment. PostfixExpression #Token::Increment
         | Decrement. PostfixExpression #Token::Decrement
         ;
@@ -98,8 +143,6 @@ lalr! {
         | #Token::Increment UnaryExpression
         | #Token::Decrement UnaryExpression
         | UnaryOperator &CastExpression
-        | #Token::Sizeof UnaryExpression
-        | SizeofParen. #Token::Sizeof #Token::OpenParen TypeName #Token::CloseParen
         ;
 
     UnaryOperator
@@ -251,16 +294,19 @@ lalr! {
         | #Token::Double
         | #Token::Signed
         | #Token::Unsigned
-        | &StructOrUnionSpecifier
-        | &EnumSpecifier
+        | !add_struct_type &StructOrUnionSpecifier
+        | !add_enum_type &EnumSpecifier
         | #TypeNameStr
         ;
 
+    IdentifierOrType
+        -> #Token::Identifier
+         | #TypeNameStr;
+
     StructOrUnionSpecifier
-       -> List. StructOrUnion #Token::Identifier #Token::OpenBrace StructDeclarationList #Token::CloseBrace
-        | Empty. StructOrUnion #Token::OpenBrace StructDeclarationList #Token::CloseBrace
-        | NameOnly. StructOrUnion #Token::Identifier
-        ;
+       -> NewType. StructOrUnion IdentifierOrType #Token::OpenBrace StructDeclarationList #Token::CloseBrace
+        | Anonymous. StructOrUnion #Token::OpenBrace StructDeclarationList #Token::CloseBrace
+        | NameOnly. StructOrUnion IdentifierOrType        ;
 
     StructOrUnion
        -> #Token::Struct
@@ -465,7 +511,7 @@ lalr! {
     ExternalDeclaration
        -> FunctionDefinition
         | Declaration
-        | !add_type TypeDeclaration
+        | !add_typedef TypeDeclaration
         ;
 
     FunctionDefinition

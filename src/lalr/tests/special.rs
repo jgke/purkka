@@ -44,7 +44,7 @@ fn parse_special() {
     };
     assert_eq!(
         driver(&mut [Token::Constant(1), Token::Plus(), Token::Constant(1)].iter(), &mut state),
-        Some(S::T(S_T(T::A(T_A(
+        Ok(S::T(S_T(T::A(T_A(
                             A::Constant(A_Constant(Token::Constant(1))),
                             Token::Plus(),
                             B::Special(B_Special(Token::Constant(1))))))))

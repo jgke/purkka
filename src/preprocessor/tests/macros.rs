@@ -1,11 +1,13 @@
 extern crate preprocessor;
 extern crate shared;
+extern crate ctoken;
 
 use shared::fragment::{FragmentIterator, Source, Span};
 
 use preprocessor::macrotoken::{MacroToken, MacroTokenType};
 use preprocessor::tokenizer::{ParseResult};
 use preprocessor::tokentype::{Operator, Punctuation};
+use ctoken::token::SizeofExpression;
 
 fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<MacroToken>> {
     preprocessor::preprocess(
@@ -14,7 +16,7 @@ fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<MacroToke
             (content.to_string(), f)
         },
         filename,
-    )
+    ).map(|t| t.0)
 }
 
 fn process_files(files: Vec<(&str, &str)>, start: &str, expected: Vec<MacroToken>) {
@@ -42,13 +44,13 @@ fn process_files(files: Vec<(&str, &str)>, start: &str, expected: Vec<MacroToken
     if let Ok(p) = &processed {
         println!("---- Test result ----");
         println!("Result:");
-        p.iter().for_each(|t| println!("{}", t.display(&iter)));
+        p.0.iter().for_each(|t| println!("{}", t.display(&iter)));
         println!("Expected:");
         expected
             .iter()
             .for_each(|t| println!("{}", t.display(&iter)));
     }
-    assert_eq!(processed, Ok(expected));
+    assert_eq!(processed.map(|t| t.0), Ok(expected));
 }
 
 fn process(original: &str, expected: Vec<MacroToken>) {
@@ -919,6 +921,19 @@ baz
     vec![
             mt("foo.c", 43, 45, MacroTokenType::Identifier("baz".to_string()))
     ]);
+}
+
+#[test]
+fn sizeof_types() {
+    process(
+        "sizeof(int)",
+        vec![ mt("foo.c", 0, 10, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+    process(
+        "sizeof(int *)",
+        vec![ mt("foo.c", 0, 12, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+    process(
+        "sizeof(*int)",
+        vec![ mt("foo.c", 0, 11, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
 }
 
 // todo: test for eof after "#define foo" and "#define"

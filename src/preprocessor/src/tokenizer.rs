@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use shared::fragment::{FragmentIterator, Source};
+use shared::fragment::{FragmentIterator, Source, Span};
 use shared::utils::*;
 
 use macrotoken::{MacroToken, MacroTokenType};
 use tokentype::{Operator, Punctuation, OPERATORS, PUNCTUATION};
+use ctoken::token::SizeofExpression;
 use calculator::eval_expression;
 
 #[derive(Debug)]
@@ -74,8 +75,22 @@ where
     CB: FnMut(bool, String, String) -> (String, String),
 {
     pub(crate) fn new(get_file: CB) -> MacroContext<CB> {
+        let mut symbols = HashMap::new();
+        let dummy_source = Source {
+            filename: "".to_string(),
+            span: Span { lo: 0, hi: 0, source: None }
+        };
+        symbols.insert("__extension__".to_string(),
+                       Macro::Text(dummy_source.clone(), Vec::new()));
+        symbols.insert("__restrict".to_string(),
+                       Macro::Text(dummy_source.clone(), Vec::new()));
+        symbols.insert("__builtin_va_list".to_string(),
+                       Macro::Text(dummy_source.clone(), vec![MacroToken {
+                           source: dummy_source,
+                           ty: MacroTokenType::Identifier("va_list".to_string())
+                       }]));
         MacroContext {
-            symbols: HashMap::new(),
+            symbols,
             if_stack: Vec::new(),
             get_file,
         }
@@ -87,7 +102,7 @@ where
     }
 
     /// Divide src into MacroTokens.
-    pub(crate) fn preprocess(&mut self, filename: &str) -> Vec<MacroToken> {
+    pub(crate) fn preprocess(&mut self, filename: &str) -> (Vec<MacroToken>, FragmentIterator) {
         let mut iter = self.get_iterator(filename);
         let mut out: Vec<MacroToken> = Vec::new();
         let mut can_parse_macro = true;
@@ -115,7 +130,7 @@ where
             }
         }
 
-        out
+        (out, iter)
     }
 
     fn get_some_token(&mut self, iter: &mut FragmentIterator, parse_macro: bool) -> (MacroToken, bool) {
@@ -790,6 +805,21 @@ where
             false,
         );
     }
+    fn get_next_token_mut(
+        &mut self,
+        ctx: &mut MacroParseIter,
+    ) -> Option<(MacroToken, HashSet<String>)> {
+        if let (Some((token, used_names)), consumed_index) = self.get_next_token(ctx) {
+            if consumed_index {
+                ctx.0.pop();
+            }
+            Some((token, used_names))
+        } else if self.has_next_token(ctx) {
+            self.get_next_token_mut(ctx)
+        } else {
+            None
+        }
+    }
 
     /// Expand an identifier, if it is a macro. Consumes tokens from `iter` in case of function
     /// macros. Does not consume tokens past fragment boundaries.
@@ -837,6 +867,15 @@ where
                 self.maybe_expand_identifier_full(&mut iter);
             }
         }
+
+        for t in &list {
+            if let MacroTokenType::Identifier(ref ident) = t.0.ty {
+                if ident == "sizeof" {
+                    panic!();
+                }
+            }
+        }
+
         list.into_iter().map(|(x, _)| x).collect()
     }
 
@@ -883,11 +922,63 @@ where
                     );
                 }
                 None => {
-                    iter.1 += 1;
+                    if ident_str == Some("sizeof".to_string()) {
+                        self.parse_sizeof_expr(iter);
+                    } else {
+                        iter.1 += 1;
+                    }
                     return;
                 }
             }
         }
+    }
+
+    fn parse_sizeof_expr(
+        &mut self,
+        iter: &mut MacroParseIter) {
+        // sizeof unary-expression
+        // sizeof ( type-name ) 
+        let start = self.get_next_token_mut(iter).map(|(t, _)| t);
+        assert_eq!(
+            start.as_ref().map(|t| &t.ty),
+            Some(&MacroTokenType::Identifier("sizeof".to_string())));
+        let mut start_span = start.unwrap().source;
+        assert_eq!(
+            self.get_next_token_mut(iter).map(|(t, _)| t.ty),
+            Some(MacroTokenType::Punctuation(Punctuation::OpenParen)));
+        let mut ident = self.get_next_token_mut(iter).map(|(t, _)| t);
+        loop {
+            if let Some(MacroTokenType::Identifier(_)) = ident.as_ref().map(|t| &t.ty) {
+                break;
+            }
+            ident = self.get_next_token_mut(iter).map(|(t, _)| t);
+        }
+        let mut end;
+        loop {
+            end = self.get_next_token_mut(iter).map(|(t, _)| t);
+            match end.as_ref().map(|t| &t.ty) {
+                Some(&MacroTokenType::Operator(Operator::Times)) => {},
+                Some(&MacroTokenType::Punctuation(Punctuation::CloseParen)) => break,
+                _ => panic!()
+            }
+        }
+        let end_span = end.unwrap().source;
+        start_span.span.hi = end_span.span.hi;
+
+        let size = match &ident.map(|t| t.ty) {
+            Some(MacroTokenType::Identifier(ident)) => {
+                match ident.as_ref() {
+                    "int" | "void" | "size_t" => MacroTokenType::Sizeof(SizeofExpression::Static(8)),
+                    _ => panic!("{:?}", &ident)
+                }
+            }
+            _ => panic!()
+        };
+
+        iter.0.push((MacroToken {
+            ty: size,
+            source: start_span
+        }, HashSet::new()));
     }
 
     fn maybe_expand_function_macro(

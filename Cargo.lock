@@ -17,7 +17,6 @@ version = "0.1.0"
 dependencies = [
  "ctoken 0.1.0",
  "lalr 0.1.0",
- "shared 0.1.0",
 ]
 
 [[package]]

@@ -44,6 +44,7 @@ fn const_expr_token_from_macro(ty: &MacroTokenType) -> ConstExprToken {
         MacroTokenType::Punctuation(tokentype::Punctuation::OpenParen) => Paren(OpenParen),
         MacroTokenType::Punctuation(tokentype::Punctuation::CloseParen) => Paren(CloseParen),
         MacroTokenType::Punctuation(_) => panic!("Invalid character in expression: {:?}", ty),
+        MacroTokenType::Sizeof(_) => panic!("Cannot use sizeof expressions in #if expressions"),
         MacroTokenType::Other(_) => panic!("Invalid character in expression: {:?}", ty),
     }
 }
