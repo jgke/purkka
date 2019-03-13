@@ -230,7 +230,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                   ast::ItemKind::Fn(self.cx.fn_decl(inputs, ast::FunctionRetTy::Ty(output)),
                               ast::FnHeader {
                                   unsafety: ast::Unsafety::Normal,
-                                  asyncness: ast::IsAsync::NotAsync,
+                                  asyncness: dummy_spanned(ast::IsAsync::NotAsync),
                                   constness: dummy_spanned(ast::Constness::NotConst),
                                   abi: Abi::Rust,
                               },
@@ -301,7 +301,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                   ast::ItemKind::Fn(self.cx.fn_decl(inputs, ast::FunctionRetTy::Ty(output)),
                               ast::FnHeader {
                                   unsafety: ast::Unsafety::Normal,
-                                  asyncness: ast::IsAsync::NotAsync,
+                                  asyncness: dummy_spanned(ast::IsAsync::NotAsync),
                                   constness: dummy_spanned(ast::Constness::NotConst),
                                   abi: Abi::Rust,
                               },
@@ -449,7 +449,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                   ast::ItemKind::Fn(self.cx.fn_decl(inputs, ast::FunctionRetTy::Ty(output)),
                               ast::FnHeader {
                                   unsafety: ast::Unsafety::Normal,
-                                  asyncness: ast::IsAsync::NotAsync,
+                                  asyncness: dummy_spanned(ast::IsAsync::NotAsync),
                                   constness: dummy_spanned(ast::Constness::NotConst),
                                   abi: Abi::Rust,
                               },
