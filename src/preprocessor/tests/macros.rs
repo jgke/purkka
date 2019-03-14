@@ -936,4 +936,34 @@ fn sizeof_types() {
         vec![ mt("foo.c", 0, 11, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
 }
 
+#[test]
+fn variadic_macros() {
+    //process(
+    //    "#define FOO(...) __VA_ARGS__\nFOO()\nFOO(a)\nFOO(a,b)\nFOO(a,b,c)\n",
+    //    vec![ mt("foo.c", 0, 10, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+    process(
+        "#define FOO(...) __VA_ARGS__\nFOO(a)",
+        vec![mt_s(
+            "foo.c",
+            33,
+            33, // a
+            MacroTokenType::Identifier("a".to_string()),
+            Some(s(
+                "foo.c",
+                29,
+                34, // FOO(a)
+                Some(s(
+                    "foo.c",
+                    17,
+                    27, // __VA_ARGS__
+                    Some(s(
+                        "foo.c", 0, 28, // #define FOO(a) __VA_ARGS__
+                        None,
+                    )),
+                )),
+            )),
+        )],
+    );
+}
+
 // todo: test for eof after "#define foo" and "#define"

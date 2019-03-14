@@ -117,6 +117,7 @@ fn eval_expression_postfix(expr: Vec<ConstExprToken>) -> i64 {
             Op(Operator::MoreEqThan) => expr2b!(stack, |l, r| l >= r),
             Op(Operator::LessEqThan) => expr2b!(stack, |l, r| l <= r),
             Op(Operator::Equals) => expr2b!(stack, |l, r| l == r),
+            Op(Operator::NotEquals) => expr2b!(stack, |l, r| l != r),
 
             // numerical
             Op(Operator::Plus) => expr2i!(stack, |l, r| l + r),

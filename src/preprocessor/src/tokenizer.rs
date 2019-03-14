@@ -17,7 +17,7 @@ pub struct Output {
 #[derive(Clone, Debug)]
 enum Macro {
     Text(Source, Vec<MacroToken>),
-    Function(Source, Vec<String>, Vec<MacroToken>),
+    Function(Source, Vec<String>, Vec<MacroToken>, bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -462,26 +462,30 @@ where
                     );
                     let mut args = Vec::new();
                     let mut had_comma = None;
+                    let mut varargs = false;
                     while sub_iter.peek().is_some() {
                         if let (Some(mut token), _) = self.get_token(&mut sub_iter, false) {
-                            match (had_comma, token.ty.clone()) {
-                                (None, MacroTokenType::Punctuation(Punctuation::CloseParen)) => {
-                                    break;
-                                }
-                                (
-                                    Some(false),
-                                    MacroTokenType::Punctuation(Punctuation::CloseParen),
-                                ) => break,
-                                (None, MacroTokenType::Identifier(ident)) => {
+                            match (varargs, had_comma, token.ty.clone()) {
+                                (_, None, MacroTokenType::Punctuation(Punctuation::CloseParen)) =>
+                                    break,
+                                (false, Some(false), MacroTokenType::Punctuation(Punctuation::CloseParen)) =>
+                                    break,
+                                (false, None, MacroTokenType::Identifier(ident)) => {
                                     args.push(ident);
                                     had_comma = Some(false);
                                 }
-                                (Some(true), MacroTokenType::Identifier(ident)) => {
+                                (false, Some(true), MacroTokenType::Identifier(ident)) => {
                                     args.push(ident);
                                     had_comma = Some(false);
                                 }
-                                (Some(false), MacroTokenType::Punctuation(Punctuation::Comma)) => {
+                                (false, Some(false), MacroTokenType::Punctuation(Punctuation::Comma)) => {
                                     had_comma = Some(true);
+                                }
+                                (false, None, MacroTokenType::Punctuation(Punctuation::Varargs)) => {
+                                    varargs = true;
+                                }
+                                (false, Some(true), MacroTokenType::Punctuation(Punctuation::Varargs)) => {
+                                    varargs = true;
                                 }
                                 _ => panic!("Unexpected token: {:?}", token.ty),
                             }
@@ -498,7 +502,7 @@ where
                     }
 
                     self.symbols
-                        .insert(left, Macro::Function(total_span, args, right));
+                        .insert(left, Macro::Function(total_span, args, right, varargs));
                 } else {
                     let mut right = Vec::new();
 
@@ -916,9 +920,9 @@ where
                     iter.0.append(&mut tokens);
                     iter.0.append(&mut rest);
                 }
-                Some(Macro::Function(span, args, body)) => {
+                Some(Macro::Function(span, args, body, varargs)) => {
                     self.maybe_expand_function_macro(
-                        iter, t, used_names, ident_str, &span, &args, &body,
+                        iter, t, used_names, ident_str, &span, &args, &body, varargs
                     );
                 }
                 None => {
@@ -968,8 +972,8 @@ where
         let size = match &ident.map(|t| t.ty) {
             Some(MacroTokenType::Identifier(ident)) => {
                 match ident.as_ref() {
-                    "int" | "void" | "size_t" => MacroTokenType::Sizeof(SizeofExpression::Static(8)),
-                    _ => panic!("{:?}", &ident)
+                    "int" | "void" | "size_t" | "long" => MacroTokenType::Sizeof(SizeofExpression::Static(8)),
+                    _ => MacroTokenType::Sizeof(SizeofExpression::Dynamic(ident.to_string()))
                 }
             }
             _ => panic!()
@@ -990,6 +994,7 @@ where
         span: &Source,
         args: &Vec<String>,
         body: &Vec<MacroToken>,
+        varargs: bool
     ) {
         // else if t not in used_macros
         //         and (t, args, replacement list) is function macro
@@ -1006,9 +1011,8 @@ where
                     self.get_next_token(&mut MacroParseIter(iter.0, iter.1 + 1, iter.2));
 
                 match (next_tok.clone().map(|x| x.0.ty), consumed_index) {
-                    (Some(MacroTokenType::Punctuation(Punctuation::OpenParen)), true) => {
-                        break;
-                    }
+                    (Some(MacroTokenType::Punctuation(Punctuation::OpenParen)), true) =>
+                        break,
                     (Some(MacroTokenType::Punctuation(Punctuation::OpenParen)), false) => {
                         iter.0.push(next_tok.unwrap());
                         break;
@@ -1039,6 +1043,7 @@ where
             &args,
             &body,
             used_names,
+            varargs,
         );
         iter.0
             .splice(iter.1..iter.1 + 2 + consumed_count, tokens.into_iter())
@@ -1104,6 +1109,7 @@ where
         fn_args: &Vec<String>,
         body: &Vec<MacroToken>,
         used_names: &HashSet<String>,
+        varargs: bool,
     ) -> (usize, Vec<(MacroToken, HashSet<String>)>) {
         // Example:
         // #define BAR(a) a
@@ -1142,7 +1148,8 @@ where
 
         let (consume_count, more_syms, mut total_span, has_expanded, arg_spans) =
             self.parse_function_macro_arguments(iter, args_span, fn_args,
-                                                &allow_parse_fail.difference(&force_parse).collect());
+                                                &allow_parse_fail.difference(&force_parse).collect(),
+                                                varargs);
         total_span.span.source = None;
         let mut sub_iter = body.iter().peekable();
         let mut res: Vec<(MacroToken, HashSet<String>)> = Vec::new();
@@ -1224,19 +1231,28 @@ where
         start: &Source,
         args: &Vec<String>,
         do_not_expand: &HashSet<&String>,
+        varargs: bool
     ) -> (usize, HashMap<String, Vec<MacroToken>>, Source, bool, HashMap<String, Source>) {
-        let mut more_syms = HashMap::new();
-        let mut arg_sources = HashMap::new();
+        let mut more_syms: HashMap<String, Vec<MacroToken>> = HashMap::new();
+        let mut arg_sources: HashMap<String, Source> = HashMap::new();
         let mut depth = 0; // paren depth
         let mut arg_count = 0;
         let mut total_span = Some(start.clone());
         let mut consume_count = 0;
         let mut has_expanded = false;
         let arg_len = args.len();
-        let empty = "".to_string();
-        let empty_vec = vec![empty];
-        let args_iter = if args.len() == 0 { &empty_vec } else { args };
-        'argfor: for arg in args_iter.iter() {
+
+        let mut empty_iter = std::iter::once("".to_string());
+        let mut looping_iter = std::iter::repeat("__VA_ARGS__".to_string());
+        let mut comma = None;
+
+        let varargs_iter: &mut Iterator<Item = String> = match varargs {
+            true => &mut looping_iter,
+            false => &mut empty_iter
+        }; 
+
+        let args_iter = args.iter().map(|t| t.clone()).chain(varargs_iter);
+        'argfor: for arg in args_iter {
             let mut arg_vals = Vec::new();
             let mut arg_source: Option<Source> = None;
             'itersome: while self.has_next_token(iter) {
@@ -1258,7 +1274,28 @@ where
                     }
                     match (depth, token.ty.clone()) {
                         (0, MacroTokenType::Punctuation(Punctuation::CloseParen)) => {
-                            if arg != "" {
+                            if arg == "__VA_ARGS__" {
+                                let mut args = arg_vals.drain(..).collect();
+                                let mut existing_args = more_syms.remove(&arg)
+                                    .map(|mut t| {
+                                        t.push(comma.unwrap());
+                                        t
+                                    })
+                                    .unwrap_or(vec![]);
+                                existing_args.append(&mut args);
+                                more_syms.insert(arg.clone(), existing_args);
+
+                                let new_hi = arg_source.as_ref().unwrap().span.hi;
+
+                                let source = arg_sources.remove(&arg)
+                                    .map(|mut t| {
+                                        t.span.hi = new_hi;
+                                        t
+                                    })
+                                    .unwrap_or(arg_source.unwrap());
+                                arg_sources.insert(arg.clone(), source);
+                                arg_count += 1;
+                            } else if arg != "" {
                                 more_syms.insert(arg.clone(), arg_vals.drain(..).collect());
                                 arg_sources.insert(arg.clone(), arg_source.unwrap());
                                 arg_count += 1;
@@ -1280,6 +1317,7 @@ where
                             arg_vals.push(token)
                         }
                         (0, MacroTokenType::Punctuation(Punctuation::Comma)) => {
+                            comma = Some(token);
                             more_syms.insert(arg.clone(), arg_vals.drain(..).collect());
                             arg_sources.insert(arg.clone(), arg_source.unwrap());
                             arg_count += 1;
@@ -1296,7 +1334,7 @@ where
                                 iter.0.push((token, used_names));
                             }
                             let start_index = iter.1;
-                            if do_not_expand.get(arg).is_none() {
+                            if do_not_expand.get(&arg).is_none() {
                                 self.maybe_expand_identifier_full(iter);
                             } else {
                                 iter.1 += 1;
@@ -1320,9 +1358,14 @@ where
                 }
             }
         }
-        if arg_count != arg_len {
+        if !varargs && arg_count != arg_len {
             panic!(
                 "Incorrect number of arguments: expected {}, got {}",
+                arg_len, arg_count
+            );
+        } else if varargs && arg_count < arg_len {
+            panic!(
+                "Incorrect number of arguments: expected at least {}, got {}",
                 arg_len, arg_count
             );
         }

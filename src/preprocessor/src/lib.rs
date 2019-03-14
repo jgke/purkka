@@ -26,7 +26,7 @@ where
     Ok(context.preprocess(filename))
 }
 
-pub fn preprocess_file(filename: &str) -> ParseResult<(Vec<MacroToken>, FragmentIterator)> {
+pub fn preprocess_file(filename: &str, include_path: Vec<&str>) -> ParseResult<(Vec<MacroToken>, FragmentIterator)> {
     let get_file = |is_local, current_file, filename: String| {
         let mut contents = String::new();
         if_debug(IncludeName,
@@ -43,7 +43,7 @@ pub fn preprocess_file(filename: &str) -> ParseResult<(Vec<MacroToken>, Fragment
                 return (contents, full_path.to_str().unwrap().to_string())
             }
         }
-        for std_path in INCLUDE_PATH {
+        for std_path in include_path.iter().chain(INCLUDE_PATH.iter()) {
             let mut path = path::PathBuf::from(std_path);
             path.push(filename.clone());
             let full_path = path.clone();
