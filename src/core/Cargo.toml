@@ -7,3 +7,4 @@ authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 parser = { path="../parser" }
 preprocessor = { path="../preprocessor" }
 shared = { path="../shared" }
+clap = "2.32.0"

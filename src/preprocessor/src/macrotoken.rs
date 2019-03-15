@@ -1,6 +1,6 @@
 use std::fmt;
 
-use shared::fragment::{FragmentIterator, Source};
+use shared::fragment::{FragmentIterator, Source, Span};
 
 use tokentype::{Operator, Punctuation};
 
@@ -13,6 +13,7 @@ pub enum MacroTokenType {
     Punctuation(Punctuation),
     Sizeof(SizeofExpression),
     Other(char),
+    Empty
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -122,7 +123,8 @@ pub fn preprocessor_to_parser(t: &MacroTokenType, index: usize) -> Token {
         MacroTokenType::StringLiteral(s) => StringLiteral(index, s.to_string()),
         MacroTokenType::Number(s) => Number(index, s.to_string()),
         MacroTokenType::Sizeof(expr) => Sizeof(index, expr.clone()),
-        MacroTokenType::Other(_) => panic!()
+        MacroTokenType::Other(_) => panic!(),
+        MacroTokenType::Empty => panic!()
     }
 }
 
@@ -156,6 +158,15 @@ impl fmt::Display for MacroTokenDisplay<'_> {
 }
 
 impl MacroToken {
+    pub(crate) fn dummy(ty: MacroTokenType) -> MacroToken {
+        MacroToken {
+            source: Source {
+                filename: "".to_string(),
+                span: Span { lo: 0, hi: 0, source: None }
+            },
+            ty
+        }
+    }
     pub(crate) fn respan_front(&mut self, source: &Source) {
         let old_source = self.source.clone();
         let mut new_source = source.clone();
@@ -169,6 +180,15 @@ impl MacroToken {
     pub(crate) fn get_identifier_str(&self) -> Option<String> {
         match &self.ty {
             MacroTokenType::Identifier(ident) => Some(ident.clone()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn get_macro_paste_str(&self) -> Option<String> {
+        match &self.ty {
+            MacroTokenType::Identifier(ident) => Some(ident.clone()),
+            MacroTokenType::Number(num) => Some(num.clone()),
+            MacroTokenType::StringLiteral(s) => Some(format!("\"{}\"", s)),
             _ => None,
         }
     }

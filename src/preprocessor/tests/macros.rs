@@ -946,6 +946,11 @@ fn variadic_macros() {
         vec![],
     );
     process(
+        "#define FOO(a, ...) __VA_ARGS__\nFOO(a)",
+        vec![
+        ],
+    );
+    process(
         "#define FOO(...) __VA_ARGS__\nFOO(a)",
         vec![mt_s(
             "foo.c",
@@ -1039,6 +1044,14 @@ fn variadic_named_macros() {
     //process(
     //    "#define FOO(...) __VA_ARGS__\nFOO()\nFOO(a)\nFOO(a,b)\nFOO(a,b,c)\n",
     //    vec![ mt("foo.c", 0, 10, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+    process(
+        "#define FOO(a...) a \nFOO()",
+        vec![],
+    );
+    process(
+        "#define FOO(a, b...) a b\nFOO()",
+        vec![],
+    );
     process(
         "#define FOO(a...) a\nFOO(a)",
         vec![mt_s(

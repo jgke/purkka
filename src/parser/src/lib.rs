@@ -97,7 +97,7 @@ fn get_source_index(token: &Token) -> usize {
 }
 
 pub fn parse(input: Vec<MacroToken>, context: &FragmentIterator) -> Result<cparser::parser::S, Option<Token>> {
-    let mut tokens: Vec<Token> = input.iter().enumerate().map(|(i, t)| preprocessor_to_parser(&t.ty, i)).collect();
+    let tokens: Vec<Token> = input.iter().enumerate().map(|(i, t)| preprocessor_to_parser(&t.ty, i)).collect();
     let sources: Vec<Source> = input.into_iter().map(|t| t.source).collect();
     for t in &tokens {
         println!("{:?}", t);

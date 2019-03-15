@@ -113,6 +113,14 @@ impl Source {
             next: Some(self)
         }
     }
+
+    /// Get a dummy source
+    pub fn dummy() -> Source {
+        Source {
+            filename: "".to_string(),
+            span: Span { lo: 0, hi: 0, source: None }
+        }
+    }
 }
 
 pub struct SourceIterator<'a> {
@@ -183,7 +191,7 @@ impl Iterator for FragmentIterator {
         if let Some((s, c)) = self.iter.next() {
             let hi = s + self.current_fragment().offset;
             self.current_source.span.hi = hi;
-            if(self.debug) {
+            if self.debug {
                 dbg!(self.current_source());
                 dbg!(c);
             }
@@ -468,8 +476,13 @@ impl FragmentIterator {
     /// Get the user-readable source string for a source recursively. This panics frequently if
     /// given sources from a different iterator, or if self is made using `with_offset`.
     pub fn source_to_str(&self, source: &Source) -> String {
+        let builtin = "<Compiler built-in>".to_string();
+        let dummy = Source::dummy();
         let mut lines: Vec<(String, (&str, usize, usize))> = Vec::new();
         let mut out = "".to_string();
+        if self.contents.get(&source.filename).is_none() {
+            return builtin;
+        }
         let s = &self.contents[&source.filename];
         out.push_str(s[source.span.lo..=source.span.hi].trim());
         lines.push((
@@ -478,6 +491,13 @@ impl FragmentIterator {
         ));
         let mut current_source = &source.span.source;
         while let Some(src) = current_source {
+            if &**src == &dummy {
+                lines.push((
+                        builtin,
+                        ("<builtin>", 0, 0),
+                        ));
+                break;
+            }
             let s = &self.contents[&src.filename];
             lines.push((
                 format!("Expanded from: {:?}", s[src.span.lo..=src.span.hi].trim()),

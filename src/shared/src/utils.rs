@@ -1,7 +1,5 @@
 //! Various shared bits and pieces for the compiler.
 
-use std::mem::swap;
-use std::ops::Range;
 use std::env;
 
 use regex::Regex;
