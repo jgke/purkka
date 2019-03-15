@@ -17,7 +17,7 @@ pub struct Output {
 #[derive(Clone, Debug)]
 enum Macro {
     Text(Source, Vec<MacroToken>),
-    Function(Source, Vec<String>, Vec<MacroToken>, bool),
+    Function(Source, Vec<String>, Vec<MacroToken>, Option<String>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -463,12 +463,13 @@ where
                     let mut args = Vec::new();
                     let mut had_comma = None;
                     let mut varargs = false;
+                    let mut varargs_str: Option<String> = None;
                     while sub_iter.peek().is_some() {
                         if let (Some(mut token), _) = self.get_token(&mut sub_iter, false) {
                             match (varargs, had_comma, token.ty.clone()) {
                                 (_, None, MacroTokenType::Punctuation(Punctuation::CloseParen)) =>
                                     break,
-                                (false, Some(false), MacroTokenType::Punctuation(Punctuation::CloseParen)) =>
+                                (_, Some(false), MacroTokenType::Punctuation(Punctuation::CloseParen)) =>
                                     break,
                                 (false, None, MacroTokenType::Identifier(ident)) => {
                                     args.push(ident);
@@ -481,13 +482,15 @@ where
                                 (false, Some(false), MacroTokenType::Punctuation(Punctuation::Comma)) => {
                                     had_comma = Some(true);
                                 }
-                                (false, None, MacroTokenType::Punctuation(Punctuation::Varargs)) => {
+                                (false, Some(false), MacroTokenType::Punctuation(Punctuation::Varargs)) => {
                                     varargs = true;
+                                    varargs_str = Some(args.pop().unwrap());
                                 }
-                                (false, Some(true), MacroTokenType::Punctuation(Punctuation::Varargs)) => {
+                                (false, _, MacroTokenType::Punctuation(Punctuation::Varargs)) => {
                                     varargs = true;
+                                    varargs_str = Some("__VA_ARGS__".to_string());
                                 }
-                                _ => panic!("Unexpected token: {:?}", token.ty),
+                                _ => panic!("Unexpected token: {:?}\n{}", token.ty, iter.source_to_str(&token.source)),
                             }
                         }
                     }
@@ -502,7 +505,7 @@ where
                     }
 
                     self.symbols
-                        .insert(left, Macro::Function(total_span, args, right, varargs));
+                        .insert(left, Macro::Function(total_span, args, right, varargs_str));
                 } else {
                     let mut right = Vec::new();
 
@@ -994,7 +997,7 @@ where
         span: &Source,
         args: &Vec<String>,
         body: &Vec<MacroToken>,
-        varargs: bool
+        varargs: Option<String>
     ) {
         // else if t not in used_macros
         //         and (t, args, replacement list) is function macro
@@ -1109,7 +1112,7 @@ where
         fn_args: &Vec<String>,
         body: &Vec<MacroToken>,
         used_names: &HashSet<String>,
-        varargs: bool,
+        varargs: Option<String>,
     ) -> (usize, Vec<(MacroToken, HashSet<String>)>) {
         // Example:
         // #define BAR(a) a
@@ -1231,7 +1234,7 @@ where
         start: &Source,
         args: &Vec<String>,
         do_not_expand: &HashSet<&String>,
-        varargs: bool
+        varargs: Option<String>
     ) -> (usize, HashMap<String, Vec<MacroToken>>, Source, bool, HashMap<String, Source>) {
         let mut more_syms: HashMap<String, Vec<MacroToken>> = HashMap::new();
         let mut arg_sources: HashMap<String, Source> = HashMap::new();
@@ -1242,11 +1245,13 @@ where
         let mut has_expanded = false;
         let arg_len = args.len();
 
+        let has_varargs = varargs.is_some();
+        let varargs_str = varargs.unwrap_or("__VA_ARGS__".to_string());
         let mut empty_iter = std::iter::once("".to_string());
-        let mut looping_iter = std::iter::repeat("__VA_ARGS__".to_string());
+        let mut looping_iter = std::iter::repeat(varargs_str.clone());
         let mut comma = None;
 
-        let varargs_iter: &mut Iterator<Item = String> = match varargs {
+        let varargs_iter: &mut Iterator<Item = String> = match has_varargs {
             true => &mut looping_iter,
             false => &mut empty_iter
         }; 
@@ -1274,7 +1279,7 @@ where
                     }
                     match (depth, token.ty.clone()) {
                         (0, MacroTokenType::Punctuation(Punctuation::CloseParen)) => {
-                            if arg == "__VA_ARGS__" {
+                            if arg == varargs_str {
                                 let mut args = arg_vals.drain(..).collect();
                                 let mut existing_args = more_syms.remove(&arg)
                                     .map(|mut t| {
@@ -1358,12 +1363,12 @@ where
                 }
             }
         }
-        if !varargs && arg_count != arg_len {
+        if !has_varargs && arg_count != arg_len {
             panic!(
                 "Incorrect number of arguments: expected {}, got {}",
                 arg_len, arg_count
             );
-        } else if varargs && arg_count < arg_len {
+        } else if has_varargs && arg_count < arg_len {
             panic!(
                 "Incorrect number of arguments: expected at least {}, got {}",
                 arg_len, arg_count

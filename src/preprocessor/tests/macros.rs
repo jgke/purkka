@@ -942,6 +942,10 @@ fn variadic_macros() {
     //    "#define FOO(...) __VA_ARGS__\nFOO()\nFOO(a)\nFOO(a,b)\nFOO(a,b,c)\n",
     //    vec![ mt("foo.c", 0, 10, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
     process(
+        "#define FOO(...) __VA_ARGS__\nFOO()",
+        vec![],
+    );
+    process(
         "#define FOO(...) __VA_ARGS__\nFOO(a)",
         vec![mt_s(
             "foo.c",
@@ -963,6 +967,165 @@ fn variadic_macros() {
                 )),
             )),
         )],
+    );
+    process(
+        "#define FOO(...) __VA_ARGS__\nFOO(a, b)",
+        vec![mt_s(
+            "foo.c",
+            33,
+            33, // a
+            MacroTokenType::Identifier("a".to_string()),
+            Some(s(
+                "foo.c",
+                29,
+                37, // FOO(a, b)
+                Some(s(
+                    "foo.c",
+                    17,
+                    27, // __VA_ARGS__
+                    Some(s(
+                        "foo.c", 0, 28, // #define FOO(a) __VA_ARGS__
+                        None,
+                    )),
+                )),
+            )),
+        ),
+        mt_s(
+            "foo.c",
+            34,
+            34, // ,
+            MacroTokenType::Punctuation(Punctuation::Comma),
+            Some(s(
+                "foo.c",
+                29,
+                37, // FOO(a, b)
+                Some(s(
+                    "foo.c",
+                    17,
+                    27, // __VA_ARGS__
+                    Some(s(
+                        "foo.c", 0, 28, // #define FOO(a) __VA_ARGS__
+                        None,
+                    )),
+                )),
+            )),
+        ),
+        mt_s(
+            "foo.c",
+            36,
+            36, // b
+            MacroTokenType::Identifier("b".to_string()),
+            Some(s(
+                "foo.c",
+                29,
+                37, // FOO(a, b)
+                Some(s(
+                    "foo.c",
+                    17,
+                    27, // __VA_ARGS__
+                    Some(s(
+                        "foo.c", 0, 28, // #define FOO(a) __VA_ARGS__
+                        None,
+                    )),
+                )),
+            )),
+        )
+        ],
+    );
+}
+
+#[test]
+fn variadic_named_macros() {
+    //process(
+    //    "#define FOO(...) __VA_ARGS__\nFOO()\nFOO(a)\nFOO(a,b)\nFOO(a,b,c)\n",
+    //    vec![ mt("foo.c", 0, 10, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+    process(
+        "#define FOO(a...) a\nFOO(a)",
+        vec![mt_s(
+            "foo.c",
+            24,
+            24, // a
+            MacroTokenType::Identifier("a".to_string()),
+            Some(s(
+                "foo.c",
+                20,
+                25, // FOO(a)
+                Some(s(
+                    "foo.c",
+                    18,
+                    18, // a
+                    Some(s(
+                        "foo.c", 0, 19, // #define FOO(...a) a
+                        None,
+                    )),
+                )),
+            )),
+        )],
+    );
+    process(
+        "#define FOO(a...) a\nFOO(a, b)",
+        vec![
+        mt_s(
+            "foo.c",
+            24,
+            24, // a
+            MacroTokenType::Identifier("a".to_string()),
+            Some(s(
+                "foo.c",
+                20,
+                28, // FOO(a)
+                Some(s(
+                    "foo.c",
+                    18,
+                    18, // a
+                    Some(s(
+                        "foo.c", 0, 19, // #define FOO(...a) a
+                        None,
+                    )),
+                )),
+            )),
+        ),
+        mt_s(
+            "foo.c",
+            25,
+            25, // ,
+            MacroTokenType::Punctuation(Punctuation::Comma),
+            Some(s(
+                "foo.c",
+                20,
+                28, // FOO(a)
+                Some(s(
+                    "foo.c",
+                    18,
+                    18, // a
+                    Some(s(
+                        "foo.c", 0, 19, // #define FOO(...a) a
+                        None,
+                    )),
+                )),
+            )),
+        ),
+        mt_s(
+            "foo.c",
+            27,
+            27, // a
+            MacroTokenType::Identifier("b".to_string()),
+            Some(s(
+                "foo.c",
+                20,
+                28, // FOO(a)
+                Some(s(
+                    "foo.c",
+                    18,
+                    18, // a
+                    Some(s(
+                        "foo.c", 0, 19, // #define FOO(...a) a
+                        None,
+                    )),
+                )),
+            )),
+        ),
+            ],
     );
 }
 
