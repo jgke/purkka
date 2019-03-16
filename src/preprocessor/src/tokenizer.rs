@@ -965,10 +965,10 @@ where
             Some(&MacroTokenType::Identifier("sizeof".to_string())));
         let mut start_span = start.unwrap().source;
         let mut ident = self.get_next_token_mut(iter).map(|(t, _)| t);
-        let mut close_paren = true;
+        let mut had_open_paren = false;
         if let Some(MacroTokenType::Punctuation(Punctuation::OpenParen)) = ident.as_ref().map(|t| &t.ty) {
             ident = self.get_next_token_mut(iter).map(|(t, _)| t);
-            close_paren = false;
+            had_open_paren = true;
         }
         loop {
             if let Some(MacroTokenType::Identifier(_)) = ident.as_ref().map(|t| &t.ty) {
@@ -979,7 +979,7 @@ where
         }
         let mut end;
         loop {
-            if !close_paren {
+            if !had_open_paren {
                 break;
             }
             end = self.get_next_token_mut(iter).map(|(t, _)| t);
