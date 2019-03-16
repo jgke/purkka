@@ -64,6 +64,7 @@ where
 
 pub type ParseResult<T> = Result<T, &'static str>;
 
+#[derive(Debug)]
 struct MacroParseIter<'a>(
     &'a mut Vec<(MacroToken, HashSet<String>)>,
     usize,
@@ -954,6 +955,67 @@ where
         }
     }
 
+    fn get_tokens_until_closing_paren(&mut self, iter: &mut MacroParseIter) -> Vec<MacroToken> {
+        let mut depth = 1;
+        let range_start = iter.1;
+        let mut tokens = 0;
+        'outer: while self.has_next_token(iter) {
+            let (next_tok, consumed_index) = self.get_next_token(iter);
+
+            if consumed_index {
+                iter.1 -= 1;
+            } else if next_tok.is_some() {
+                iter.0.push(next_tok.unwrap());
+            }
+
+            while iter.1 < iter.0.len() {
+                tokens += 1;
+                let old_i = iter.1;
+                self.maybe_expand_identifier_full(iter);
+                iter.1 = old_i;
+                let (t, consumed_index) = self.get_next_token(iter);
+                if !consumed_index && t.is_some() {
+                    iter.0.push(t.clone().unwrap());
+                } else if consumed_index {
+                    iter.1 += 1;
+                }
+                match t.as_ref().map(|t| &t.0.ty) {
+                    Some(MacroTokenType::Punctuation(Punctuation::CloseParen)) => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break 'outer;
+                        }
+                    }
+                    None => break,
+                    Some(MacroTokenType::Punctuation(Punctuation::OpenParen)) => {
+                        depth += 1;
+                    },
+                    _ => {}
+                }
+            }
+        }
+        iter.1 -= tokens;
+        iter.0
+            .splice(range_start..range_start+tokens, std::iter::empty())
+            .map(|x| x.0)
+            .collect()
+    }
+
+    fn get_sizeof_type(
+        &self,
+        token: &MacroToken
+        ) -> MacroTokenType {
+        match &token.ty {
+            MacroTokenType::Identifier(ident) => {
+                match ident.as_ref() {
+                    "int" | "void" | "size_t" | "long" => MacroTokenType::Sizeof(SizeofExpression::Static(8)),
+                    _ => MacroTokenType::Sizeof(SizeofExpression::Dynamic(ident.to_string()))
+                }
+            }
+            _ => panic!()
+        }
+    }
+
     fn parse_sizeof_expr(
         &mut self,
         iter: &mut MacroParseIter) {
@@ -964,48 +1026,23 @@ where
             start.as_ref().map(|t| &t.ty),
             Some(&MacroTokenType::Identifier("sizeof".to_string())));
         let mut start_span = start.unwrap().source;
-        let mut ident = self.get_next_token_mut(iter).map(|(t, _)| t);
-        let mut had_open_paren = false;
-        if let Some(MacroTokenType::Punctuation(Punctuation::OpenParen)) = ident.as_ref().map(|t| &t.ty) {
-            ident = self.get_next_token_mut(iter).map(|(t, _)| t);
-            had_open_paren = true;
+        let ident_or_open_paren = self.get_next_token_mut(iter).map(|(t, _)| t);
+        if let Some(MacroTokenType::Punctuation(Punctuation::OpenParen)) = ident_or_open_paren.as_ref().map(|t| &t.ty) {
+            // sizeof ( type-name | expression ) 
+            let mut tokens = self.get_tokens_until_closing_paren(iter);
+            start_span.span.hi = tokens.pop().unwrap().source.span.hi;
+            iter.0.push((MacroToken {
+                ty: MacroTokenType::Sizeof(SizeofExpression::Static(8)),
+                source: start_span
+            }, HashSet::new()));
+        } else {
+            // sizeof unary-expression
+            start_span.span.hi = ident_or_open_paren.as_ref().unwrap().source.span.hi;
+            iter.0.push((MacroToken {
+                ty: self.get_sizeof_type(&ident_or_open_paren.unwrap()),
+                source: start_span
+            }, HashSet::new()));
         }
-        loop {
-            if let Some(MacroTokenType::Identifier(_)) = ident.as_ref().map(|t| &t.ty) {
-                break;
-            }
-            ident = self.get_next_token_mut(iter).map(|(t, _)| t);
-            start_span.span.hi = ident.as_ref().unwrap().source.span.hi;
-        }
-        let mut end;
-        loop {
-            if !had_open_paren {
-                break;
-            }
-            end = self.get_next_token_mut(iter).map(|(t, _)| t);
-            start_span.span.hi = end.as_ref().unwrap().source.span.hi;
-            println!("{}", iter.2.source_to_str(&end.as_ref().unwrap().source));
-            match end.as_ref().map(|t| &t.ty) {
-                Some(&MacroTokenType::Operator(Operator::Times)) => {},
-                Some(&MacroTokenType::Punctuation(Punctuation::CloseParen)) => break,
-                _ => panic!()
-            }
-        }
-
-        let size = match &ident.map(|t| t.ty) {
-            Some(MacroTokenType::Identifier(ident)) => {
-                match ident.as_ref() {
-                    "int" | "void" | "size_t" | "long" => MacroTokenType::Sizeof(SizeofExpression::Static(8)),
-                    _ => MacroTokenType::Sizeof(SizeofExpression::Dynamic(ident.to_string()))
-                }
-            }
-            _ => panic!()
-        };
-
-        iter.0.push((MacroToken {
-            ty: size,
-            source: start_span
-        }, HashSet::new()));
     }
 
     fn maybe_expand_function_macro(

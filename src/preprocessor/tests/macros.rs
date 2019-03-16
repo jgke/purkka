@@ -934,6 +934,21 @@ fn sizeof_types() {
     process(
         "sizeof(*int)",
         vec![ mt("foo.c", 0, 11, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+    process(
+        "sizeof((1))",
+        vec![ mt("foo.c", 0, 10, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+    process(
+        "sizeof(((1)))",
+        vec![ mt("foo.c", 0, 12, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+    process(
+        "sizeof ( 1 ) ",
+        vec![ mt("foo.c", 0, 11, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+    process(
+        "sizeof(1+1)",
+        vec![ mt("foo.c", 0, 10, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+    process(
+        "sizeof int",
+        vec![ mt("foo.c", 0, 9, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
 }
 
 #[test]
