@@ -2,6 +2,7 @@ extern crate ctoken;
 extern crate regex;
 extern crate shared;
 
+#[macro_use]
 pub mod macrotoken;
 pub mod tokenizer;
 pub mod tokentype;

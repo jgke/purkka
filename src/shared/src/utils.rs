@@ -25,13 +25,15 @@ pub enum DebugVal {
     DumpLalrTable,
     LalrRuntime,
     DebugFragment,
+    MacroExpand,
 }
 
 static DEBUG_VALS: &[&str] = &[
     "DEBUG_INCLUDE_NAME",
     "DEBUG_DUMP_LALR_TABLE",
     "DEBUG_LALR_RUNTIME",
-    "DEBUG_FRAGMENT"
+    "DEBUG_FRAGMENT",
+    "DEBUG_MACRO_EXPAND",
 ];
 
 pub fn if_debug<CB>(ident: DebugVal, cb: CB)

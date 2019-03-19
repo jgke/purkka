@@ -193,3 +193,9 @@ impl MacroToken {
         }
     }
 }
+
+macro_rules! matches_token {
+    ($var:expr, $type:ident, $subtype:ident) => {
+        if let MacroTokenType::$type($type::$subtype) = &$var { true } else { false }
+    }
+}

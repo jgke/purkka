@@ -107,6 +107,18 @@ impl Source {
         }
     }
 
+    /// Get the topmost cause of this source.
+    pub fn top(&self) -> Source {
+        Source {
+            filename: self.filename.clone(),
+            span: Span {
+                lo: self.span.lo,
+                hi: self.span.hi,
+                source: None
+            }
+        }
+    }
+
     /// Provides an iterator.
     pub fn iter(&self) -> SourceIterator<'_> {
         SourceIterator {
