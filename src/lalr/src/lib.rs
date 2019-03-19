@@ -1,6 +1,8 @@
 #![crate_type = "dylib"]
 #![feature(plugin_registrar, rustc_private)]
 
+extern crate rayon;
+
 extern crate rustc;
 extern crate rustc_plugin;
 extern crate rustc_target;

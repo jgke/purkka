@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Instant};
-use shared::utils::{if_debug, DebugVal::DumpLalrTable};
+
+use rayon::prelude::*;
 
 use types::{Action, Component, Core, Item, Index, LRTable, RuleData, RuleTranslationMap, Terminal};
+use shared::utils::{if_debug, DebugVal::DumpLalrTable};
 
 fn first(
     tm: &RuleTranslationMap,
@@ -233,84 +237,88 @@ pub fn lr_parsing_table(
     lr_items: &Vec<HashSet<Item>>,
     nonterminals: &Vec<Index>,
 ) -> Box<LRTable> {
-    let mut table = Box::new(LRTable { actions: vec![] });
-    println!("Generating LR parsing table");
+    let mut open_table = Box::new(LRTable { actions: vec![] });
+    {
+        let mut table = Mutex::new(&mut open_table);
+        println!("Generating LR parsing table");
 
-    let start = Instant::now();
+        let start = Instant::now();
 
-    let total = lr_items.iter().fold(0, |total, ref items| total + items.len());
-    let mut count = 0;
+        let total = lr_items.iter().fold(0, |total, ref items| total + items.len());
+        let mut count = AtomicUsize::new(0);
+        lr_items.iter().for_each(|_| table.lock().unwrap().actions.push(HashMap::new()));
 
-    for (i, ref items) in lr_items.iter().enumerate() {
-        count += items.len();
-        let now = Instant::now();
-        let elapsed = now.duration_since(start);
-        let items_per_millisecond: f64 = (count as f64) / (elapsed.as_millis() as f64);
-        let items_per_second: f64 = items_per_millisecond * 1000.0;
-        let to_go: f64 = (total - count) as f64;
+        lr_items.par_iter().enumerate().for_each(|(i, ref items)| {
+            count.fetch_add(items.len(), Ordering::Relaxed);
+            let new_count = count.load(Ordering::Relaxed);
+            let now = Instant::now();
+            let elapsed = now.duration_since(start);
+            let items_per_millisecond: f64 = (new_count as f64) / (elapsed.as_millis() as f64);
+            let items_per_second: f64 = items_per_millisecond * 1000.0;
+            let to_go: f64 = (total - new_count) as f64;
 
-        println!("{} / {} ({:.1}s to go @ {:.1} items/s)", count, total, to_go / items_per_second, items_per_second);
-        table.actions.push(HashMap::new());
+            println!("{} / {} ({:.1}s to go @ {:.1} items/s)", new_count, total, to_go / items_per_second, items_per_second);
 
-        for item in items.iter() {
-            let Component {rules, ..} = &tm.rules[&item.index].data[item.subindex];
-            if rules.len() > item.position {
-                if !rules[item.position].terminal {
-                    if rules[item.position].identifier == "Epsilon" {
+            for item in items.iter() {
+                let Component {rules, ..} = &tm.rules[&item.index].data[item.subindex];
+                if rules.len() > item.position {
+                    if !rules[item.position].terminal {
+                        if rules[item.position].identifier == "Epsilon" {
+                            panic_insert(
+                                &mut table.lock().unwrap().actions[i],
+                                item.lookahead,
+                                Action::Reduce(
+                                    item.index,
+                                    item.subindex,
+                                    0
+                                    ),
+                                    );
+                        }
+                        continue;
+                    }
+                    let mut goto_items = HashSet::new();
+                    goto(
+                        &tm,
+                        &mut goto_items,
+                        items,
+                        tm.indices[&rules[item.position].full_path],
+                        );
+                    if let Some(pos) = lr_items.iter().position(|x| get_cores(x) == get_cores(&goto_items)) {
                         panic_insert(
-                            &mut table.actions[i],
+                            &mut table.lock().unwrap().actions[i],
+                            tm.indices[&rules[item.position].full_path],
+                            Action::Shift(pos)
+                            );
+                    }
+                } else {
+                    if item.index == tm.indices["S"] {
+                        panic_insert(&mut table.lock().unwrap().actions[i], tm.indices["$"], Action::Accept);
+                    } else {
+                        panic_insert(
+                            &mut table.lock().unwrap().actions[i],
                             item.lookahead,
                             Action::Reduce(
                                 item.index,
                                 item.subindex,
-                                0
-                            ),
-                        );
+                                tm.rules[&item.index].data[item.subindex].rules.len(),
+                                ),
+                                );
                     }
-                    continue;
                 }
+            }
+
+            for symbol in nonterminals {
                 let mut goto_items = HashSet::new();
-                goto(
-                    &tm,
-                    &mut goto_items,
-                    items,
-                    tm.indices[&rules[item.position].full_path],
-                    );
+                goto(&tm, &mut goto_items, &items, *symbol);
+
                 if let Some(pos) = lr_items.iter().position(|x| get_cores(x) == get_cores(&goto_items)) {
-                    panic_insert(
-                        &mut table.actions[i],
-                        tm.indices[&rules[item.position].full_path],
-                        Action::Shift(pos)
-                    );
-                }
-            } else {
-                if item.index == tm.indices["S"] {
-                    panic_insert(&mut table.actions[i], tm.indices["$"], Action::Accept);
-                } else {
-                    panic_insert(
-                        &mut table.actions[i],
-                        item.lookahead,
-                        Action::Reduce(
-                            item.index,
-                            item.subindex,
-                            tm.rules[&item.index].data[item.subindex].rules.len(),
-                        ),
-                    );
+                    table.lock().unwrap().actions[i].insert(*symbol, Action::Goto(pos));
                 }
             }
-        }
-
-        for symbol in nonterminals {
-            let mut goto_items = HashSet::new();
-            goto(&tm, &mut goto_items, &items, *symbol);
-
-            if let Some(pos) = lr_items.iter().position(|x| get_cores(x) == get_cores(&goto_items)) {
-                table.actions[i].insert(*symbol, Action::Goto(pos));
-            }
-        }
+        });
     }
 
-    return table;
+    return open_table;
 }
 
 pub fn compute_lalr(

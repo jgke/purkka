@@ -48,6 +48,13 @@ pub struct RuleTranslationMap {
     pub current_index: usize,
 }
 
+// These actually arent safe at all to share between thread boundaries - but as long as the span
+// fields arent't touched inside threaded parts, this is fine.
+unsafe impl Send for RuleData {}
+unsafe impl Send for Rule {}
+unsafe impl Sync for RuleData {}
+unsafe impl Sync for Rule {}
+
 pub type Index = usize;
 
 #[derive(Copy, PartialEq, Eq, Hash, Debug, Clone)]
