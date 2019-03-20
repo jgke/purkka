@@ -97,6 +97,26 @@ where
         FragmentIterator::new(&content.1, &content.0)
     }
 
+    pub(crate) fn add_definitions(&mut self, definitions: &Vec<(&str, &str)>) {
+        for (key, value) in definitions {
+            let mut iter = FragmentIterator::new(key, value);
+            let mut vals = Vec::new();
+            while iter.peek().is_some() {
+                let token = self.get_token(&mut iter, false);
+                if let (Some(t), _) = token {
+                    vals.push(MacroToken::dummy(t.ty));
+                }
+            }
+            if vals.len() == 0 {
+                vals = vec![MacroToken::dummy(MacroTokenType::Empty)];
+            }
+            self.symbols.insert(
+                key.to_string(),
+                Macro::Text(Source::dummy(), vals));
+            assert!(iter.peek().is_none());
+        }
+    }
+
     /// Divide src into MacroTokens.
     pub(crate) fn preprocess(&mut self, filename: &str) -> (Vec<MacroToken>, FragmentIterator) {
         let mut iter = self.get_iterator(filename);
@@ -568,6 +588,7 @@ where
                 self.handle_ifdef(iter, &mut sub_iter, ty == MacroType::Ifndef),
             MacroType::Else => self.handle_else(iter),
             MacroType::Endif => self.handle_endif(),
+            MacroType::Error => panic!("#error: {}\n{:?}", sub_iter.iter.as_str(), total_span),
 
             ty => unimplemented!("{:?} not implemented", ty)
         }
@@ -1232,7 +1253,7 @@ where
         let (consume_count, more_syms, mut total_span, has_expanded, arg_spans) =
             self.parse_function_macro_arguments(iter, args_span, fn_args,
                                                 &allow_parse_fail.difference(&force_parse).collect(),
-                                                varargs, ident, body_span);
+                                                varargs.clone(), ident, body_span);
         total_span.span.source = None;
         let mut sub_iter = body.iter().peekable();
         let mut res: Vec<(MacroToken, HashSet<String>)> = Vec::new();
@@ -1268,6 +1289,21 @@ where
                             res.push((n_sym, used_syms.clone()))
                         }
                     }
+                }
+                MacroTokenType::Operator(Operator::MacroPaste) => {
+                    if let Some(ident) = sub_iter.peek().and_then(|t| t.get_identifier_str()) {
+                        if Some(&ident) == varargs.as_ref()  {
+                            println!("{:?}", more_syms[&ident]);
+                            if res.get(res.len()-1).map(|t| &t.0.ty)
+                                == Some(&MacroTokenType::Punctuation(Punctuation::Comma))
+                                    && more_syms[&ident] == vec![MacroToken::dummy(MacroTokenType::Empty)] {
+                                        res.pop();
+                                    }
+                            continue;
+                        }
+                    }
+                    let mut n_sym = t.clone();
+                    res.push((n_sym, used_syms.clone()))
                 }
                 MacroTokenType::Operator(Operator::Macro) => {
                     if let Some(ident) = sub_iter.peek().and_then(|t| t.get_identifier_str().clone()) {

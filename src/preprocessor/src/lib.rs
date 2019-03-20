@@ -17,7 +17,11 @@ use tokenizer::{MacroContext, ParseResult};
 use shared::utils::{if_debug, DebugVal::{IncludeName}};
 use shared::fragment::FragmentIterator;
 
-static INCLUDE_PATH: &[&str] = &["/usr/local/include", "/usr/lib/gcc/x86_64-linux-gnu/7/include", "/usr/include"];
+pub struct PreprocessorOptions<'a> {
+    pub include_path: Vec<&'a str>,
+    pub include_files: Vec<&'a str>,
+    pub definitions: Vec<(&'a str, &'a str)>
+}
 
 pub fn preprocess<CB>(get_file: CB, filename: &str) -> ParseResult<(Vec<MacroToken>, FragmentIterator)>
 where
@@ -27,7 +31,7 @@ where
     Ok(context.preprocess(filename))
 }
 
-pub fn preprocess_file(filename: &str, include_path: Vec<&str>) -> ParseResult<(Vec<MacroToken>, FragmentIterator)> {
+pub fn preprocess_file(filename: &str, options: &PreprocessorOptions) -> ParseResult<(Vec<MacroToken>, FragmentIterator)> {
     let get_file = |is_local, current_file, filename: String| {
         let mut contents = String::new();
         if_debug(IncludeName,
@@ -44,7 +48,7 @@ pub fn preprocess_file(filename: &str, include_path: Vec<&str>) -> ParseResult<(
                 return (contents, full_path.to_str().unwrap().to_string())
             }
         }
-        for std_path in include_path.iter().chain(INCLUDE_PATH.iter()) {
+        for std_path in &options.include_path {
             let mut path = path::PathBuf::from(std_path);
             path.push(filename.clone());
             let full_path = path.clone();
@@ -57,5 +61,10 @@ pub fn preprocess_file(filename: &str, include_path: Vec<&str>) -> ParseResult<(
         panic!("File {} not found", filename);
     };
 
-    preprocess(get_file, filename)
+    let mut context = MacroContext::new(get_file);
+    context.add_definitions(&options.definitions);
+    for filename in &options.include_files {
+        context.preprocess(filename);
+    }
+    Ok(context.preprocess(filename))
 }

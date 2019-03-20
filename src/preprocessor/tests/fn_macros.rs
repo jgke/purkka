@@ -469,4 +469,5 @@ ARG_COUNT(a)
     process("#define BAR(a)\n#define FOO(a) BAR(sizeof(a))\nFOO(int)", vec![]);
     process("#define BAR(a)\nBAR()", vec![]);
     process("#define BAR(a,b)\nBAR(a,)", vec![]);
+    process("#define BAR(...) ,##__VA_ARGS__\nBAR()", vec![]);
 }
