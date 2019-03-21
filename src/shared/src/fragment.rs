@@ -34,10 +34,14 @@
 
 use std::cmp::min;
 use std::collections::HashMap;
-use std::env;
 use std::fmt;
 use std::str::CharIndices;
+
+use rand::{Rng, thread_rng, distributions::Alphanumeric};
+
 use traits::PeekableCharsExt;
+
+use ::utils::{is_debug_enabled, DebugVal::DebugFragment};
 
 /// This struct converts a &str to &'static str. Unsafe.
 struct StringInterner {
@@ -192,7 +196,7 @@ pub struct FragmentIterator {
     /// Hack: list of interned strings. Fragments actually point to a leaked Box<String>.
     interner: StringInterner,
     /// Debug output is enabled (env DEBUG_FRAGMENT is defined)
-    debug: bool,
+    debug: Option<String>,
 }
 
 impl Iterator for FragmentIterator {
@@ -203,10 +207,7 @@ impl Iterator for FragmentIterator {
         if let Some((s, c)) = self.iter.next() {
             let hi = s + self.current_fragment().offset;
             self.current_source.span.hi = hi;
-            if self.debug {
-                dbg!(self.current_source());
-                dbg!(c);
-            }
+            self.debug_next(c);
             Some(c)
         } else {
             None
@@ -246,7 +247,15 @@ impl FragmentIterator {
             contents.insert(filename.to_string(), content.to_string());
         }
         let iter = static_content.char_indices();
-        let debug = env::var("DEBUG_FRAGMENT").is_ok();
+        let debug = if is_debug_enabled(DebugFragment) {
+            let mut rng = thread_rng();
+            Some(std::iter::repeat(())
+                 .map(|()| rng.sample(Alphanumeric))
+                 .take(5)
+                 .collect())
+        } else {
+            None
+        };
         FragmentIterator {
             fragments,
             current_fragment: 0,
@@ -265,6 +274,20 @@ impl FragmentIterator {
         }
     }
 
+    fn debug_next(&self, c: char) {
+        if self.debug.is_some() {
+            let Source {
+                filename,
+                span: Span {
+                    lo, hi, ..
+                }
+            } = self.current_source();
+            println!("FragmentIterator[{}]: {}: {}..{}: '{}'", &self.debug.as_ref().unwrap(), filename, lo, hi, c);
+            let f = self.get_current_content();
+            assert_eq!(f[hi..].chars().next().unwrap(), c);
+        }
+    }
+
     /// Get next char, resetting the current span to the char's location.
     /// Does not advance to the next fragment, even if the current fragment is empty.
     pub fn next_new_span(&mut self) -> Option<char> {
@@ -272,6 +295,7 @@ impl FragmentIterator {
             let pos = s + self.current_fragment().offset;
             self.current_source.span.lo = pos;
             self.current_source.span.hi = pos;
+            self.debug_next(c);
             Some(c)
         } else {
             None
@@ -384,9 +408,9 @@ impl FragmentIterator {
         (content, self.current_source())
     }
 
-    /// Iterate over self, flatmap the results with f and collect to a string from the iterator.
-    /// Stops when `f` return None or current fragment is empty.
-    /// See [`collect_while_map`] for semantic details.
+    /// Iterate over self, flatmap the results with f and collect to a list of (char,
+    /// original-position) from the iterator. Stops when `f` return None or current fragment is
+    /// empty. See [`collect_while_map`] for semantic details.
     ///
     /// [`collect_while_map`]: #method.collect_while_map
     ///
@@ -398,22 +422,22 @@ impl FragmentIterator {
     ///     'a'...'z' => Some(vec![x.to_ascii_uppercase(), 'a']),
     ///     _ => None
     /// });
-    /// assert_eq!(s1, "FaOaOa");
+    /// assert_eq!(s1, vec![('F', 0), ('a', 0), ('O', 1), ('a', 1), ('O', 2), ('a', 2)]);
     /// ```
     pub fn collect_while_flatmap(
         &mut self,
         mut f: impl FnMut(char, &mut Self) -> Option<Vec<char>>,
-    ) -> (String, Source) {
-        let mut content = String::new();
+    ) -> (Vec<(char, usize)>, Source) {
+        let mut content = Vec::new();
         if let Some(c) = self.next_new_span() {
             if let Some(chars) = f(c, self) {
-                chars.into_iter().for_each(|c| content.push(c));
+                chars.into_iter().for_each(|c| content.push((c, self.current_source.span.hi)));
             }
         }
         while let Some(c) = self.peek() {
             if let Some(chars) = f(c, self) {
-                chars.into_iter().for_each(|c| content.push(c));
                 self.next();
+                chars.into_iter().for_each(|c| content.push((c, self.current_source.span.hi)));
             } else {
                 break;
             }

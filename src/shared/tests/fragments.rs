@@ -130,7 +130,7 @@ fn take_while_mut() {
         }
         _ => None,
     });
-    assert_eq!(s2, "DB");
+    assert_eq!(s2, vec![('D', 5), ('B', 5)]);
     assert_eq!(
         span,
         Source {
@@ -149,7 +149,7 @@ fn take_while_mut() {
         'a'...'z' => Some(vec![]),
         _ => None,
     });
-    assert_eq!(s3, "");
+    assert_eq!(s3, vec![]);
 
     assert_eq!(iter.next(), None);
 }
