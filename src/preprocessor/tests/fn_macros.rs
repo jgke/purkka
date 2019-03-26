@@ -433,6 +433,8 @@ fn invalid_macros() {
 
 #[test]
 fn weird_stuff() {
+    process("#define __and(x, y)	___and(x, y)", vec![]);
+    //                          ^ \t
     process("
 #define FOO(a, b) b
 FOO(,c)

@@ -182,7 +182,7 @@ where
         let next = iter.peek_n(2);
         let token = match next.as_ref() {
             "//" => {
-                self.preprocess_get_macro_line(iter, false);
+                self.preprocess_get_macro_line(iter, false, true);
                 (None, true)
             }
             "/*" => {
@@ -239,8 +239,8 @@ where
     }
 
     fn preprocess_flush_until(&self, until: &str, iter: &mut FragmentIterator) {
-        if !iter.iter.as_str().starts_with(until) {
-            iter.collect_while_map(|c, i| if i.starts_with(until) { None } else { Some(c) });
+        while iter.peek().is_some() && !iter.as_str().starts_with(until) {
+            iter.next();
         }
         for _ in 0..until.len() {
             match iter.next() {
@@ -250,13 +250,14 @@ where
         }
     }
 
-    fn preprocess_get_macro_line(&self, iter: &mut FragmentIterator, parse_comments: bool) -> (String, Source) {
+    fn preprocess_get_macro_line(&self, iter: &mut FragmentIterator, parse_comments: bool, start_new_span: bool) -> (Vec<(usize, char)>, Source) {
+        let lo = iter.current_source().span.lo;
         if iter.peek() == Some('\n') {
             let val = iter.next_new_span().unwrap();
             let source = iter.current_source();
-            return (val.to_string(), source);
+            return (vec![(source.span.lo, val)], source);
         }
-        iter.collect_while_flatmap(|c, i| match c {
+        let (s, mut src) = iter.collect_while_flatmap(|c, i| match c {
             '\\' => {
                 i.next();
                 match i.peek() {
@@ -275,7 +276,7 @@ where
                     let next = i.peek_n(2);
                     match next.as_ref() {
                         "//" => {
-                            self.preprocess_get_macro_line(i, false);
+                            self.preprocess_get_macro_line(i, false, false);
                             None
                         }
                         "/*" => {
@@ -295,7 +296,11 @@ where
                     Some(vec![c])
                 }
             }
-        })
+        });
+        if !start_new_span {
+            src.span.lo = lo;
+        }
+        (s, src)
     }
 
     fn read_identifier(&self, iter: &mut FragmentIterator) -> MacroToken {
@@ -333,7 +338,7 @@ where
         });
         MacroToken {
             source: source,
-            ty: MacroTokenType::Number(number),
+            ty: MacroTokenType::Number(number.iter().map(|t| t.1).collect()),
         }
     }
 
@@ -362,7 +367,7 @@ where
         });
         MacroToken {
             source: source,
-            ty: MacroTokenType::StringLiteral(content),
+            ty: MacroTokenType::StringLiteral(content.iter().map(|t| t.1).collect()),
         }
     }
 
@@ -475,6 +480,8 @@ where
     /// Parse a macro (eg. #define FOO BAR) and store it for later, or act instantly in case of #if
     fn read_macro(&mut self, iter: &mut FragmentIterator) {
         let (ty, mut sub_iter, total_span) = self.get_macro_type(iter);
+        dbg!(sub_iter.source_to_str(&total_span));
+        dbg!(iter.source_to_str(&total_span));
         match ty {
             MacroType::Define => {
                 let (left, _) = self.read_identifier_raw(&mut sub_iter);
@@ -588,15 +595,16 @@ where
                 self.handle_ifdef(iter, &mut sub_iter, ty == MacroType::Ifndef),
             MacroType::Else => self.handle_else(iter),
             MacroType::Endif => self.handle_endif(),
-            MacroType::Error => panic!("#error: {}\n{:?}", sub_iter.iter.as_str(), total_span),
+            MacroType::Error => panic!("#error: {}\n{:?}", sub_iter.as_str(), total_span),
 
             ty => unimplemented!("{:?} not implemented", ty)
         }
     }
 
     fn get_macro_type(&mut self, iter: &mut FragmentIterator) -> (MacroType, FragmentIterator, Source) {
-        let (row_string, total_span) = self.preprocess_get_macro_line(iter, true);
-        let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), &row_string, total_span.span.lo, &iter);
+        let (row_string, total_span) = self.preprocess_get_macro_line(iter, true, true);
+        dbg!(&total_span);
+        let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), row_string, total_span.span.lo, &iter);
         assert_eq!(sub_iter.peek(), Some('#'));
         assert_eq!(
             self.get_some_token(&mut sub_iter, false).0.ty,
@@ -732,7 +740,7 @@ where
                         let next = iter.peek_n(2);
                         match (next.as_ref(), iter.peek()) {
                             ("//", _) => {
-                                self.preprocess_get_macro_line(iter, false);
+                                self.preprocess_get_macro_line(iter, false, false);
                                 continue 'outer;
                             }
                             ("/*", _) => {
@@ -760,8 +768,8 @@ where
         let mut skip_to = 0;
         while iter.peek().is_some() {
             self.flush_until_pound_or_newline(iter);
-            let (next_row, line_src) = self.preprocess_get_macro_line(iter, true);
-            let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), &next_row, line_src.span.lo, &iter);
+            let (next_row, line_src) = self.preprocess_get_macro_line(iter, true, true);
+            let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), next_row, line_src.span.lo, &iter);
             match sub_iter.peek() {
                 Some('#') => {
                     match (skip_to, accept_else, self.get_macro_type(&mut sub_iter)) {

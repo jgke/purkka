@@ -287,6 +287,19 @@ fn included_macro() {
 }
 
 #[test]
+fn many_includes() {
+    process_files(
+        vec![
+            ("a.h", " "),
+            ("b.h", " "),
+            ("main.h", "#include \"a.h\"\n#include \"b.h\"\n//"),
+        ],
+        "main.h",
+        vec![],
+    )
+}
+
+#[test]
 fn undef() {
     process("#undef FOO\n#define FOO\n#undef FOO", vec![]);
 }

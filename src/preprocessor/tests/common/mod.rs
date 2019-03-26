@@ -5,11 +5,17 @@ extern crate shared;
 extern crate ctoken;
 
 use shared::fragment::{FragmentIterator, Source, Span};
+use shared::utils::DEBUG_VALS;
 
 use preprocessor::macrotoken::{MacroToken, MacroTokenType};
 use preprocessor::tokenizer::{ParseResult};
 
 pub fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<MacroToken>> {
+    for s in DEBUG_VALS {
+        if std::env::var(s).is_err() {
+            std::env::set_var(s, "1");
+        }
+    }
     preprocessor::preprocess(
         |_is_quoted, _current_file, f| {
             assert_eq!(filename, f);
@@ -25,7 +31,7 @@ pub fn process_files(files: Vec<(&str, &str)>, start: &str, expected: Vec<MacroT
     println!("Processing file contents:");
     for (name, content) in &files {
         println!("---- File {} ----\n{}", name, content);
-        iter.split_and_push_file(name, content);
+        iter.split_and_push_file(name, &content);
     }
     println!("---- End file list ----");
 

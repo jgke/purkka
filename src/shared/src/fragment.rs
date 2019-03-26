@@ -190,7 +190,9 @@ pub struct FragmentIterator {
     /// Can be reset with next_new_span().
     current_source: Source,
     /// Iterator for the current fragments.
-    pub iter: CharIndices<'static>,
+    char_iter: CharIndices<'static>,
+    /// Iterator for the current fragments.
+    vec_iter: (Vec<(usize, char)>, usize),
     /// All inserted files
     contents: HashMap<String, String>,
     /// Hack: list of interned strings. Fragments actually point to a leaked Box<String>.
@@ -204,10 +206,25 @@ impl Iterator for FragmentIterator {
 
     /// Get next char in the current fragment.
     fn next(&mut self) -> Option<char> {
-        if let Some((s, c)) = self.iter.next() {
+        if self.vec_iter.0.len() > 0 { 
+            if self.vec_iter.0.len() > self.vec_iter.1 {
+                let (s, c) = self.vec_iter.0[self.vec_iter.1];
+                self.vec_iter.1 += 1;
+
+                // We ignore the current fragment's offset here, since it is contained inside the
+                // vec_iter's value
+
+                self.current_source.span.hi = s;
+                self.debug_next(c, false);
+
+                Some(c)
+            } else {
+                None
+            }
+        } else if let Some((s, c)) = self.char_iter.next() {
             let hi = s + self.current_fragment().offset;
             self.current_source.span.hi = hi;
-            self.debug_next(c);
+            self.debug_next(c, true);
             Some(c)
         } else {
             None
@@ -224,18 +241,20 @@ impl Drop for FragmentIterator {
 impl FragmentIterator {
     /// Initialize the iterator.
     pub fn new(filename: &str, content: &str) -> FragmentIterator {
-        FragmentIterator::_with_offset(filename, content, 0, HashMap::new())
+        FragmentIterator::_with_offset(filename, content, 0, vec![], HashMap::new())
     }
 
     /// Initialize the iterator with a predetermined offset.
-    pub fn with_offset(filename: &str, content: &str, offset: usize,
+    pub fn with_offset(filename: &str, content: Vec<(usize, char)>, offset: usize,
                        parent: &FragmentIterator) -> FragmentIterator {
-        FragmentIterator::_with_offset(filename, content, offset, parent.contents.clone())
+        println!("With offset: {:?}", &content);
+        FragmentIterator::_with_offset(filename, "", offset, content, parent.contents.clone())
     }
 
     /// Initialize the iterator with a predetermined offset.
     fn _with_offset(filename: &str, content: &str, offset: usize,
-                       mut contents: HashMap<String, String>) -> FragmentIterator {
+                    vec_iter: Vec<(usize, char)>,
+                    mut contents: HashMap<String, String>) -> FragmentIterator {
         let mut interner = StringInterner { strs: Vec::new() };
         let static_content = interner.intern_str(content);
         let mut fragments = Vec::new();
@@ -259,7 +278,8 @@ impl FragmentIterator {
         FragmentIterator {
             fragments,
             current_fragment: 0,
-            iter,
+            char_iter: iter,
+            vec_iter: (vec_iter, 0),
             contents,
             current_source: Source {
                 filename: filename.to_string(),
@@ -274,7 +294,7 @@ impl FragmentIterator {
         }
     }
 
-    fn debug_next(&self, c: char) {
+    fn debug_next(&self, c: char, check: bool) {
         if self.debug.is_some() {
             let Source {
                 filename,
@@ -283,19 +303,18 @@ impl FragmentIterator {
                 }
             } = self.current_source();
             println!("FragmentIterator[{}]: {}: {}..{}: '{}'", &self.debug.as_ref().unwrap(), filename, lo, hi, c);
-            let f = self.get_current_content();
-            assert_eq!(f[hi..].chars().next().unwrap(), c);
+            if check {
+                let f = self.get_current_content();
+                assert_eq!(f[hi..].chars().next().unwrap(), c);
+            }
         }
     }
 
     /// Get next char, resetting the current span to the char's location.
     /// Does not advance to the next fragment, even if the current fragment is empty.
     pub fn next_new_span(&mut self) -> Option<char> {
-        if let Some((s, c)) = self.iter.next() {
-            let pos = s + self.current_fragment().offset;
-            self.current_source.span.lo = pos;
-            self.current_source.span.hi = pos;
-            self.debug_next(c);
+        if let Some(c) = self.next() {
+            self.current_source.span.lo = self.current_source.span.hi;
             Some(c)
         } else {
             None
@@ -318,6 +337,9 @@ impl FragmentIterator {
         // first half. As this practically happens at newlines, +1 should be next character, so
         // this shouldn't matter...
         let split_offset = self.current_source.span.hi + 1 - self.current_fragment().offset;
+        dbg!(&rest_frag);
+        dbg!(&split_offset);
+        dbg!(&self.current_fragment());
         let cur_frag_content = rest_frag.content.split_at(split_offset);
 
         // Update the current frag's content to only include the left side
@@ -328,7 +350,7 @@ impl FragmentIterator {
 
         // Add the right side (rest of original frag)
         rest_frag.content = cur_frag_content.1;
-        rest_frag.offset = split_offset;
+        rest_frag.offset = self.current_fragment().offset + split_offset;
 
         self.fragments.insert(self.current_fragment + 2, rest_frag);
         self.advance_fragment();
@@ -427,17 +449,19 @@ impl FragmentIterator {
     pub fn collect_while_flatmap(
         &mut self,
         mut f: impl FnMut(char, &mut Self) -> Option<Vec<char>>,
-    ) -> (Vec<(char, usize)>, Source) {
+    ) -> (Vec<(usize, char)>, Source) {
         let mut content = Vec::new();
         if let Some(c) = self.next_new_span() {
             if let Some(chars) = f(c, self) {
-                chars.into_iter().for_each(|c| content.push((c, self.current_source.span.hi)));
+                let sp = self.current_source.span.hi;
+                chars.into_iter().for_each(|c| content.push((sp, c)));
             }
         }
         while let Some(c) = self.peek() {
             if let Some(chars) = f(c, self) {
                 self.next();
-                chars.into_iter().for_each(|c| content.push((c, self.current_source.span.hi)));
+                let sp = self.current_source.span.hi;
+                chars.into_iter().for_each(|c| content.push((sp, c)));
             } else {
                 break;
             }
@@ -448,18 +472,50 @@ impl FragmentIterator {
 
     /// Peek the next character in the current fragment.
     pub fn peek(&self) -> Option<char> {
-        return self.iter.peek();
+        if self.vec_iter.0.len() > 0 {
+            self.vec_iter.0.get(self.vec_iter.1).map(|(_s, c)| *c)
+        } else {
+            self.char_iter.peek()
+        }
     }
 
     /// Peek the next character in the current fragment.
     pub fn peek_n(&self, n: usize) -> String {
-        let s = self.iter.as_str();
-        return s[0..min(s.len(), n)].to_string();
+        if self.vec_iter.0.len() > 0 {
+            self.vec_iter.0[self.vec_iter.1..min(self.vec_iter.0.len(), self.vec_iter.1 + n)]
+                .iter()
+                .map(|(_s, c)| *c)
+                .collect()
+        } else {
+            let s = self.char_iter.as_str();
+            s[0..min(s.len(), n)].to_string()
+        }
+    }
+
+    /// Get the rest of the current fragment as a String
+    pub fn as_str(&self) -> String {
+        if self.vec_iter.0.len() > 0 {
+            self.vec_iter.0[self.vec_iter.1..]
+                .iter()
+                .map(|(_s, c)| *c)
+                .collect()
+        } else {
+            self.char_iter.as_str().to_string()
+        }
     }
 
     /// Returns whether the current fragment starts with `s`.
     pub fn starts_with(&self, s: &str) -> bool {
-        return self.iter.as_str().starts_with(s);
+        if self.vec_iter.0.len() > 0 {
+            let hi = min(self.vec_iter.0.len(), self.vec_iter.1 + s.len());
+            let ss = self.vec_iter.0[self.vec_iter.1..hi]
+                .iter()
+                .map(|(_s, c)| *c)
+                .collect::<String>();
+            ss.starts_with(s)
+        } else {
+            self.char_iter.as_str().starts_with(s)
+        }
     }
 
     /// Get the current span.
@@ -488,7 +544,10 @@ impl FragmentIterator {
     fn advance_fragment(&mut self) -> bool {
         if self.current_fragment + 1 < self.fragments.len() {
             self.current_fragment += 1;
-            self.iter = self.current_fragment().content.char_indices();
+            if self.vec_iter.0.len() > 0 {
+                panic!();
+            }
+            self.char_iter = self.current_fragment().content.char_indices();
             true
         } else {
             false
@@ -499,7 +558,10 @@ impl FragmentIterator {
     pub fn advance_and_reset_span(&mut self) -> bool {
         if self.current_fragment + 1 < self.fragments.len() {
             self.current_fragment += 1;
-            self.iter = self.current_fragment().content.char_indices();
+            if self.vec_iter.0.len() > 0 {
+                panic!();
+            }
+            self.char_iter = self.current_fragment().content.char_indices();
             let mut nested: Option<Box<Source>> = None;
             std::mem::swap(&mut self.current_source.span.source, &mut nested);
             self.current_source = *nested.unwrap();
@@ -574,7 +636,7 @@ impl fmt::Debug for FragmentIterator {
             .field("fragments", &self.fragments)
             .field("current_fragment", &self.current_fragment)
             .field("current_source", &self.current_source)
-            .field("iter", &self.iter.as_str())
+            .field("iter", &self.as_str())
             .field("contents", &self.contents)
             .field("debug", &self.debug)
             .finish()

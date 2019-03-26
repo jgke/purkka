@@ -239,13 +239,13 @@ pub fn lr_parsing_table(
 ) -> Box<LRTable> {
     let mut open_table = Box::new(LRTable { actions: vec![] });
     {
-        let mut table = Mutex::new(&mut open_table);
+        let table = Mutex::new(&mut open_table);
         println!("Generating LR parsing table");
 
         let start = Instant::now();
 
         let total = lr_items.iter().fold(0, |total, ref items| total + items.len());
-        let mut count = AtomicUsize::new(0);
+        let count = AtomicUsize::new(0);
         lr_items.iter().for_each(|_| table.lock().unwrap().actions.push(HashMap::new()));
 
         lr_items.par_iter().enumerate().for_each(|(i, ref items)| {
@@ -330,16 +330,13 @@ pub fn compute_lalr(
     let mut rule_names: Vec<Index> = tm.rules.iter().map(|(x, _)| x.clone()).collect();
     rule_names.sort_unstable();
 
-    println!("1");
-
-    let mut terminal_names: Vec<Index> = terminals.iter().map(|term| tm.indices
-                                                              .get(&term.full_path)
-                                                              .map(|t| *t)
-                                                              .unwrap_or_else(|| panic!("Terminal {} not found", &term.full_path)))
+    let mut terminal_names: Vec<Index> = terminals.iter()
+        .map(|term| tm.indices
+             .get(&term.full_path)
+             .map(|t| *t)
+             .unwrap_or_else(|| panic!("Terminal {} not found", &term.full_path)))
         .collect();
     terminal_names.sort_unstable();
-
-    println!("2");
 
     let mut symbols: Vec<Index> = rule_names
         .iter()

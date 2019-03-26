@@ -57,7 +57,7 @@ fn trailing_comments_true() {
     process("
 #if 1
 #endif /*
-*/",
+ */",
         vec![
         ],
     );
@@ -167,5 +167,15 @@ baz
 ",
     vec![
             mt("foo.c", 43, 45, MacroTokenType::Identifier("baz".to_string()))
+    ]);
+    process("
+#define V 46000
+#if V >= 80000
+#define __foo_bar(s)		__bar(s)
+#else
+#define __foo_bar(s)
+#endif
+",
+    vec![
     ]);
 }
