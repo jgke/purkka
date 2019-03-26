@@ -275,6 +275,7 @@ impl FragmentIterator {
         } else {
             None
         };
+        println!("{:?}", &debug);
         FragmentIterator {
             fragments,
             current_fragment: 0,
@@ -337,9 +338,6 @@ impl FragmentIterator {
         // first half. As this practically happens at newlines, +1 should be next character, so
         // this shouldn't matter...
         let split_offset = self.current_source.span.hi + 1 - self.current_fragment().offset;
-        dbg!(&rest_frag);
-        dbg!(&split_offset);
-        dbg!(&self.current_fragment());
         let cur_frag_content = rest_frag.content.split_at(split_offset);
 
         // Update the current frag's content to only include the left side
@@ -444,7 +442,7 @@ impl FragmentIterator {
     ///     'a'...'z' => Some(vec![x.to_ascii_uppercase(), 'a']),
     ///     _ => None
     /// });
-    /// assert_eq!(s1, vec![('F', 0), ('a', 0), ('O', 1), ('a', 1), ('O', 2), ('a', 2)]);
+    /// assert_eq!(s1, vec![(0, 'F'), (0, 'a'), (1, 'O'), (1, 'a'), (2, 'O'), (2, 'a')]);
     /// ```
     pub fn collect_while_flatmap(
         &mut self,
