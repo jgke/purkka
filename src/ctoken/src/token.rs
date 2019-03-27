@@ -73,6 +73,7 @@ pub enum Token {
     Signed(usize,),
     Sizeof(usize,SizeofExpression),
     Static(usize,),
+    Inline(usize,),
     Struct(usize,),
     Switch(usize,),
     Typedef(usize,),

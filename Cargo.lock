@@ -129,6 +129,8 @@ name = "kieli"
 version = "0.1.0"
 dependencies = [
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cparser 0.1.0",
+ "ctoken 0.1.0",
  "parser 0.1.0",
  "preprocessor 0.1.0",
  "shared 0.1.0",

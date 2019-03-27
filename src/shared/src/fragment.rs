@@ -39,9 +39,9 @@ use std::str::CharIndices;
 
 use rand::{Rng, thread_rng, distributions::Alphanumeric};
 
-use traits::PeekableCharsExt;
+use crate::traits::PeekableCharsExt;
 
-use ::utils::{is_debug_enabled, DebugVal::DebugFragment};
+use crate::utils::{is_debug_enabled, DebugVal::DebugFragment};
 
 /// This struct converts a &str to &'static str. Unsafe.
 struct StringInterner {
@@ -134,8 +134,12 @@ impl Source {
     pub fn dummy() -> Source {
         Source {
             filename: "".to_string(),
-            span: Span { lo: 0, hi: 0, source: None }
+            span: Span { lo: usize::max_value(), hi: usize::max_value(), source: None }
         }
+    }
+
+    pub fn is_dummy(&self) -> bool {
+        return self.span.lo == usize::max_value()
     }
 }
 
@@ -573,7 +577,6 @@ impl FragmentIterator {
     /// given sources from a different iterator, or if self is made using `with_offset`.
     pub fn source_to_str(&self, source: &Source) -> String {
         let builtin = "<Compiler built-in>".to_string();
-        let dummy = Source::dummy();
         let mut lines: Vec<(String, (&str, usize, usize))> = Vec::new();
         let mut out = "".to_string();
         if self.contents.get(&source.filename).is_none() {
@@ -587,7 +590,7 @@ impl FragmentIterator {
         ));
         let mut current_source = &source.span.source;
         while let Some(src) = current_source {
-            if &**src == &dummy {
+            if src.is_dummy() {
                 lines.push((
                         builtin,
                         ("<builtin>", 0, 0),
@@ -617,6 +620,9 @@ impl FragmentIterator {
 
     /// Get the topmost source as a plain string without filename
     pub fn top_source_to_str(&self, source: &Source) -> String {
+        if source.span.lo == source.span.hi && source.span.lo == usize::max_value() {
+            return "".to_string();
+        }
         let s = &self.contents[&source.filename];
         s[source.span.lo..=source.span.hi].trim().to_string()
     }

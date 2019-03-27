@@ -8,7 +8,3 @@ extern crate shared;
 
 pub mod core;
 mod parsetree;
-
-fn main() {
-    core::real_main()
-}

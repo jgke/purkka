@@ -1,6 +1,6 @@
 use std::fmt;
 
-use shared::fragment::{FragmentIterator, Source, Span};
+use shared::fragment::{FragmentIterator, Source};
 
 use tokentype::{Operator, Punctuation};
 
@@ -94,6 +94,7 @@ pub fn preprocessor_to_parser(t: &MacroTokenType, index: usize) -> Token {
                 "signed" => Signed(index),
                 "sizeof" => panic!(), // these should be stripped out by now
                 "static" => Static(index),
+                "inline" => Inline(index),
                 "struct" => Struct(index),
                 "switch" => Switch(index),
                 "typedef" => Typedef(index),
@@ -160,10 +161,7 @@ impl fmt::Display for MacroTokenDisplay<'_> {
 impl MacroToken {
     pub(crate) fn dummy(ty: MacroTokenType) -> MacroToken {
         MacroToken {
-            source: Source {
-                filename: "".to_string(),
-                span: Span { lo: 0, hi: 0, source: None }
-            },
+            source: Source::dummy(),
             ty
         }
     }

@@ -84,7 +84,7 @@ fn add_struct_type(state: &mut State, declaration: Box<StructOrUnionSpecifier>) 
 
 fn add_enum_type(state: &mut State, declaration: Box<EnumSpecifier>) {
     match *declaration {
-        EnumSpecifier::List(EnumSpecifier_List(_, Token::Identifier(_, name), ..)) => {}
+        EnumSpecifier::List(EnumSpecifier_List(_, _, ..)) => {}
         EnumSpecifier::Empty(EnumSpecifier_Empty(_, Token::Identifier(_, name), ..)) =>
             add_type(state, name),
         EnumSpecifier::NameOnly(EnumSpecifier_NameOnly(_, Token::Identifier(_, name), ..)) =>
@@ -280,6 +280,7 @@ lalr! {
     StorageClassSpecifier
        -> #Token::Extern
         | #Token::Static
+        | #Token::Inline
         | #Token::Auto
         | #Token::Register
         ;

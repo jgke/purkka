@@ -81,6 +81,11 @@ where
                        Macro::Text(Source::dummy(), Vec::new()));
         symbols.insert("__restrict".to_string(),
                        Macro::Text(Source::dummy(), Vec::new()));
+        symbols.insert("__attribute__".to_string(),
+                       Macro::Function(Source::dummy(),
+                       vec![],
+                       vec![],
+                       Some("__va_args__".to_string())));
         symbols.insert("__builtin_va_list".to_string(),
                        Macro::Text(Source::dummy(), vec![
                                    MacroToken::dummy(MacroTokenType::Identifier("va_list".to_string())
@@ -94,11 +99,13 @@ where
 
     fn get_iterator(&mut self, filename: &str) -> FragmentIterator {
         let content = (self.get_file)(true, ".".to_string(), filename.to_string());
+        println!("get_iterator");
         FragmentIterator::new(&content.1, &content.0)
     }
 
     pub(crate) fn add_definitions(&mut self, definitions: &Vec<(&str, &str)>) {
         for (key, value) in definitions {
+            println!("add_definitions");
             let mut iter = FragmentIterator::new(key, value);
             let mut vals = Vec::new();
             while iter.peek().is_some() {
@@ -480,8 +487,6 @@ where
     /// Parse a macro (eg. #define FOO BAR) and store it for later, or act instantly in case of #if
     fn read_macro(&mut self, iter: &mut FragmentIterator) {
         let (ty, mut sub_iter, total_span) = self.get_macro_type(iter);
-        dbg!(sub_iter.source_to_str(&total_span));
-        dbg!(iter.source_to_str(&total_span));
         match ty {
             MacroType::Define => {
                 let (left, _) = self.read_identifier_raw(&mut sub_iter);
@@ -602,8 +607,8 @@ where
     }
 
     fn get_macro_type(&mut self, iter: &mut FragmentIterator) -> (MacroType, FragmentIterator, Source) {
+        println!("get_macro_type");
         let (row_string, total_span) = self.preprocess_get_macro_line(iter, true, true);
-        dbg!(&total_span);
         let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), row_string, total_span.span.lo, &iter);
         assert_eq!(sub_iter.peek(), Some('#'));
         assert_eq!(
@@ -769,6 +774,7 @@ where
         while iter.peek().is_some() {
             self.flush_until_pound_or_newline(iter);
             let (next_row, line_src) = self.preprocess_get_macro_line(iter, true, true);
+            println!("skip_lines_to_else_or_endif");
             let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), next_row, line_src.span.lo, &iter);
             match sub_iter.peek() {
                 Some('#') => {
@@ -1505,7 +1511,9 @@ where
             .iter()
             .map(|(arg, toks)| {
                 let mut src = toks[0].source.clone();
-                src.span.hi = toks[toks.len()-1].source.span.hi;
+                if toks[toks.len()-1].source.span.hi != usize::max_value() {
+                    src.span.hi = toks[toks.len()-1].source.span.hi;
+                }
                 (arg.clone(), src)
             })
             .collect();
@@ -1528,6 +1536,7 @@ fn combine_tokens(left: &MacroToken, source: &Source, right: &MacroToken, iter: 
 
     // This part feels like a bit of an overkill to parse a single token...
     let combined = format!("{}{}", left_str, right_str);
+    println!("combine_tokens");
     let mut tmp_iter = FragmentIterator::new(&iter.current_filename(), &combined);
     let parsed_token = MacroContext {
         get_file: unreachable_file_open,

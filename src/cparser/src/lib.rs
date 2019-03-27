@@ -18,5 +18,7 @@ pub fn parse(input: Vec<Token>) -> Result<parser::S, Option<Token>> {
     let mut types = HashSet::new();
     types.insert("va_list".to_string());
     types.insert("size_t".to_string());
+    types.insert("_Bool".to_string());
+    types.insert("_Complex".to_string());
     driver(&mut input.iter(), &mut types)
 }
