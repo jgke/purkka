@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crate::macrotoken::{MacroToken, MacroTokenType};
+use crate::macrotoken::{MacroToken, MacroTokenType, SpecialType};
 use crate::tokentype;
 use crate::tokentype::{Operator};
 
@@ -45,7 +45,8 @@ fn const_expr_token_from_macro(ty: &MacroTokenType) -> ConstExprToken {
         MacroTokenType::Punctuation(tokentype::Punctuation::OpenParen) => Paren(OpenParen),
         MacroTokenType::Punctuation(tokentype::Punctuation::CloseParen) => Paren(CloseParen),
         MacroTokenType::Punctuation(_) => panic!("Invalid character in expression: {:?}", ty),
-        MacroTokenType::Sizeof(_) => panic!("Cannot use sizeof expressions in #if expressions"),
+        MacroTokenType::Special(SpecialType::Sizeof(..)) => panic!("Cannot use sizeof expressions in #if expressions"),
+        MacroTokenType::Special(SpecialType::Asm(..)) => panic!("Cannot use asm statemets in #if expressions"),
         MacroTokenType::Other(_) => panic!("Invalid character in expression: {:?}", ty),
         MacroTokenType::Empty => panic!(),
     }

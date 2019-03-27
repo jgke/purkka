@@ -71,7 +71,6 @@ pub enum Token {
     Return(usize,),
     Short(usize,),
     Signed(usize,),
-    Sizeof(usize,SizeofExpression),
     Static(usize,),
     Inline(usize,),
     Struct(usize,),
@@ -95,6 +94,11 @@ pub enum Token {
     Semicolon(usize,),
     Varargs(usize,),
 
+    // Special forms
+    Sizeof(usize,SizeofExpression),
+    Asm(usize,String),
+
+    // Literals
     Identifier(usize,String),
     StringLiteral(usize,String),
     Number(usize,String),

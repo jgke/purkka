@@ -31,3 +31,10 @@ int main() {
 }
 ").is_ok());
 }
+
+#[test]
+fn typedef_with_complex_expression() {
+    assert!(parse("
+int a = (1);
+").is_ok());
+}

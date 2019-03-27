@@ -6,7 +6,7 @@ mod common;
 
 use common::*;
 use ctoken::token::SizeofExpression;
-use preprocessor::macrotoken::{MacroTokenType};
+use preprocessor::macrotoken::{MacroTokenType, SpecialType};
 use preprocessor::tokentype::{Operator, Punctuation};
 
 #[test]
@@ -308,27 +308,27 @@ fn undef() {
 fn sizeof_types() {
     process(
         "sizeof(int)",
-        vec![ mt("foo.c", 0, 10, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+        vec![ mt("foo.c", 0, 10, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
     process(
         "sizeof(int *)",
-        vec![ mt("foo.c", 0, 12, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+        vec![ mt("foo.c", 0, 12, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
     process(
         "sizeof(*int)",
-        vec![ mt("foo.c", 0, 11, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+        vec![ mt("foo.c", 0, 11, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
     process(
         "sizeof((1))",
-        vec![ mt("foo.c", 0, 10, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+        vec![ mt("foo.c", 0, 10, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
     process(
         "sizeof(((1)))",
-        vec![ mt("foo.c", 0, 12, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+        vec![ mt("foo.c", 0, 12, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
     process(
         "sizeof ( 1 ) ",
-        vec![ mt("foo.c", 0, 11, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+        vec![ mt("foo.c", 0, 11, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
     process(
         "sizeof(1+1)",
-        vec![ mt("foo.c", 0, 10, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+        vec![ mt("foo.c", 0, 10, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
     process(
         "sizeof int",
-        vec![ mt("foo.c", 0, 9, MacroTokenType::Sizeof(SizeofExpression::Static(8)))]);
+        vec![ mt("foo.c", 0, 9,  MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
 }
 

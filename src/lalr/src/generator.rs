@@ -158,6 +158,8 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
     println!("Building items...");
 
     while prevsize < items.len() {
+        print!(".");
+        stdout().flush();
         prevsize = items.len();
         for set in &added {
             for symbol in symbols {

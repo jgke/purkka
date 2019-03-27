@@ -3,8 +3,8 @@ members = [
     "src/core",
     "src/cparser",
     "src/ctoken",
+    "src/kieli",
     "src/lalr",
-    "src/main",
     "src/parser",
     "src/preprocessor",
     "src/shared"

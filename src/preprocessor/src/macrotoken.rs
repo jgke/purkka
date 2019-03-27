@@ -11,10 +11,17 @@ pub enum MacroTokenType {
     StringLiteral(String),
     Operator(Operator),
     Punctuation(Punctuation),
-    Sizeof(SizeofExpression),
+    Special(SpecialType),
     Other(char),
     Empty
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SpecialType {
+    Asm(Vec<MacroToken>),
+    Sizeof(SizeofExpression),
+}
+
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MacroToken {
@@ -123,7 +130,8 @@ pub fn preprocessor_to_parser(t: &MacroTokenType, index: usize) -> Token {
 
         MacroTokenType::StringLiteral(s) => StringLiteral(index, s.to_string()),
         MacroTokenType::Number(s) => Number(index, s.to_string()),
-        MacroTokenType::Sizeof(expr) => Sizeof(index, expr.clone()),
+        MacroTokenType::Special(SpecialType::Sizeof(expr)) => Sizeof(index, expr.clone()),
+        MacroTokenType::Special(SpecialType::Asm(_exprs)) => Asm(index, "<asm>".to_string()),
         MacroTokenType::Other(_) => panic!(),
         MacroTokenType::Empty => panic!()
     }

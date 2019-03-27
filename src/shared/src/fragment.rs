@@ -580,28 +580,29 @@ impl FragmentIterator {
         let mut lines: Vec<(String, (&str, usize, usize))> = Vec::new();
         let mut out = "".to_string();
         if self.contents.get(&source.filename).is_none() {
-            return builtin;
+            lines.push((builtin.clone(), ("<builtin>", 0, 0)));
+        } else {
+            let s = &self.contents[&source.filename];
+            out.push_str(s[source.span.lo..=source.span.hi].trim());
+            lines.push((
+                    format!("{}", s[source.span.lo..=source.span.hi].trim()),
+                    (source.filename.as_ref(), source.span.lo, source.span.hi),
+            ));
         }
-        let s = &self.contents[&source.filename];
-        out.push_str(s[source.span.lo..=source.span.hi].trim());
-        lines.push((
-            format!("{}", s[source.span.lo..=source.span.hi].trim()),
-            (source.filename.as_ref(), source.span.lo, source.span.hi),
-        ));
         let mut current_source = &source.span.source;
         while let Some(src) = current_source {
-            if src.is_dummy() {
+            if src.is_dummy() || self.contents.get(&source.filename).is_none() {
                 lines.push((
-                        builtin,
+                        builtin.clone(),
                         ("<builtin>", 0, 0),
-                        ));
-                break;
+                ));
+            } else {
+                let s = &self.contents[&src.filename];
+                lines.push((
+                        format!("Expanded from: {:?}", s[src.span.lo..=src.span.hi].trim()),
+                        (src.filename.as_ref(), src.span.lo, src.span.hi),
+                ));
             }
-            let s = &self.contents[&src.filename];
-            lines.push((
-                format!("Expanded from: {:?}", s[src.span.lo..=src.span.hi].trim()),
-                (src.filename.as_ref(), src.span.lo, src.span.hi),
-            ));
             current_source = &src.span.source;
         }
         let max = lines

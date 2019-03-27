@@ -118,7 +118,8 @@ lalr! {
        -> #Token::Identifier
         | #Token::Number
         | #Token::StringLiteral
-        | #Token::Sizeof // Sizeofs are parsed in preprocessor
+        | #Token::Sizeof
+        | #Token::Asm
         | #Token::OpenParen &Expression #Token::CloseParen
         ;
 
@@ -145,6 +146,41 @@ lalr! {
         | UnaryOperator &CastExpression
         ;
 
+    CastExpression
+      -> UnaryExpression
+       | #Token::OpenParen TypeName #Token::CloseParen GeneralExpression
+       ;
+
+    GeneralExpression
+       -> &CastExpression
+        | 12: Times. GeneralExpression #Token::Times GeneralExpression
+        | 12: Divide. GeneralExpression #Token::Divide GeneralExpression
+        | 12: Mod. GeneralExpression #Token::Mod GeneralExpression
+        | 11: Plus. GeneralExpression #Token::Plus GeneralExpression
+        | 11: Minus. GeneralExpression #Token::Minus GeneralExpression
+        | 10: BitShiftLeft. GeneralExpression #Token::BitShiftLeft GeneralExpression
+        | 10: BitShiftRight. GeneralExpression #Token::BitShiftRight GeneralExpression
+        | 9: LessThan. GeneralExpression #Token::LessThan GeneralExpression
+        | 9: MoreThan. GeneralExpression #Token::MoreThan GeneralExpression
+        | 8: Equals. GeneralExpression #Token::Equals GeneralExpression
+        | 8: NotEquals. GeneralExpression #Token::NotEquals GeneralExpression
+        | 7: BitAnd. GeneralExpression #Token::BitAnd GeneralExpression
+        | 6: BitXor. GeneralExpression #Token::BitXor GeneralExpression
+        | 5: BitOr. GeneralExpression #Token::BitOr GeneralExpression
+        | 4: And. GeneralExpression #Token::And GeneralExpression
+        | 3: Or. GeneralExpression #Token::Or GeneralExpression
+        ;
+
+    TernaryExpression
+       -> GeneralExpression
+        | Ternary. GeneralExpression #Token::Terniary &Expression #Token::Colon TernaryExpression
+        ;
+
+    AssignmentExpression
+       -> TernaryExpression
+        | Assignment. &UnaryExpression AssignmentOperator AssignmentExpression
+        ;
+
     UnaryOperator
        -> #Token::BitAnd
         | #Token::Times
@@ -152,77 +188,6 @@ lalr! {
         | #Token::Minus
         | #Token::BitNot
         | #Token::Not
-        ;
-
-    CastExpression
-       -> UnaryExpression
-        | #Token::OpenParen TypeName #Token::CloseParen CastExpression
-        ;
-
-    MultiplicativeExpression
-       -> CastExpression
-        | Times. MultiplicativeExpression #Token::Times CastExpression
-        | Divide. MultiplicativeExpression #Token::Divide CastExpression
-        | Mod. MultiplicativeExpression #Token::Mod CastExpression
-        ;
-
-    AdditiveExpression
-       -> MultiplicativeExpression
-        | Plus. AdditiveExpression #Token::Plus MultiplicativeExpression
-        | Minus. AdditiveExpression #Token::Minus MultiplicativeExpression
-        ;
-
-    ShiftExpression
-       -> AdditiveExpression
-        | BitShiftLeft. ShiftExpression #Token::BitShiftLeft AdditiveExpression
-        | BitShiftRight. ShiftExpression #Token::BitShiftRight AdditiveExpression
-        ;
-
-    RelationalExpression
-       -> ShiftExpression
-        | LessThan. RelationalExpression #Token::LessThan ShiftExpression
-        | MoreThan. RelationalExpression #Token::MoreThan ShiftExpression
-        ;
-
-    EqualityExpression
-       -> RelationalExpression
-        | Equals. EqualityExpression #Token::Equals RelationalExpression
-        | NotEquals. EqualityExpression #Token::NotEquals RelationalExpression
-        ;
-
-    AndExpression
-       -> EqualityExpression
-        | BitAnd. AndExpression #Token::BitAnd EqualityExpression
-        ;
-
-    ExclusiveOrExpression
-       -> AndExpression
-        | BitXor. ExclusiveOrExpression #Token::BitXor AndExpression
-        ;
-
-    InclusiveOrExpression
-       -> ExclusiveOrExpression
-        | BitOr. InclusiveOrExpression #Token::BitOr ExclusiveOrExpression
-        ;
-
-    LogicalAndExpression
-       -> InclusiveOrExpression
-        | And. LogicalAndExpression #Token::And InclusiveOrExpression
-        ;
-
-    LogicalOrExpression
-       -> LogicalAndExpression
-        | Or. LogicalOrExpression #Token::Or LogicalAndExpression
-        ;
-
-    ConditionalExpression
-       -> &LogicalOrExpression
-        | Ternary. &LogicalOrExpression #Token::Terniary &Expression #Token::Colon &ConditionalExpression
-        ;
-
-    AssignmentExpression
-       -> ConditionalExpression
-        | Assignment. &UnaryExpression AssignmentOperator AssignmentExpression
         ;
 
     AssignmentOperator
@@ -242,10 +207,6 @@ lalr! {
     Expression
        -> &AssignmentExpression
         | Comma. Expression #Token::Comma &AssignmentExpression
-        ;
-
-    ConstantExpression
-       -> &ConditionalExpression
         ;
 
     Declaration
@@ -337,8 +298,8 @@ lalr! {
 
     StructDeclarator
        -> Declarator
-        | BitField. #Token::Colon ConstantExpression
-        | NamedBitField. Declarator #Token::Colon ConstantExpression
+        | BitField. #Token::Colon GeneralExpression
+        | NamedBitField. Declarator #Token::Colon GeneralExpression
         ;
 
     EnumSpecifier
@@ -354,7 +315,7 @@ lalr! {
 
     Enumerator
        -> #Token::Identifier
-        | Assign. #Token::Identifier #Token::Assign ConstantExpression
+        | Assign. #Token::Identifier #Token::Assign GeneralExpression
         ;
 
     TypeQualifier
@@ -370,7 +331,7 @@ lalr! {
     DirectDeclarator
        -> #Token::Identifier
         | #Token::OpenParen &Declarator #Token::CloseParen
-        | SizedArray. DirectDeclarator #Token::OpenBracket ConstantExpression #Token::CloseBracket
+        | SizedArray. DirectDeclarator #Token::OpenBracket GeneralExpression #Token::CloseBracket
         | Array. DirectDeclarator #Token::OpenBracket #Token::CloseBracket
         | FunctionParams. DirectDeclarator #Token::OpenParen &ParameterTypeList #Token::CloseParen
         | FunctionIdents. DirectDeclarator #Token::OpenParen IdentifierList #Token::CloseParen
@@ -425,9 +386,9 @@ lalr! {
     DirectAbstractDeclarator
        -> #Token::OpenParen &AbstractDeclarator #Token::CloseParen
         | Array. #Token::OpenBracket #Token::CloseBracket
-        | SizedArray. #Token::OpenBracket ConstantExpression #Token::CloseBracket
+        | SizedArray. #Token::OpenBracket GeneralExpression #Token::CloseBracket
         | AbstractArray. DirectAbstractDeclarator #Token::OpenBracket #Token::CloseBracket
-        | AbstractSizedArray. DirectAbstractDeclarator #Token::OpenBracket ConstantExpression #Token::CloseBracket
+        | AbstractSizedArray. DirectAbstractDeclarator #Token::OpenBracket GeneralExpression #Token::CloseBracket
         | Function. #Token::OpenParen #Token::CloseParen
         | FunctionParams. #Token::OpenParen &ParameterTypeList #Token::CloseParen
         | AbstractFunction. DirectAbstractDeclarator #Token::OpenParen #Token::CloseParen
@@ -456,7 +417,7 @@ lalr! {
 
     LabeledStatement
        -> #Token::Identifier #Token::Colon Statement
-        | #Token::Case ConstantExpression #Token::Colon Statement
+        | #Token::Case GeneralExpression #Token::Colon Statement
         | #Token::Default #Token::Colon Statement
         ;
 

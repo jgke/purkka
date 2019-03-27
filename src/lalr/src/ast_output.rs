@@ -1046,7 +1046,7 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> R
                     _Act::Goto(g) => {
                         let result = _reduce_to_ast(*goto, *subrule, &drain, state);
                         if debug_output {
-                            println!("Reduced rule: {:?}", _reduce_index_to_str(*goto, *subrule));
+                            println!("Reduced rule: {:?}[{}]", _reduce_index_to_str(*goto, *subrule), *subrule);
                         }
                         stack.push((g, result));
                     }
