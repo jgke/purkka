@@ -28,6 +28,7 @@ pub struct Rule {
 pub struct Component {
     pub real_name: String,
     pub action: Option<String>,
+    pub priority: Option<(i32, bool)>,
     pub rules: Vec<RuleData>
 }
 
@@ -104,8 +105,8 @@ impl Core {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Action {
     Error,
-    Shift(usize),
-    Reduce(Index, usize, usize),
+    Shift(usize, Option<(i32, bool)>),
+    Reduce(Index, usize, usize, Option<(i32, bool)>),
     Accept,
     Goto(usize),
 }
@@ -208,8 +209,8 @@ impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Action::Error => write!(f, "{: >7.5}", ""),
-            Action::Shift(to) => write!(f, "{: >7.5}", String::from("s") + &to.to_string()),
-            Action::Reduce(rule, subrule, _length) => write!(
+            Action::Shift(to, _priority) => write!(f, "{: >7.5}", String::from("s") + &to.to_string()),
+            Action::Reduce(rule, subrule, _length, _priority) => write!(
                 f,
                 "{: >7.5}",
                 format!("r{}{}", rule, subrule)

@@ -527,8 +527,8 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
     fn lalr_action_call(&self, action: &Action) -> P<ast::Expr> {
         self.action_expr(match action {
             Action::Error => ("Error", None),
-            Action::Shift(pat) => ("Shift", Some(vec![self.usize_expr(*pat)])),
-            Action::Reduce(ident, subrule, count) => (
+            Action::Shift(pat, _prio) => ("Shift", Some(vec![self.usize_expr(*pat)])),
+            Action::Reduce(ident, subrule, count, _prio) => (
                 "Reduce",
                 Some(vec![
                     self.usize_expr(*ident),
@@ -758,7 +758,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         let bodies = data
             .iter()
             .enumerate()
-            .map(|(subindex, Component {real_name, rules, action})| {
+            .map(|(subindex, Component {real_name, rules, action, priority: _priority})| {
                 if rules.len() == 1 && rules[0].identifier == "Epsilon" {
                     self.cx.arm(
                         *span,
@@ -1066,7 +1066,6 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> R
 
     driver_fn.push_str(&format!(
         "
-    dbg!(&t);
     if let box _Data::{0}(s) = t {{
         Ok(S::{0}(S_{0}(s)))
     }} else {{

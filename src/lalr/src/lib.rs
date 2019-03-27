@@ -170,9 +170,27 @@ fn parse_item(
     let mut real_name: Option<String> = None;
     let mut current_components: Vec<RuleData> = Vec::new();
     let mut action = None;
+    let mut priority: Option<(i32, bool)> = None;
 
     while !is_semi(iter.peek()) {
         match iter.next() {
+            Some(TokenTree::Token(_, token::Literal(token::Integer(new_prio), None))) => {
+                priority = match iter.next() {
+                    Some(TokenTree::Token(_, token::Colon)) =>
+                        Some((new_prio.to_string().parse().unwrap(), true)),
+                    Some(TokenTree::Token(_, token::Ident(tt, _))) => {
+                        match (iter.next(), tt.name.to_string().as_ref()) {
+                            (Some(TokenTree::Token(_, token::Colon)), "l") =>
+                                Some((new_prio.to_string().parse().unwrap(), true)),
+                            (Some(TokenTree::Token(_, token::Colon)), "r") =>
+                                Some((new_prio.to_string().parse().unwrap(), false)),
+                            (tt, _) => return parse_failure(cx, s.to(rsp), tt)
+                        }
+
+                    }
+                    tt => return parse_failure(cx, s.to(rsp), tt)
+                };
+            }
             Some(TokenTree::Token(_, token::Not)) => {
                 action = match iter.next() {
                     Some(TokenTree::Token(_, token::Ident(tt, _))) =>
@@ -228,9 +246,11 @@ fn parse_item(
                 components.push(Component {
                     real_name: real_real_name,
                     action,
-                    rules: current_components
+                    rules: current_components,
+                    priority
                 });
                 action = None;
+                priority = None;
                 current_components = vec![];
             }
             Some(TokenTree::Token(s, token::Dot)) => {
@@ -250,7 +270,8 @@ fn parse_item(
         components.push(Component {
             real_name: real_real_name,
             action,
-            rules: current_components
+            rules: current_components,
+            priority,
         });
     }
 

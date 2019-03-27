@@ -1,7 +1,9 @@
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic;
+use std::sync::atomic::{AtomicUsize};
 use std::time::{Instant};
 
 use rayon::prelude::*;
@@ -153,9 +155,9 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
     let mut added_next: Vec<HashSet<Item>> = Vec::new();
     added.push(initial);
     let mut prevsize = 0;
+    println!("Building items...");
 
     while prevsize < items.len() {
-        println!("Building items... {}", items.len());
         prevsize = items.len();
         for set in &added {
             for symbol in symbols {
@@ -216,15 +218,51 @@ pub fn get_lalr_items(lalr_items: &mut Vec<HashSet<Item>>, lr_items: &Vec<HashSe
 }
 
 pub fn panic_insert(map: &mut HashMap<Index, Action>, identifier: Index, action: Action) {
+    // The map should have the rule with the following priority:
+    //  1) higher priority number
+    //  2) if the priorities are equal, the associativity should also be equal
+    //      2a) if the associativity is left associative, shift
+    //      2b) if the associativity is right associative, reduce
     if let Some(act) = map.get(&identifier) {
         if act != &action {
             match (act, &action) {
-                (Action::Reduce(_, _, _), Action::Shift(_)) =>
-                    println!("Conflict, not LR: tried to replace {} with {}. Shift took precedence.", act, action),
-                (Action::Shift(_), Action::Reduce(_, _, _)) => {
-                    println!("Conflict, not LR: tried to replace {} with {}. Shift took precedence.", act, action);
-                    return;
-                },
+                (Action::Reduce(_, _, _, map_prio), Action::Shift(_, new_prio)) => {
+                    let (map_prio, map_left_assoc) = map_prio.unwrap_or((0, false));
+                    let (new_prio, new_left_assoc) = new_prio.unwrap_or((0, false));
+                    match (map_prio.cmp(&new_prio), map_left_assoc, new_left_assoc) {
+                        (Ordering::Less, _, _) => {}
+                        (Ordering::Greater, _, _) => { return; }
+                        (Ordering::Equal, false, false) => {
+                            if map_prio == 0 {
+                                println!("Warning: conflicting actions {} and {}, shift took priority.",
+                                         act, action);
+                            }
+                            // map contains reduce, so replaced it with shift
+                        }
+                        (Ordering::Equal, true, true) => { return; }
+                        (Ordering::Equal, _, _) => panic!("Conflicting priority rules at {} and {}",
+                                                            act, action)
+                    }
+                }
+                (Action::Shift(_, map_prio), Action::Reduce(_, _, _, new_prio)) => {
+                    let (map_prio, map_left_assoc) = map_prio.unwrap_or((0, false));
+                    let (new_prio, new_left_assoc) = new_prio.unwrap_or((0, false));
+                    match (map_prio.cmp(&new_prio), map_left_assoc, new_left_assoc) {
+                        (Ordering::Less, _, _) => {}
+                        (Ordering::Greater, _, _) => { return; }
+                        (Ordering::Equal, false, false) => {
+                            if map_prio == 0 {
+                                println!("Warning: conflicting actions {} and {}, shift took priority.",
+                                         act, action);
+                            }
+                            // map contains shift, so don't replace it
+                            return;
+                        }
+                        (Ordering::Equal, true, true) => { return; }
+                        (Ordering::Equal, _, _) => panic!("Conflicting priority rules at {} and {}",
+                                                            act, action)
+                    }
+                }
                 _ => panic!("Conflict, not LR: tried to replace {} with {}", act, action),
             }
         }
@@ -249,18 +287,21 @@ pub fn lr_parsing_table(
         lr_items.iter().for_each(|_| table.lock().unwrap().actions.push(HashMap::new()));
 
         lr_items.par_iter().enumerate().for_each(|(i, ref items)| {
-            count.fetch_add(items.len(), Ordering::Relaxed);
-            let new_count = count.load(Ordering::Relaxed);
+            count.fetch_add(items.len(), atomic::Ordering::Relaxed);
+            let new_count = count.load(atomic::Ordering::Relaxed);
             let now = Instant::now();
             let elapsed = now.duration_since(start);
             let items_per_millisecond: f64 = (new_count as f64) / (elapsed.as_millis() as f64);
             let items_per_second: f64 = items_per_millisecond * 1000.0;
             let to_go: f64 = (total - new_count) as f64;
 
-            println!("{} / {} ({:.1}s to go @ {:.1} items/s)", new_count, total, to_go / items_per_second, items_per_second);
+            if new_count > 1000 && total > 10000 {
+                println!("{} / {} ({:.1}s to go @ {:.1} items/s)",
+                new_count, total, to_go / items_per_second, items_per_second);
+            }
 
             for item in items.iter() {
-                let Component {rules, ..} = &tm.rules[&item.index].data[item.subindex];
+                let Component {rules, priority, ..} = &tm.rules[&item.index].data[item.subindex];
                 if rules.len() > item.position {
                     if !rules[item.position].terminal {
                         if rules[item.position].identifier == "Epsilon" {
@@ -270,7 +311,8 @@ pub fn lr_parsing_table(
                                 Action::Reduce(
                                     item.index,
                                     item.subindex,
-                                    0
+                                    0,
+                                    *priority
                                     ),
                                     );
                         }
@@ -287,7 +329,7 @@ pub fn lr_parsing_table(
                         panic_insert(
                             &mut table.lock().unwrap().actions[i],
                             tm.indices[&rules[item.position].full_path],
-                            Action::Shift(pos)
+                            Action::Shift(pos, *priority),
                             );
                     }
                 } else {
@@ -301,6 +343,7 @@ pub fn lr_parsing_table(
                                 item.index,
                                 item.subindex,
                                 tm.rules[&item.index].data[item.subindex].rules.len(),
+                                *priority
                                 ),
                                 );
                     }
@@ -365,6 +408,7 @@ pub fn compute_lalr(
     //}
 
     let table = lr_parsing_table(tm, &lalr_items, &rule_names);
+    println!();
 
     //let starting_rule = &tm.rules["S"].data[0].1[0].identifier;
     //for rule in &tm.rules[starting_rule].data {
@@ -374,6 +418,12 @@ pub fn compute_lalr(
     //}
 
     if_debug(DumpLalrTable, || {
+        println!("Rule indices:");
+        for symbol in terminal_names.iter().chain(rule_names.iter()) {
+            println!("{}: {}", &symbol, tm.rev_indices[&symbol]);
+        }
+        println!();
+
         println!("LALR table");
         print!("   ");
         for symbol in terminal_names.iter().chain(rule_names.iter()) {
