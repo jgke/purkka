@@ -465,6 +465,7 @@ lalr! {
         | Statements. #Token::OpenBrace &StatementList #Token::CloseBrace
         | Declarations. #Token::OpenBrace &DeclarationList #Token::CloseBrace
         | Both. #Token::OpenBrace &DeclarationList &StatementList #Token::CloseBrace
+        | Parented. #Token::OpenParen CompoundStatement #Token::CloseParen
         ;
 
     DeclarationList

@@ -1,7 +1,8 @@
-use macrotoken::{MacroToken, MacroTokenType};
-use tokentype;
-use tokentype::{Operator};
 use std::str::FromStr;
+
+use crate::macrotoken::{MacroToken, MacroTokenType};
+use crate::tokentype;
+use crate::tokentype::{Operator};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Paren {
@@ -15,8 +16,8 @@ enum ConstExprToken {
     Op(tokentype::Operator)
 }
 
-use calculator::Paren::*;
-use calculator::ConstExprToken::*;
+use self::Paren::*;
+use self::ConstExprToken::*;
 
 fn parse_number(num: &str) -> i64 {
     let mut num_len = 0;

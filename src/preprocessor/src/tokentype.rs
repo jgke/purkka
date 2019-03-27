@@ -1,7 +1,6 @@
-use tokentype::Keyword::*;
-use tokentype::Operator::*;
-//use tokentype::Macro::*;
-//
+use crate::tokentype::Keyword::*;
+use crate::tokentype::Operator::*;
+
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Operator {

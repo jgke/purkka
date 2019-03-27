@@ -1,9 +1,10 @@
 use preprocessor::PreprocessorOptions;
-use core::parse_files;
+
+use core::core::parse_files;
 
 fn parse(content: &str) -> Result<cparser::parser::S, Option<ctoken::token::Token>> {
     let input = "main.c";
-    let get_file = |is_local, current_file, filename: String| {
+    let get_file = |_is_local, _current_file, filename: String| {
         if filename == input {
             (content.to_string(), filename)
         } else {
@@ -12,21 +13,21 @@ fn parse(content: &str) -> Result<cparser::parser::S, Option<ctoken::token::Toke
     };
 
     parse_files(
-        vec!["input.c"],
+        &vec!["main.c".to_string()],
         get_file,
-        PreprocessorOptions {
+        &PreprocessorOptions {
             include_path: vec![],
             include_files: vec![],
             definitions: vec![]
-        })[0]
+        })[0].clone()
 }
 
 #[test]
 fn fn_with_block_inside() {
-    assert_eq!(parse("
+    assert!(parse("
 int main() {
-    {
-    }
+    ({
+    });
 }
-"), Err(None));
+").is_ok());
 }

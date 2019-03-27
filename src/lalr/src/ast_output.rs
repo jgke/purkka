@@ -12,7 +12,7 @@ use syntax_pos::symbol;
 use std::collections::{HashSet, HashMap};
 use std::iter;
 
-use types::{Action, Component, LRTable, Rule, RuleData, RuleTranslationMap, Terminal};
+use crate::types::{Action, Component, LRTable, Rule, RuleData, RuleTranslationMap, Terminal};
 
 struct AstBuilderCx<'a, 'c> {
     cx: &'a ExtCtxt<'c>,

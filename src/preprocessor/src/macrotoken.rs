@@ -2,7 +2,7 @@ use std::fmt;
 
 use shared::fragment::{FragmentIterator, Source};
 
-use tokentype::{Operator, Punctuation};
+use crate::tokentype::{Operator, Punctuation};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MacroTokenType {

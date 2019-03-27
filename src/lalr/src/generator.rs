@@ -6,7 +6,7 @@ use std::time::{Instant};
 
 use rayon::prelude::*;
 
-use types::{Action, Component, Core, Item, Index, LRTable, RuleData, RuleTranslationMap, Terminal};
+use crate::types::{Action, Component, Core, Item, Index, LRTable, RuleData, RuleTranslationMap, Terminal};
 use shared::utils::{if_debug, DebugVal::DumpLalrTable};
 
 fn first(

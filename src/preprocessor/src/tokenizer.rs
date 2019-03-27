@@ -3,10 +3,10 @@ use std::collections::{HashMap, HashSet};
 use shared::fragment::{FragmentIterator, Source};
 use shared::utils::*;
 
-use macrotoken::{MacroToken, MacroTokenType};
-use tokentype::{Operator, Punctuation, OPERATORS, PUNCTUATION};
-use ctoken::token::SizeofExpression;
-use calculator::eval_expression;
+use crate::macrotoken::{MacroToken, MacroTokenType};
+use crate::tokentype::{Operator, Punctuation, OPERATORS, PUNCTUATION};
+use crate::ctoken::token::SizeofExpression;
+use crate::calculator::eval_expression;
 
 #[derive(Debug)]
 pub struct Output {
