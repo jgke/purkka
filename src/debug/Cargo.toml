@@ -1,8 +1,7 @@
 [package]
-name = "shared"
+name = "debug"
 version = "0.1.0"
 authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 edition = "2018"
 
 [dependencies]
-regex = "1.1.0"

@@ -5,6 +5,8 @@ authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 edition = "2018"
 
 [dependencies]
-shared = { path="../shared" }
 ctoken = { path="../ctoken" }
+debug = { path="../debug" }
+fragment = { path="../fragment" }
+shared = { path="../shared" }
 regex = "1.1.0"

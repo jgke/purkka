@@ -1,6 +1,4 @@
-extern crate shared;
-
-use shared::fragment::{FragmentIterator, Source, Span};
+use fragment::fragment::{FragmentIterator, Source, Span};
 
 #[test]
 fn fragment_simple() {

@@ -1,16 +1,12 @@
 #![crate_type = "dylib"]
 #![feature(plugin_registrar, rustc_private)]
 
-extern crate rayon;
-
 extern crate rustc;
 extern crate rustc_plugin;
 extern crate rustc_target;
 extern crate smallvec;
 extern crate syntax;
 extern crate syntax_pos;
-
-extern crate shared;
 
 use rustc_plugin::Registry;
 use syntax::ext::base::{DummyResult, ExtCtxt, MacResult};

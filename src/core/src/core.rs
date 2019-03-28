@@ -5,7 +5,7 @@ use std::path;
 use clap::{Arg, App};
 
 use preprocessor::PreprocessorOptions;
-use shared::utils::{if_debug, DebugVal::{IncludeName}};
+use debug::debug::{if_debug, DebugVal::{IncludeName}};
 
 static DEFAULT_INCLUDE_PATH: &[&str] = &["/usr/local/include", "/usr/lib/gcc/x86_64-linux-gnu/7/include", "/usr/include"];
 

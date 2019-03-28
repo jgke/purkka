@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
-use shared::fragment::{FragmentIterator, Source};
+use fragment::fragment::{FragmentIterator, Source};
+use debug::debug::*;
 use shared::utils::*;
+
+use ctoken::token::SizeofExpression;
 
 use crate::macrotoken::{MacroToken, MacroTokenType, SpecialType};
 use crate::tokentype::{Operator, Punctuation, OPERATORS, PUNCTUATION};
-use crate::ctoken::token::SizeofExpression;
 use crate::calculator::eval_expression;
 
 #[derive(Debug)]
@@ -60,6 +62,7 @@ where
     symbols: HashMap<String, Macro>,
     if_stack: Vec<Option<bool>>,
     get_file: CB,
+    iter: Option<FragmentIterator>
 }
 
 pub type ParseResult<T> = Result<T, &'static str>;
@@ -94,18 +97,33 @@ where
             symbols,
             if_stack: Vec::new(),
             get_file,
+            iter: None
         }
     }
 
     fn get_iterator(&mut self, filename: &str) -> FragmentIterator {
         let content = (self.get_file)(true, ".".to_string(), filename.to_string());
-        println!("get_iterator");
-        FragmentIterator::new(&content.1, &content.0)
+        let mut iter = None;
+        std::mem::swap(&mut iter, &mut self.iter);
+        iter
+            .map(|mut t| {
+                // Reset the iterator by consuming all of the possibly remaining junk, then add the
+                // file to the end
+                while t.advance_and_reset_span() {}
+                while t.next().is_some() {}
+                t.split_and_push_file(&content.1, &content.0);
+                t
+            })
+            .unwrap_or_else(|| FragmentIterator::new(&content.1, &content.0))
+    }
+
+    fn save_iterator(&mut self, mut iter: Option<FragmentIterator>) {
+        assert!(self.iter.is_none());
+        std::mem::swap(&mut iter, &mut self.iter);
     }
 
     pub(crate) fn add_definitions(&mut self, definitions: &Vec<(&str, &str)>) {
         for (key, value) in definitions {
-            println!("add_definitions");
             let mut iter = FragmentIterator::new(key, value);
             let mut vals = Vec::new();
             while iter.peek().is_some() {
@@ -126,41 +144,44 @@ where
 
     /// Divide src into MacroTokens.
     pub(crate) fn preprocess(&mut self, filename: &str) -> (Vec<MacroToken>, FragmentIterator) {
-        let mut iter = self.get_iterator(filename);
         let mut out: Vec<MacroToken> = Vec::new();
-        let mut can_parse_macro = true;
-        loop {
-            match iter.peek() {
-                Some('#') => {
-                    if can_parse_macro {
-                        self.read_macro(&mut iter);
-                    } else {
-                        panic!("Spurious #");
+        {
+            let mut iter = self.get_iterator(filename);
+            let mut can_parse_macro = true;
+            loop {
+                match iter.peek() {
+                    Some('#') => {
+                        if can_parse_macro {
+                            self.read_macro(&mut iter);
+                        } else {
+                            panic!("Spurious #");
+                        }
                     }
-                }
-                Some(_) => {
-                    let ty = self.get_token(&mut iter, can_parse_macro);
-                    can_parse_macro = ty.1;
-                    if let Some(token) = ty.0 {
-                        out.extend(self.maybe_expand_identifier(token, &mut iter).into_iter()
-                                   .filter(|t| {
-                                       if let MacroTokenType::Empty = t.ty {
-                                           false
-                                       } else {
-                                           true
-                                       }
-                                   }))
+                    Some(_) => {
+                        let ty = self.get_token(&mut iter, can_parse_macro);
+                        can_parse_macro = ty.1;
+                        if let Some(token) = ty.0 {
+                            out.extend(self.maybe_expand_identifier(token, &mut iter).into_iter()
+                                       .filter(|t| {
+                                           if let MacroTokenType::Empty = t.ty {
+                                               false
+                                           } else {
+                                               true
+                                           }
+                                       }))
+                        }
                     }
-                }
-                None => {
-                    if !iter.advance_and_reset_span() {
-                        break;
+                    None => {
+                        if !iter.advance_and_reset_span() {
+                            break;
+                        }
                     }
                 }
             }
+            self.save_iterator(Some(iter));
         }
 
-        (out, iter)
+        (out, self.iter.as_ref().unwrap().clone())
     }
 
     fn get_some_token(&mut self, iter: &mut FragmentIterator, parse_macro: bool) -> (MacroToken, bool) {
@@ -605,7 +626,6 @@ where
     }
 
     fn get_macro_type(&mut self, iter: &mut FragmentIterator) -> (MacroType, FragmentIterator, Source) {
-        println!("get_macro_type");
         let (row_string, total_span) = self.preprocess_get_macro_line(iter, true, true);
         let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), row_string, total_span.span.lo, &iter);
         assert_eq!(sub_iter.peek(), Some('#'));
@@ -772,7 +792,6 @@ where
         while iter.peek().is_some() {
             self.flush_until_pound_or_newline(iter);
             let (next_row, line_src) = self.preprocess_get_macro_line(iter, true, true);
-            println!("skip_lines_to_else_or_endif");
             let mut sub_iter = FragmentIterator::with_offset(&iter.current_filename(), next_row, line_src.span.lo, &iter);
             match sub_iter.peek() {
                 Some('#') => {
@@ -1118,7 +1137,7 @@ where
         let end = &tokens[tokens.len()-1];
         let mut source = start.unwrap().source;
         source.span.hi = end.source.span.hi;
-        iter.0.push((MacroToken {
+        iter.0.insert(iter.1, (MacroToken {
             source,
             ty: MacroTokenType::Special(SpecialType::Asm(tokens))
         }, HashSet::new()));
@@ -1338,7 +1357,6 @@ where
                 MacroTokenType::Operator(Operator::MacroPaste) => {
                     if let Some(ident) = sub_iter.peek().and_then(|t| t.get_identifier_str()) {
                         if Some(&ident) == varargs.as_ref()  {
-                            println!("{:?}", more_syms[&ident]);
                             if res.get(res.len()-1).map(|t| &t.0.ty)
                                 == Some(&MacroTokenType::Punctuation(Punctuation::Comma))
                                     && more_syms[&ident] == vec![MacroToken::dummy(MacroTokenType::Empty)] {
@@ -1567,12 +1585,12 @@ fn combine_tokens(left: &MacroToken, source: &Source, right: &MacroToken, iter: 
 
     // This part feels like a bit of an overkill to parse a single token...
     let combined = format!("{}{}", left_str, right_str);
-    println!("combine_tokens");
     let mut tmp_iter = FragmentIterator::new(&iter.current_filename(), &combined);
     let parsed_token = MacroContext {
         get_file: unreachable_file_open,
         if_stack: Vec::new(),
         symbols: HashMap::new(),
+        iter: None
     }
     .get_token(&mut tmp_iter, false);
 

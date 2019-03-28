@@ -38,3 +38,13 @@ fn typedef_with_complex_expression() {
 int a = (1);
 ").is_ok());
 }
+
+#[test]
+fn asm_weirdness() {
+    assert!(parse("
+#define ASM_MACRO asm ();
+int main() {
+    ASM_MACRO
+}
+").is_ok());
+}

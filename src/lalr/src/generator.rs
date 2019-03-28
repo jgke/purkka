@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::io::{stdout, Write};
 use std::sync::{Mutex, atomic};
 use std::sync::atomic::{AtomicUsize};
 use std::time::{Instant};
@@ -9,7 +8,7 @@ use std::time::{Instant};
 use rayon::prelude::*;
 
 use crate::types::{Action, Component, Core, Item, Index, LRTable, RuleData, RuleTranslationMap, Terminal};
-use shared::utils::{if_debug, DebugVal::DumpLalrTable};
+use debug::debug::{if_debug, DebugVal::DumpLalrTable};
 
 fn first(
     tm: &RuleTranslationMap,
@@ -158,8 +157,7 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
     println!("Building items...");
 
     while prevsize < items.len() {
-        print!(".");
-        stdout().flush();
+        println!("{}", prevsize);
         prevsize = items.len();
         for set in &added {
             for symbol in symbols {

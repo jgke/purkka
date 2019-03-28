@@ -1,8 +1,9 @@
 [package]
-name = "shared"
+name = "fragment"
 version = "0.1.0"
 authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 edition = "2018"
 
 [dependencies]
-regex = "1.1.0"
+debug = { path="../debug" }
+rand = "0.6.5"

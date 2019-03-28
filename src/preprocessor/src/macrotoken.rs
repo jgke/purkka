@@ -1,8 +1,8 @@
 use std::fmt;
 
-use shared::fragment::{FragmentIterator, Source};
+use fragment::fragment::{FragmentIterator, Source};
 
-use crate::tokentype::{Operator, Punctuation};
+use crate::tokentype::{Operator, Punctuation, OPERATORS, PUNCTUATION};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MacroTokenType {
@@ -130,8 +130,10 @@ pub fn preprocessor_to_parser(t: &MacroTokenType, index: usize) -> Token {
 
         MacroTokenType::StringLiteral(s) => StringLiteral(index, s.to_string()),
         MacroTokenType::Number(s) => Number(index, s.to_string()),
-        MacroTokenType::Special(SpecialType::Sizeof(expr)) => Sizeof(index, expr.clone()),
-        MacroTokenType::Special(SpecialType::Asm(_exprs)) => Asm(index, "<asm>".to_string()),
+        MacroTokenType::Special(SpecialType::Sizeof(expr)) =>
+            Sizeof(index, expr.clone()),
+        MacroTokenType::Special(SpecialType::Asm(exprs)) =>
+            Asm(index, exprs.iter().map(|t| t.to_src()).collect::<Vec<_>>().join(" ")),
         MacroTokenType::Other(_) => panic!(),
         MacroTokenType::Empty => panic!()
     }
@@ -141,6 +143,26 @@ pub fn preprocessor_to_parser(t: &MacroTokenType, index: usize) -> Token {
 impl MacroToken {
     pub fn display<'a>(&'a self, iter: &'a FragmentIterator) -> MacroTokenDisplay<'a> {
         MacroTokenDisplay { token: self, iter }
+    }
+
+    pub fn to_src(&self) -> String {
+        match &self.ty {
+            MacroTokenType::Operator(op) =>
+                OPERATORS.iter().filter(|(_, t)| t == &op).map(|(s, _)| s).next().unwrap().to_string(),
+            MacroTokenType::Punctuation(punc) =>
+                PUNCTUATION.iter().filter(|(_, t)| t == &punc).map(|(s, _)| s).next().unwrap().to_string(),
+
+            MacroTokenType::Identifier(ident) => ident.clone(),
+
+            MacroTokenType::StringLiteral(s) => s.clone(),
+            MacroTokenType::Number(s) => s.clone(),
+            MacroTokenType::Special(SpecialType::Sizeof(expr)) =>
+                format!("sizeof({:?})", expr),
+            MacroTokenType::Special(SpecialType::Asm(exprs)) =>
+                format!("asm ({})", exprs.iter().map(|t| t.to_src()).collect::<Vec<_>>().join(" ")),
+            MacroTokenType::Other(c) => c.to_string(),
+            MacroTokenType::Empty => " ".to_string()
+        }
     }
 }
 

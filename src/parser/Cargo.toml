@@ -7,5 +7,5 @@ edition = "2018"
 [dependencies]
 cparser = { path="../cparser" }
 ctoken = { path="../ctoken" }
+fragment = { path="../fragment" }
 preprocessor = { path="../preprocessor" }
-shared = { path="../shared" }

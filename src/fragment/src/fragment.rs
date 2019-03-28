@@ -41,7 +41,7 @@ use rand::{Rng, thread_rng, distributions::Alphanumeric};
 
 use crate::traits::PeekableCharsExt;
 
-use crate::utils::{is_debug_enabled, DebugVal::DebugFragment};
+use debug::debug::{is_debug_enabled, DebugVal::DebugFragment};
 
 /// This struct converts a &str to &'static str. Unsafe.
 struct StringInterner {
@@ -68,6 +68,16 @@ impl StringInterner {
                 Box::from_raw(p);
             }
         }
+    }
+}
+
+impl Clone for StringInterner {
+    fn clone(&self) -> Self {
+        let mut new = Self { strs: vec![] };
+        unsafe {
+            self.strs.iter().for_each(|s| { new.intern_str(&**s); });
+        }
+        new
     }
 }
 
@@ -184,6 +194,7 @@ struct Fragment {
 /// });
 /// assert_eq!(&identifier, "foo");
 /// ```
+#[derive(Clone)]
 pub struct FragmentIterator {
     /// The contained fragments.
     fragments: Vec<Fragment>,
@@ -251,7 +262,6 @@ impl FragmentIterator {
     /// Initialize the iterator with a predetermined offset.
     pub fn with_offset(filename: &str, content: Vec<(usize, char)>, offset: usize,
                        parent: &FragmentIterator) -> FragmentIterator {
-        println!("With offset: {:?}", &content);
         FragmentIterator::_with_offset(filename, "", offset, content, parent.contents.clone())
     }
 
@@ -279,7 +289,6 @@ impl FragmentIterator {
         } else {
             None
         };
-        println!("{:?}", &debug);
         FragmentIterator {
             fragments,
             current_fragment: 0,
@@ -370,9 +379,8 @@ impl FragmentIterator {
         };
 
         // Insert the file to the content table, if not present.
-        if self.contents.get(filename).is_none() {
-            self.contents
-                .insert(filename.to_string(), content.to_string());
+        if !self.contents.contains_key(filename) {
+            self.contents.insert(filename.to_string(), content.to_string());
         }
     }
 
@@ -579,27 +587,28 @@ impl FragmentIterator {
         let builtin = "<Compiler built-in>".to_string();
         let mut lines: Vec<(String, (&str, usize, usize))> = Vec::new();
         let mut out = "".to_string();
-        if self.contents.get(&source.filename).is_none() {
-            lines.push((builtin.clone(), ("<builtin>", 0, 0)));
+
+        if !self.contents.contains_key(&source.filename) {
+            lines.push((builtin.clone(), (&source.filename, 0, 0)));
         } else {
             let s = &self.contents[&source.filename];
             out.push_str(s[source.span.lo..=source.span.hi].trim());
             lines.push((
-                    format!("{}", s[source.span.lo..=source.span.hi].trim()),
+                    s[source.span.lo..=source.span.hi].trim().to_string(),
                     (source.filename.as_ref(), source.span.lo, source.span.hi),
             ));
         }
         let mut current_source = &source.span.source;
         while let Some(src) = current_source {
-            if src.is_dummy() || self.contents.get(&source.filename).is_none() {
+            if src.is_dummy() || !self.contents.contains_key(&src.filename) {
                 lines.push((
                         builtin.clone(),
-                        ("<builtin>", 0, 0),
+                        (&src.filename, 0, 0),
                 ));
             } else {
                 let s = &self.contents[&src.filename];
                 lines.push((
-                        format!("Expanded from: {:?}", s[src.span.lo..=src.span.hi].trim()),
+                        s[src.span.lo..=src.span.hi].trim().to_string(),
                         (src.filename.as_ref(), src.span.lo, src.span.hi),
                 ));
             }
@@ -607,16 +616,40 @@ impl FragmentIterator {
         }
         let max = lines
             .iter()
-            .fold(0, |prev, (s, _)| std::cmp::max(prev, s.len()));
-        lines
-            .iter()
-            .map(|(s, (file, lo, hi))| {
-                format!("{:width$}({}: {}-{})\n", s, file, lo, hi, width = max + 1)
+            .flat_map(|(s, _)| s.split("\n").map(str::to_owned).collect::<Vec<_>>())
+            .fold(0, |prev, s| std::cmp::max(prev, s.len()));
+        lines.iter().enumerate()
+            .map(|(i, (s, (file, lo, hi)))| {
+                if i == 0 {
+                    return format!("{} ({}: {}-{})\n", s, file, lo, hi)
+                }
+                let lines = s.split("\n").map(|t| t.to_string()).collect::<Vec<String>>();
+                if lines.len() == 1 {
+                    if s == &builtin {
+                        format!(
+                            "Expanded from: {:width$} ({})\n",
+                            s, file, width = max + 1)
+                    } else {
+                        format!(
+                            "Expanded from: {:width$}({}: {}-{})\n",
+                            s, file, lo, hi, width = max + 1)
+                    }
+                } else {
+                    let mut res = vec![];
+                    if s == &builtin {
+                        res.push(format!("Expanded from: ({})\n", file));
+                    } else {
+                        res.push(format!("Expanded from {}: {}-{}:\n", file, lo, hi));
+                    }
+                    for line in lines {
+                        res.push(line.to_string());
+                        res.push("\n".to_string());
+                    }
+                    res.join("")
+                }
             })
             .collect::<Vec<String>>()
             .concat()
-        //out.push('\n');
-        //out
     }
 
     /// Get the topmost source as a plain string without filename

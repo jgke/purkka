@@ -9,6 +9,6 @@ crate-type = ["dylib"]
 plugin = true
 
 [dependencies]
-shared = { path="../shared" }
+debug = { path="../debug" }
 rayon = "1.0.3"
 

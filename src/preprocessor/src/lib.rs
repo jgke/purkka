@@ -1,7 +1,3 @@
-extern crate ctoken;
-extern crate regex;
-extern crate shared;
-
 #[macro_use]
 pub mod macrotoken;
 pub mod tokenizer;
@@ -10,7 +6,7 @@ pub mod calculator;
 
 use macrotoken::MacroToken;
 use tokenizer::{MacroContext, ParseResult};
-use shared::fragment::FragmentIterator;
+use fragment::fragment::FragmentIterator;
 
 pub struct PreprocessorOptions<'a> {
     pub include_path: Vec<&'a str>,

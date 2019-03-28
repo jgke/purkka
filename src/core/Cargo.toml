@@ -9,5 +9,5 @@ cparser = { path="../cparser" }
 ctoken = { path="../ctoken" }
 parser = { path="../parser" }
 preprocessor = { path="../preprocessor" }
-shared = { path="../shared" }
+debug = { path="../debug" }
 clap = "2.32.0"

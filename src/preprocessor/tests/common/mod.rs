@@ -1,11 +1,7 @@
 #![allow(dead_code)]
 
-extern crate preprocessor;
-extern crate shared;
-extern crate ctoken;
-
-use shared::fragment::{FragmentIterator, Source, Span};
-use shared::utils::DEBUG_VALS;
+use fragment::fragment::{FragmentIterator, Source, Span};
+use debug::debug::DEBUG_VALS;
 
 use preprocessor::macrotoken::{MacroToken, MacroTokenType};
 use preprocessor::tokenizer::{ParseResult};
