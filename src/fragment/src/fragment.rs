@@ -185,7 +185,7 @@ struct Fragment {
 ///
 /// Basic usage:
 /// ```
-/// use shared::fragment::FragmentIterator;
+/// use fragment::fragment::FragmentIterator;
 ///
 /// let mut iter = FragmentIterator::new("foo.h", "foo BAR baz");
 /// let (identifier, _) = iter.collect_while(|x| match x {
@@ -391,7 +391,7 @@ impl FragmentIterator {
     ///
     /// # Example
     /// ```
-    /// # use shared::fragment::FragmentIterator;
+    /// # use fragment::fragment::FragmentIterator;
     /// let mut iter = FragmentIterator::new("foo.h", "foo bar baz");
     /// let (s1, _) = iter.collect_while(|x| match x {
     ///     'a'...'z' => true,
@@ -410,7 +410,7 @@ impl FragmentIterator {
     ///
     /// # Example
     /// ```
-    /// # use shared::fragment::FragmentIterator;
+    /// # use fragment::fragment::FragmentIterator;
     /// let mut iter = FragmentIterator::new("foo.h", "foo bar baz");
     /// let (s1, _) = iter.collect_while_map(|x, _| match x {
     ///     'a'...'z' => Some(x.to_ascii_uppercase()),
@@ -448,7 +448,7 @@ impl FragmentIterator {
     ///
     /// # Example
     /// ```
-    /// # use shared::fragment::FragmentIterator;
+    /// # use fragment::fragment::FragmentIterator;
     /// let mut iter = FragmentIterator::new("foo.h", "foo bar baz");
     /// let (s1, _) = iter.collect_while_flatmap(|x, _| match x {
     ///     'a'...'z' => Some(vec![x.to_ascii_uppercase(), 'a']),

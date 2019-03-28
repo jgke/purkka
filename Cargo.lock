@@ -78,9 +78,9 @@ dependencies = [
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cparser 0.1.0",
  "ctoken 0.1.0",
+ "debug 0.1.0",
  "parser 0.1.0",
  "preprocessor 0.1.0",
- "shared 0.1.0",
 ]
 
 [[package]]
@@ -127,9 +127,21 @@ name = "ctoken"
 version = "0.1.0"
 
 [[package]]
+name = "debug"
+version = "0.1.0"
+
+[[package]]
 name = "either"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "fragment"
+version = "0.1.0"
+dependencies = [
+ "debug 0.1.0",
+ "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "fuchsia-cprng"
@@ -147,8 +159,8 @@ dependencies = [
 name = "lalr"
 version = "0.1.0"
 dependencies = [
+ "debug 0.1.0",
  "rayon 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "shared 0.1.0",
 ]
 
 [[package]]
@@ -190,8 +202,8 @@ version = "0.1.0"
 dependencies = [
  "cparser 0.1.0",
  "ctoken 0.1.0",
+ "fragment 0.1.0",
  "preprocessor 0.1.0",
- "shared 0.1.0",
 ]
 
 [[package]]
@@ -199,6 +211,8 @@ name = "preprocessor"
 version = "0.1.0"
 dependencies = [
  "ctoken 0.1.0",
+ "debug 0.1.0",
+ "fragment 0.1.0",
  "regex 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "shared 0.1.0",
 ]
@@ -370,7 +384,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "shared"
 version = "0.1.0"
 dependencies = [
- "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
