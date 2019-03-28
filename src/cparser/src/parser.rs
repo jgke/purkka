@@ -44,7 +44,8 @@ fn add_type(state: &mut State, name: String) {
 fn add_decl(state: &mut State, init_decl: InitDeclarator) {
     let decl = match init_decl {
         InitDeclarator::Declarator(InitDeclarator_Declarator(decl)) => decl,
-        InitDeclarator::Assign(InitDeclarator_Assign(..)) => panic!("Assignment to a typedef")
+        InitDeclarator::Asm(..) => panic!("Cannot typedef asm"),
+        InitDeclarator::Assign(..) => panic!("Assignment to a typedef")
     };
     let name = get_decl_identifier(decl);
     add_type(state, name);
@@ -120,7 +121,8 @@ lalr! {
         | #Token::StringLiteral
         | #Token::Sizeof
         | #Token::Asm
-        | #Token::OpenParen &Expression #Token::CloseParen
+        | Statement. #Token::OpenParen &CompoundStatement #Token::CloseParen
+        | Expression. #Token::OpenParen &Expression #Token::CloseParen
         ;
 
     PostfixExpression
@@ -235,6 +237,7 @@ lalr! {
 
     InitDeclarator
        -> Declarator
+        | Asm. Declarator #Token::Asm
         | Assign. Declarator #Token::Assign Initializer
         ;
 
@@ -426,7 +429,6 @@ lalr! {
         | Statements. #Token::OpenBrace &StatementList #Token::CloseBrace
         | Declarations. #Token::OpenBrace &DeclarationList #Token::CloseBrace
         | Both. #Token::OpenBrace &DeclarationList &StatementList #Token::CloseBrace
-        | Parented. #Token::OpenParen CompoundStatement #Token::CloseParen
         ;
 
     DeclarationList
