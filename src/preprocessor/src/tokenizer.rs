@@ -89,6 +89,22 @@ where
                        vec![],
                        vec![],
                        Some("__va_args__".to_string())));
+        symbols.insert("__alignof__".to_string(),
+                       Macro::Function(Source::dummy(),
+                       vec![],
+                       vec![MacroToken {
+                           ty: MacroTokenType::Number("1".to_string()),
+                           source: Source::dummy()
+                       }],
+                       Some("__va_args__".to_string())));
+        symbols.insert("typeof".to_string(),
+                       Macro::Function(Source::dummy(),
+                       vec![],
+                       vec![MacroToken {
+                           ty: MacroTokenType::Identifier("int".to_string()),
+                           source: Source::dummy()
+                       }],
+                       Some("__va_args__".to_string())));
         symbols.insert("__builtin_va_list".to_string(),
                        Macro::Text(Source::dummy(), vec![
                                    MacroToken::dummy(MacroTokenType::Identifier("va_list".to_string())
@@ -226,6 +242,7 @@ where
             }
             _ => match iter.peek() {
                 Some('"') => (Some(self.read_string(iter)), false),
+                Some('\'') => (Some(self.read_char(iter)), false),
                 Some('.') => {
                     let substr = iter.peek_n(2);
                     let mut substr_iter = substr.chars();
@@ -358,9 +375,10 @@ where
                     Some(e.chars().collect())
                 })
                 .unwrap_or_else(|| match c {
-                    '0'...'9' => Some(vec![c]),
-                    '.' => Some(vec![c]),
                     'a'...'z' | 'A'...'Z' => Some(vec![c]),
+                    '0'...'9' => Some(vec![c]),
+                    '_' => Some(vec![c]),
+                    '.' => Some(vec![c]),
                     _ => None,
                 })
         });
@@ -399,6 +417,36 @@ where
         }
     }
 
+    fn read_char(&self, iter: &mut FragmentIterator) -> MacroToken {
+        let mut end = false;
+        let (content, source) = iter.collect_while_flatmap(|c, iter| match c {
+            '\'' => {
+                if end {
+                    iter.next();
+                    None
+                } else {
+                    end = true;
+                    Some(vec![])
+                }
+            }
+            '\n' => panic!("Missing terminating \' character"),
+            '\\' => {
+                iter.next();
+                if let Some(c) = iter.peek() {
+                    Some(vec![self.read_string_escape(iter, c)])
+                } else {
+                    panic!("Unexpected end of file");
+                }
+            }
+            c => Some(vec![c]),
+        });
+        assert!(content.len() == 1);
+        MacroToken {
+            source: source,
+            ty: MacroTokenType::Char(content.iter().map(|t| t.1).next().unwrap()),
+        }
+    }
+
     fn read_string_escape(&self, iter: &mut FragmentIterator, c: char) -> char {
         match c {
             '\'' => '\'',
@@ -419,6 +467,7 @@ where
     }
 
     fn get_octal(&self, iter: &mut FragmentIterator, c: char) -> char {
+        iter.next();
         match iter.peek() {
             Some(second @ '0'...'7') => {
                 iter.next();
@@ -620,6 +669,7 @@ where
             MacroType::Else => self.handle_else(iter),
             MacroType::Endif => self.handle_endif(),
             MacroType::Error => panic!("#error: {}\n{:?}", sub_iter.as_str(), total_span),
+            MacroType::Pragma => { println!("Ignoring #pragma: {}", sub_iter.as_str()) }
 
             ty => unimplemented!("{:?} not implemented", ty)
         }
@@ -1594,6 +1644,13 @@ fn combine_tokens(left: &MacroToken, source: &Source, right: &MacroToken, iter: 
     }
     .get_token(&mut tmp_iter, false);
 
+    if tmp_iter.peek().is_some() {
+        println!("Failed to create a valid preprocessing token when combining '{}' and '{}'",
+                 left.to_src(), right.to_src());
+        println!("{}", iter.source_to_str(&left.source));
+        println!("{}", iter.source_to_str(&right.source));
+        panic!();
+    }
     assert!(tmp_iter.peek().is_none());
     assert!(parsed_token.0.is_some());
 

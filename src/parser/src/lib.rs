@@ -23,6 +23,7 @@ fn get_source_index(token: &Token) -> usize {
         Token::Break(index,) => *index,
         Token::Case(index,) => *index,
         Token::Char(index,) => *index,
+        Token::CharLiteral(index,..) => *index,
         Token::CloseBrace(index,) => *index,
         Token::CloseBracket(index,) => *index,
         Token::CloseParen(index,) => *index,
@@ -75,7 +76,6 @@ fn get_source_index(token: &Token) -> usize {
         Token::Short(index,) => *index,
         Token::Signed(index,) => *index,
         Token::Sizeof(index,_) => *index,
-        Token::Star(index,) => *index,
         Token::Static(index,) => *index,
         Token::StringLiteral(index,_) => *index,
         Token::Struct(index,) => *index,
@@ -94,7 +94,7 @@ fn get_source_index(token: &Token) -> usize {
 }
 
 pub fn parse(input: Vec<MacroToken>, context: &FragmentIterator) -> Result<cparser::parser::S, Option<Token>> {
-    let tokens: Vec<Token> = input.iter().enumerate().map(|(i, t)| preprocessor_to_parser(&t.ty, i)).collect();
+    let tokens: Vec<Token> = input.iter().enumerate().map(|(i, t)| preprocessor_to_parser(context, &t, i)).collect();
     for (t, s) in tokens.iter().zip(input.iter()) {
         println!("{:?} {}", t, s.to_src());
     }

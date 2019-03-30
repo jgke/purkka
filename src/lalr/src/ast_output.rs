@@ -219,7 +219,8 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                             self.cx.expr_str(span, symbol::Symbol::intern(name))
                         )
                     })
-                    .chain(iter::once(self.wild_arm_unreachable()))
+                    .chain(iter::once(self.wild_arm_unreachable(
+                                "Tried to convert unknown token index to string: {}", vec!["token"])))
                     .collect(),
                 ),
         );
@@ -290,7 +291,9 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                             self.cx.expr_str(span, symbol::Symbol::intern(&name))
                         )
                     })
-                    .chain(iter::once(self.wild_arm_unreachable()))
+                    .chain(iter::once(self.wild_arm_unreachable(
+                                "Tried to convert unknown (index, subindex) to str: {} {}",
+                                vec!["index", "subindex"])))
                     .collect(),
                 ),
         );
@@ -382,7 +385,10 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                     self.translation_fn_maybe_with_conversion(&term)
                                 )
                             })
-                            .chain(iter::once(self.wild_arm_unreachable()))
+                            .chain(iter::once(self.wild_arm_unreachable(
+                                        "Tried to convert unknown token to index\n{:?}",
+                                        vec!["token"]
+                                        )))
                             .collect(),
                     ),
                 ),
@@ -638,7 +644,9 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                 )),
                             )
                         })
-                        .chain(iter::once(self.wild_arm_unreachable()))
+                        .chain(iter::once(self.wild_arm_unreachable(
+                                    "Tried to convert unknown index to _Data: {}\n{:?}",
+                                    vec!["index", "token"])))
                         .collect(),
                 ),
                 // }
@@ -726,10 +734,10 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         let expr = parse::new_parser_from_source_str(session, filename, unreachable_expr).parse_expr().unwrap();
         self.cx.arm( self.span, vec![self.cx.pat_wild(self.span)], expr)
     }
-    fn wild_arm_unreachable(&self) -> ast::Arm {
+    fn wild_arm_unreachable(&self, msg: &str, args: Vec<&str>) -> ast::Arm {
         let session = self.cx.parse_sess();
-        let filename = FileName::Custom("lalr_driver_fn_unreachable".to_string());
-        let unreachable_expr = "{ unreachable!() }".to_string();
+        let filename = FileName::Custom(format!("lalr_driver_fn_unreachable_{}", msg));
+        let unreachable_expr = format!("{{ panic!(\"{}\", {})}}", msg, args.join(","));
         let expr = parse::new_parser_from_source_str(session, filename, unreachable_expr).parse_expr().unwrap();
         self.cx.arm( self.span, vec![self.cx.pat_wild(self.span)], expr)
     }
@@ -873,7 +881,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                 self.reduction_match_body(&rule),
                             )
                         })
-                        .chain(iter::once(self.wild_arm_unreachable()))
+                        .chain(iter::once(self.wild_arm_unreachable("Tried to convert unknown rule to AST\n{:?} {:?} {:?}", vec!["index", "subindex", "data"])))
                         .collect(),
                 ),
                 // }
@@ -1050,13 +1058,13 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> R
                         }
                         stack.push((g, result));
                     }
-                    _ => panic!("Unreachable"),
+                    _ => panic!("Non-Goto action in Goto table"),
                 }
             }
             _Act::Accept => {
                 break;
             }
-            _Act::Goto(_) => panic!("Unreachable"),
+            _Act::Goto(_) => panic!("Goto action in Shift/Reduce table"),
         }
     }
 

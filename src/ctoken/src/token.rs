@@ -89,7 +89,6 @@ pub enum Token {
     CloseParen(usize,),
     OpenBrace(usize,),
     CloseBrace(usize,),
-    Star(usize,),
     Colon(usize,),
     Semicolon(usize,),
     Varargs(usize,),
@@ -101,5 +100,6 @@ pub enum Token {
     // Literals
     Identifier(usize,String),
     StringLiteral(usize,String),
+    CharLiteral(usize,char),
     Number(usize,String),
 }

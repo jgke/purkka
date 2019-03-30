@@ -9,6 +9,7 @@ pub enum MacroTokenType {
     Identifier(String),
     Number(String),
     StringLiteral(String),
+    Char(char),
     Operator(Operator),
     Punctuation(Punctuation),
     Special(SpecialType),
@@ -32,8 +33,8 @@ pub struct MacroToken {
 use ctoken::token::Token::*;
 use ctoken::token::{Token, SizeofExpression};
 
-pub fn preprocessor_to_parser(t: &MacroTokenType, index: usize) -> Token {
-    match t {
+pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index: usize) -> Token {
+    match &t.ty {
         MacroTokenType::Operator(Operator::Dot) => Dot(index),
         MacroTokenType::Operator(Operator::Arrow) => Arrow(index),
         MacroTokenType::Operator(Operator::Increment) => Increment(index),
@@ -121,7 +122,6 @@ pub fn preprocessor_to_parser(t: &MacroTokenType, index: usize) -> Token {
         MacroTokenType::Punctuation(Punctuation::CloseParen) => CloseParen(index),
         MacroTokenType::Punctuation(Punctuation::OpenBrace) => OpenBrace(index),
         MacroTokenType::Punctuation(Punctuation::CloseBrace) => CloseBrace(index),
-        MacroTokenType::Punctuation(Punctuation::Star) => Star(index),
         MacroTokenType::Punctuation(Punctuation::Comma) => Comma(index),
         MacroTokenType::Punctuation(Punctuation::Colon) => Colon(index),
         MacroTokenType::Punctuation(Punctuation::Assign) => Assign(index),
@@ -134,8 +134,9 @@ pub fn preprocessor_to_parser(t: &MacroTokenType, index: usize) -> Token {
             Sizeof(index, expr.clone()),
         MacroTokenType::Special(SpecialType::Asm(exprs)) =>
             Asm(index, exprs.iter().map(|t| t.to_src()).collect::<Vec<_>>().join(" ")),
-        MacroTokenType::Other(_) => panic!(),
-        MacroTokenType::Empty => panic!()
+        MacroTokenType::Char(c) => CharLiteral(index, *c),
+        MacroTokenType::Other(c) => panic!("Tried to convert Other({}) to parser\n{}", c, context.source_to_str(&t.source)),
+        MacroTokenType::Empty => panic!("Spurious empty token left in stream")
     }
 }
 
@@ -160,6 +161,7 @@ impl MacroToken {
                 format!("sizeof({:?})", expr),
             MacroTokenType::Special(SpecialType::Asm(exprs)) =>
                 format!("asm ({})", exprs.iter().map(|t| t.to_src()).collect::<Vec<_>>().join(" ")),
+            MacroTokenType::Char(c) => format!("'{}'", c),
             MacroTokenType::Other(c) => c.to_string(),
             MacroTokenType::Empty => " ".to_string()
         }

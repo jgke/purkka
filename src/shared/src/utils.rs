@@ -17,3 +17,10 @@ pub fn num_val(c: char) -> u8 {
 pub fn char_from_octal(c1: char, c2: char, c3: char) -> char {
     return (8 * 8 * num_val(c1) + 8 * num_val(c2) + num_val(c3)) as char;
 }
+
+#[test]
+fn octal_values() {
+    assert_eq!('a', char_from_octal('1', '4', '1'));
+    assert_eq!(' ', char_from_octal('0', '4', '0'));
+    assert_eq!('\u{1}', char_from_octal('0', '0', '1'));
+}

@@ -15,10 +15,16 @@ fn get_decls(decl: InitDeclaratorList) -> Vec<InitDeclarator> {
     }
 }
 
-fn get_direct_decl_identifier(decl: DirectDeclarator) -> String {
+fn ident_to_name(token: Token) -> String {
+    match token {
+        Token::Identifier(_, s) => s,
+        t => panic!("Internal compiler error: Unexpected token: {:?}, expected identifier", t)
+    }
+}
+
+fn get_direct_decl_identifier(decl: DirectDeclarator) -> Vec<String> {
     match decl {
-        DirectDeclarator::Identifier(DirectDeclarator_Identifier(Token::Identifier(_, s))) => s,
-        DirectDeclarator::Identifier(DirectDeclarator_Identifier(_)) => unreachable!(),
+        DirectDeclarator::Identifier(DirectDeclarator_Identifier(t)) => vec![ident_to_name(t)],
         DirectDeclarator::OpenParen(DirectDeclarator_OpenParen(_, decl, _)) => get_decl_identifier(*decl),
         DirectDeclarator::SizedArray(DirectDeclarator_SizedArray(decl, ..)) => get_direct_decl_identifier(*decl),
         DirectDeclarator::Array(DirectDeclarator_Array(decl, ..)) => get_direct_decl_identifier(*decl),
@@ -28,12 +34,18 @@ fn get_direct_decl_identifier(decl: DirectDeclarator) -> String {
     }
 }
 
-fn get_decl_identifier(decl: Declarator) -> String {
+fn get_decl_identifier(decl: Declarator) -> Vec<String> {
     let direct_decl = match decl {
-        Declarator::Pointer(Declarator_Pointer(_, direct_decl)) => direct_decl,
-        Declarator::DirectDeclarator(Declarator_DirectDeclarator(direct_decl)) => direct_decl,
+        Declarator::Pointer(Declarator_Pointer(_, direct_decl)) => vec![direct_decl],
+        //Declarator::Multiple(Declarator_Multiple(decl1, _, decl2)) => {
+        //    let mut left = get_decl_identifier(*decl1);
+        //    let mut right = get_decl_identifier(*decl2);
+        //    left.append(&mut right);
+        //    return left;
+        //}
+        Declarator::DirectDeclarator(Declarator_DirectDeclarator(direct_decl)) => vec![direct_decl],
     };
-    get_direct_decl_identifier(direct_decl)
+    direct_decl.into_iter().flat_map(|s| get_direct_decl_identifier(s).into_iter()).collect()
 }
 
 fn add_type(state: &mut State, name: String) {
@@ -47,13 +59,14 @@ fn add_decl(state: &mut State, init_decl: InitDeclarator) {
         InitDeclarator::Asm(..) => panic!("Cannot typedef asm"),
         InitDeclarator::Assign(..) => panic!("Assignment to a typedef")
     };
-    let name = get_decl_identifier(decl);
-    add_type(state, name);
+
+    get_decl_identifier(decl).into_iter()
+        .for_each(|name| add_type(state, name));
 }
 
 fn add_typedef(state: &mut State, declaration: TypeDeclaration) {
-    let (spec, list) = match declaration {
-        TypeDeclaration::Typedef(TypeDeclaration_Typedef(_, spec, ..)) => {
+    let (_spec, list) = match declaration {
+        TypeDeclaration::Typedef(TypeDeclaration_Typedef(..)) => {
             println!("Warning: useless typedef");
             return;
         },
@@ -66,9 +79,8 @@ fn add_typedef(state: &mut State, declaration: TypeDeclaration) {
 
 fn identifier_or_type_to_str(ty: IdentifierOrType) -> String {
     match ty {
-        IdentifierOrType::Identifier(IdentifierOrType_Identifier(Token::Identifier(_, name))) => name,
-        IdentifierOrType::TypeNameStr(IdentifierOrType_TypeNameStr(Token::Identifier(_, name))) => name,
-        _ => panic!()
+        IdentifierOrType::Identifier(IdentifierOrType_Identifier(token)) => ident_to_name(token),
+        IdentifierOrType::TypeNameStr(IdentifierOrType_TypeNameStr(token)) => ident_to_name(token),
     }
 }
 
@@ -79,18 +91,17 @@ fn add_struct_type(state: &mut State, declaration: Box<StructOrUnionSpecifier>) 
         StructOrUnionSpecifier::Anonymous(StructOrUnionSpecifier_Anonymous(..)) => {}
         StructOrUnionSpecifier::NameOnly(StructOrUnionSpecifier_NameOnly(_, ty, ..)) =>
             add_type(state, identifier_or_type_to_str(ty)),
-        _ => panic!()
     };
 }
 
 fn add_enum_type(state: &mut State, declaration: Box<EnumSpecifier>) {
     match *declaration {
         EnumSpecifier::List(EnumSpecifier_List(_, _, ..)) => {}
-        EnumSpecifier::Empty(EnumSpecifier_Empty(_, Token::Identifier(_, name), ..)) =>
-            add_type(state, name),
-        EnumSpecifier::NameOnly(EnumSpecifier_NameOnly(_, Token::Identifier(_, name), ..)) =>
-            add_type(state, name),
-        _ => panic!()
+        EnumSpecifier::Empty(EnumSpecifier_Empty(_, token, ..)) =>
+            add_type(state, ident_to_name(token)),
+        EnumSpecifier::NameOnly(EnumSpecifier_NameOnly(_, token, ..)) =>
+            add_type(state, ident_to_name(token)),
+        EnumSpecifier::ExistingType(..) => {}
     };
 }
 
@@ -119,6 +130,7 @@ lalr! {
        -> #Token::Identifier
         | #Token::Number
         | #Token::StringLiteral
+        | #Token::CharLiteral
         | #Token::Sizeof
         | #Token::Asm
         | Statement. #Token::OpenParen &CompoundStatement #Token::CloseParen
@@ -164,6 +176,8 @@ lalr! {
         | 10: BitShiftRight. GeneralExpression #Token::BitShiftRight GeneralExpression
         | 9: LessThan. GeneralExpression #Token::LessThan GeneralExpression
         | 9: MoreThan. GeneralExpression #Token::MoreThan GeneralExpression
+        | 9: LessEqThan. GeneralExpression #Token::LessEqThan GeneralExpression
+        | 9: MoreEqThan. GeneralExpression #Token::MoreEqThan GeneralExpression
         | 8: Equals. GeneralExpression #Token::Equals GeneralExpression
         | 8: NotEquals. GeneralExpression #Token::NotEquals GeneralExpression
         | 7: BitAnd. GeneralExpression #Token::BitAnd GeneralExpression
@@ -285,6 +299,7 @@ lalr! {
 
     StructDeclaration
        -> SpecifierQualifierList StructDeclaratorList #Token::Semicolon
+        | Anonymous. SpecifierQualifierList #Token::Semicolon
         ;
 
     SpecifierQualifierList
@@ -308,12 +323,14 @@ lalr! {
     EnumSpecifier
        -> List. #Token::Enum #Token::OpenBrace EnumeratorList #Token::CloseBrace
         | Empty. #Token::Enum #Token::Identifier #Token::OpenBrace EnumeratorList #Token::CloseBrace
+        | ExistingType. #Token::Enum #TypeNameStr
         | NameOnly. #Token::Enum #Token::Identifier
         ;
 
     EnumeratorList
        -> Enumerator
         | EnumeratorList #Token::Comma Enumerator
+        | TrailingComma. EnumeratorList #Token::Comma
         ;
 
     Enumerator
@@ -402,6 +419,7 @@ lalr! {
        -> AssignmentExpression
         | #Token::OpenBrace InitializerList #Token::CloseBrace
         | TrailingComma. #Token::OpenBrace InitializerList #Token::Comma #Token::CloseBrace
+        | #Token::Dot #Token::Identifier #Token::Assign AssignmentExpression
         ;
 
     InitializerList
@@ -420,7 +438,8 @@ lalr! {
 
     LabeledStatement
        -> #Token::Identifier #Token::Colon Statement
-        | #Token::Case GeneralExpression #Token::Colon Statement
+        | Case. #Token::Case GeneralExpression #Token::Colon Statement
+        | RangeCase. #Token::Case GeneralExpression #Token::Varargs GeneralExpression #Token::Colon Statement
         | #Token::Default #Token::Colon Statement
         ;
 

@@ -41,6 +41,7 @@ fn const_expr_token_from_macro(ty: &MacroTokenType) -> ConstExprToken {
         MacroTokenType::Identifier(_) => Number(1),
         MacroTokenType::Number(num) => Number(parse_number(num)),
         MacroTokenType::StringLiteral(_) => panic!(),
+        MacroTokenType::Char(c) => Number(*c as i64),
         MacroTokenType::Operator(op) => Op(*op),
         MacroTokenType::Punctuation(tokentype::Punctuation::OpenParen) => Paren(OpenParen),
         MacroTokenType::Punctuation(tokentype::Punctuation::CloseParen) => Paren(CloseParen),

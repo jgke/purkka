@@ -125,7 +125,6 @@ pub enum Punctuation {
     CloseParen,
     OpenBrace,
     CloseBrace,
-    Star,
     Comma,
     Colon,
     Assign,

@@ -368,8 +368,14 @@ pub fn compute_lalr(
     tm: &RuleTranslationMap,
     terminals: &HashSet<Terminal>,
 ) -> Box<LRTable> {
-    println!("Computing lalr table");
+    for arg in std::env::args() {
+        if arg == "--emit=dep-info,metadata" {
+            println!("Running in check mode! Skipping LALR table generation.");
+            return Box::new(LRTable { actions: vec![] });
+        }
+    }
 
+    println!("Computing lalr table");
     let mut rule_names: Vec<Index> = tm.rules.iter().map(|(x, _)| x.clone()).collect();
     rule_names.sort_unstable();
 
