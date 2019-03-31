@@ -217,7 +217,7 @@ pub fn get_lalr_items(lalr_items: &mut Vec<HashSet<Item>>, lr_items: &Vec<HashSe
     }
 }
 
-pub fn panic_insert(map: &mut HashMap<Index, Action>, identifier: Index, action: Action) {
+pub fn panic_insert(rev_indices: &HashMap<Index, String>, map: &mut HashMap<Index, Action>, identifier: Index, action: Action) {
     // The map should have the rule with the following priority:
     //  1) higher priority number
     //  2) if the priorities are equal, the associativity should also be equal
@@ -234,14 +234,14 @@ pub fn panic_insert(map: &mut HashMap<Index, Action>, identifier: Index, action:
                         (Ordering::Greater, _, _) => { return; }
                         (Ordering::Equal, false, false) => {
                             if map_prio == 0 {
-                                println!("Warning: conflicting actions {} and {}, shift took priority.",
-                                         act, action);
+                                println!("Warning: conflicting actions {} and {}, shift took priority.\nToken: {}",
+                                         act, action, rev_indices[&identifier]);
                             }
                             // map contains reduce, so replaced it with shift
                         }
                         (Ordering::Equal, true, true) => { return; }
-                        (Ordering::Equal, _, _) => panic!("Conflicting priority rules at {} and {}",
-                                                            act, action)
+                        (Ordering::Equal, _, _) => panic!("Conflicting priority rules at {} and {}\nToken: {}",
+                                                          act, action, rev_indices[&identifier])
                     }
                 }
                 (Action::Shift(_, map_prio), Action::Reduce(_, _, _, new_prio)) => {
@@ -252,18 +252,19 @@ pub fn panic_insert(map: &mut HashMap<Index, Action>, identifier: Index, action:
                         (Ordering::Greater, _, _) => { return; }
                         (Ordering::Equal, false, false) => {
                             if map_prio == 0 {
-                                println!("Warning: conflicting actions {} and {}, shift took priority.",
-                                         act, action);
+                                println!("Warning: conflicting actions {} and {}, shift took priority.\nToken: {}",
+                                         act, action, rev_indices[&identifier]);
                             }
                             // map contains shift, so don't replace it
                             return;
                         }
                         (Ordering::Equal, true, true) => { return; }
-                        (Ordering::Equal, _, _) => panic!("Conflicting priority rules at {} and {}",
-                                                            act, action)
+                        (Ordering::Equal, _, _) => panic!("Conflicting priority rules at {} and {}\nToken: {}",
+                                                          act, action, rev_indices[&identifier])
                     }
                 }
-                _ => panic!("Conflict, not LR: tried to replace {} with {}", act, action),
+                _ => panic!("Conflict, not LR: tried to replace {} with {}\nToken: {:?}",
+                            act, action, rev_indices[&identifier]),
             }
         }
     }
@@ -306,6 +307,7 @@ pub fn lr_parsing_table(
                     if !rules[item.position].terminal {
                         if rules[item.position].identifier == "Epsilon" {
                             panic_insert(
+                                &tm.rev_indices,
                                 &mut table.lock().unwrap().actions[i],
                                 item.lookahead,
                                 Action::Reduce(
@@ -327,6 +329,7 @@ pub fn lr_parsing_table(
                         );
                     if let Some(pos) = lr_items.iter().position(|x| get_cores(x) == get_cores(&goto_items)) {
                         panic_insert(
+                            &tm.rev_indices,
                             &mut table.lock().unwrap().actions[i],
                             tm.indices[&rules[item.position].full_path],
                             Action::Shift(pos, *priority),
@@ -334,9 +337,10 @@ pub fn lr_parsing_table(
                     }
                 } else {
                     if item.index == tm.indices["S"] {
-                        panic_insert(&mut table.lock().unwrap().actions[i], tm.indices["$"], Action::Accept);
+                        panic_insert(&tm.rev_indices, &mut table.lock().unwrap().actions[i], tm.indices["$"], Action::Accept);
                     } else {
                         panic_insert(
+                            &tm.rev_indices,
                             &mut table.lock().unwrap().actions[i],
                             item.lookahead,
                             Action::Reduce(

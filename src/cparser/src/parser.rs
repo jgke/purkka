@@ -29,20 +29,12 @@ fn get_direct_decl_identifier(decl: DirectDeclarator) -> Vec<String> {
         DirectDeclarator::SizedArray(DirectDeclarator_SizedArray(decl, ..)) => get_direct_decl_identifier(*decl),
         DirectDeclarator::Array(DirectDeclarator_Array(decl, ..)) => get_direct_decl_identifier(*decl),
         DirectDeclarator::FunctionParams(DirectDeclarator_FunctionParams(decl, ..)) => get_direct_decl_identifier(*decl),
-        DirectDeclarator::FunctionIdents(DirectDeclarator_FunctionIdents(decl, ..)) => get_direct_decl_identifier(*decl),
-        DirectDeclarator::Function(DirectDeclarator_Function(decl, ..)) => get_direct_decl_identifier(*decl),
     }
 }
 
 fn get_decl_identifier(decl: Declarator) -> Vec<String> {
     let direct_decl = match decl {
         Declarator::Pointer(Declarator_Pointer(_, direct_decl)) => vec![direct_decl],
-        //Declarator::Multiple(Declarator_Multiple(decl1, _, decl2)) => {
-        //    let mut left = get_decl_identifier(*decl1);
-        //    let mut right = get_decl_identifier(*decl2);
-        //    left.append(&mut right);
-        //    return left;
-        //}
         Declarator::DirectDeclarator(Declarator_DirectDeclarator(direct_decl)) => vec![direct_decl],
     };
     direct_decl.into_iter().flat_map(|s| get_direct_decl_identifier(s).into_iter()).collect()
@@ -146,6 +138,7 @@ lalr! {
         | Dereference. PostfixExpression #Token::Arrow #Token::Identifier
         | Increment. PostfixExpression #Token::Increment
         | Decrement. PostfixExpression #Token::Decrement
+        | StructValue. #Token::OpenParen TypeName #Token::CloseParen #Token::OpenBrace InitializerList #Token::CloseBrace
         ;
 
     ArgumentExpressionList
@@ -273,8 +266,8 @@ lalr! {
         | #Token::Double
         | #Token::Signed
         | #Token::Unsigned
-        | !add_struct_type &StructOrUnionSpecifier
-        | !add_enum_type &EnumSpecifier
+        | &StructOrUnionSpecifier
+        | &EnumSpecifier
         | #TypeNameStr
         ;
 
@@ -353,10 +346,13 @@ lalr! {
         | #Token::OpenParen &Declarator #Token::CloseParen
         | SizedArray. DirectDeclarator #Token::OpenBracket GeneralExpression #Token::CloseBracket
         | Array. DirectDeclarator #Token::OpenBracket #Token::CloseBracket
-        | FunctionParams. DirectDeclarator #Token::OpenParen &ParameterTypeList #Token::CloseParen
-        | FunctionIdents. DirectDeclarator #Token::OpenParen IdentifierList #Token::CloseParen
-        | Function. DirectDeclarator #Token::OpenParen #Token::CloseParen
+        | FunctionParams. DirectDeclarator #Token::OpenParen FunctionParams #Token::CloseParen
         ;
+
+    FunctionParams
+       -> &ParameterTypeList
+        | &IdentifierList
+        | Epsilon;
 
     Pointer
        -> #Token::Times

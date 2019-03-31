@@ -73,8 +73,8 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
         MacroTokenType::Operator(Operator::BitXorAssign) => BitXorAssign(index),
         MacroTokenType::Operator(Operator::BitOrAssign) => BitOrAssign(index),
         MacroTokenType::Operator(Operator::Comma) => Comma(index),
-        MacroTokenType::Operator(Operator::Macro) => Macro(index),
-        MacroTokenType::Operator(Operator::MacroPaste) => MacroPaste(index),
+        MacroTokenType::Operator(Operator::Macro) => panic!("Macro token found: {:?}", t),
+        MacroTokenType::Operator(Operator::MacroPaste) => panic!("Macro token found: {:?}", t),
 
         MacroTokenType::Identifier(ident) => {
             match ident.as_ref() {

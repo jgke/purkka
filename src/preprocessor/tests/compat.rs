@@ -14,6 +14,18 @@ fn asm_expr() {
         "main.c",
         "asm volatile inline goto ( anything can go here [ ] ( ) )",
     ).unwrap().len(), 1);
+    assert_eq!(preprocess_string(
+        "main.c",
+        "#define FOO a ## b ## c\nFOO",
+    ).unwrap().len(), 1);
+    assert_eq!(preprocess_string(
+        "main.c",
+        "#define FOO(t) a ## b ## c\nFOO(_)",
+    ).unwrap().len(), 1);
+    assert_eq!(preprocess_string(
+        "main.c",
+        "#define FOO(a) a ## b ## c\nFOO(a)",
+    ).unwrap().len(), 1);
     let res = preprocess_string(
         "main.c",
         "#define ASM_MACRO asm();\nASM_MACRO",

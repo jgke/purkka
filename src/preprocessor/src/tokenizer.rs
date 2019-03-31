@@ -97,14 +97,6 @@ where
                            source: Source::dummy()
                        }],
                        Some("__va_args__".to_string())));
-        symbols.insert("typeof".to_string(),
-                       Macro::Function(Source::dummy(),
-                       vec![],
-                       vec![MacroToken {
-                           ty: MacroTokenType::Identifier("int".to_string()),
-                           source: Source::dummy()
-                       }],
-                       Some("__va_args__".to_string())));
         symbols.insert("__builtin_va_list".to_string(),
                        Macro::Text(Source::dummy(), vec![
                                    MacroToken::dummy(MacroTokenType::Identifier("va_list".to_string())
@@ -1059,12 +1051,17 @@ where
                 None => {
                     if_debug(DebugVal::MacroExpand, ||
                              println!("Not expanding {:?}", &ident_str));
-                    if ident_str == Some("sizeof".to_string()) {
-                        self.parse_sizeof_expr(iter);
-                    } else if ident_str == Some("asm".to_string()) {
-                        self.parse_asm_expr(iter);
-                    } else {
-                        iter.1 += 1;
+                    match ident_str.as_ref().map(|t| t.as_ref()).unwrap_or("") {
+                        "sizeof" => self.parse_sizeof_expr(iter),
+                        t @ "typeof" | t @ "__typeof__" =>
+                            self.parse_builtin(iter, t, MacroTokenType::Identifier("int".to_string())),
+                        t @ "__builtin_offsetof" =>
+                            self.parse_builtin(iter, t, MacroTokenType::Number("1".to_string())),
+                        t @ "__builtin_types_compatible_p" =>
+                            // XXX: Not a good hack
+                            self.parse_builtin(iter, t, MacroTokenType::Number("1".to_string())),
+                        "asm" => self.parse_asm_expr(iter),
+                        _ => iter.1 += 1
                     }
                     return;
                 }
@@ -1176,7 +1173,7 @@ where
                 Some(MacroTokenType::Identifier(ident)) => {
                     match ident.as_ref() {
                         "__volatile__" | "volatile" | "goto" | "inline" => {},
-                        other => panic!("Unexpected asm qualifier: {}", other) 
+                        other => panic!("Unexpected asm qualifier: {}", other)
                     }
                 }
                 Some(t) => panic!("Unexpected token: {:?}", t),
@@ -1191,6 +1188,20 @@ where
             source,
             ty: MacroTokenType::Special(SpecialType::Asm(tokens))
         }, HashSet::new()));
+    }
+
+    fn parse_builtin(&mut self, iter: &mut MacroParseIter, expected: &str, ty: MacroTokenType) {
+        let start = self.get_next_token_mut(iter).map(|(t, _)| t);
+        let ident = start.as_ref().and_then(|t| t.get_identifier_str()).unwrap();
+
+        assert!(expected.contains(&ident));
+        let mut source = start.unwrap().source;
+        assert_eq!(
+            self.get_next_token_mut(iter).map(|(t, _)| t.ty),
+            Some(MacroTokenType::Punctuation(Punctuation::OpenParen)));
+        let mut tokens = self.get_tokens_until_closing_paren(iter);
+        source.span.hi = tokens.pop().unwrap().source.span.hi;
+        iter.0.insert(iter.1, (MacroToken { ty, source }, HashSet::new()));
     }
 
     fn maybe_expand_function_macro(
@@ -1286,20 +1297,24 @@ where
         let mut more_used_names = used_names.clone();
         more_used_names.insert(ident.to_string());
         let mut out = Vec::new();
-        let mut iter = body.iter().peekable();
-        while iter.peek().is_some() {
+        let mut pos = 0;
+        let mut body_iter = body.clone();
+        while pos < body_iter.len() {
             let mut out_token = {
-                let t = iter.next().unwrap().clone();
-                if iter
-                    .peek()
+                let t = &body_iter[pos];
+                pos += 1;
+                if body_iter.get(pos)
                     .map(|t| t.ty == MacroTokenType::Operator(Operator::MacroPaste))
                     == Some(true)
                 {
-                    iter.next(); // MacroPaste
-                    let next = iter.next().unwrap().clone();
-                    combine_tokens(&t, &t.source, &next, frag_iter)
+                    pos += 1; // MacroPaste
+                    let next = &body_iter[pos];
+                    pos += 1;
+                    let new_t = combine_tokens(t, &t.source, next, frag_iter);
+                    body_iter.insert(pos, new_t);
+                    continue;
                 } else {
-                    t
+                    t.clone()
                 }
             };
             out_token.respan_front(body_span);
@@ -1459,6 +1474,7 @@ where
                 replacement.respan_back(&total_span);
                 res.splice(i..i + 3, std::iter::once((replacement, map)))
                     .last();
+                continue;
             }
 
             let ref mut t = res[i];
