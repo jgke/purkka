@@ -28,6 +28,7 @@ fn get_direct_decl_identifier(decl: DirectDeclarator) -> Vec<String> {
         DirectDeclarator::OpenParen(DirectDeclarator_OpenParen(_, decl, _)) => get_decl_identifier(*decl),
         DirectDeclarator::SizedArray(DirectDeclarator_SizedArray(decl, ..)) => get_direct_decl_identifier(*decl),
         DirectDeclarator::Array(DirectDeclarator_Array(decl, ..)) => get_direct_decl_identifier(*decl),
+        DirectDeclarator::Function(DirectDeclarator_Function(decl, ..)) => get_direct_decl_identifier(*decl),
         DirectDeclarator::FunctionParams(DirectDeclarator_FunctionParams(decl, ..)) => get_direct_decl_identifier(*decl),
     }
 }
@@ -224,7 +225,7 @@ lalr! {
         ;
 
     TypeDeclaration
-       -> #Token::Typedef DeclarationSpecifiers #Token::Semicolon
+      -> #Token::Typedef DeclarationSpecifiers #Token::Semicolon
         | List. #Token::Typedef DeclarationSpecifiers InitDeclaratorList #Token::Semicolon
         ;
 
@@ -346,13 +347,14 @@ lalr! {
         | #Token::OpenParen &Declarator #Token::CloseParen
         | SizedArray. DirectDeclarator #Token::OpenBracket GeneralExpression #Token::CloseBracket
         | Array. DirectDeclarator #Token::OpenBracket #Token::CloseBracket
+        | Function. DirectDeclarator #Token::OpenParen #Token::CloseParen
         | FunctionParams. DirectDeclarator #Token::OpenParen FunctionParams #Token::CloseParen
         ;
 
     FunctionParams
        -> &ParameterTypeList
         | &IdentifierList
-        | Epsilon;
+        ;
 
     Pointer
        -> #Token::Times
@@ -430,6 +432,7 @@ lalr! {
         | &SelectionStatement
         | &IterationStatement
         | &JumpStatement
+        | !add_typedef TypeDeclaration
         ;
 
     LabeledStatement
@@ -440,10 +443,7 @@ lalr! {
         ;
 
     CompoundStatement
-       -> Empty. #Token::OpenBrace #Token::CloseBrace
-        | Statements. #Token::OpenBrace &StatementList #Token::CloseBrace
-        | Declarations. #Token::OpenBrace &DeclarationList #Token::CloseBrace
-        | Both. #Token::OpenBrace &DeclarationList &StatementList #Token::CloseBrace
+       -> #Token::OpenBrace &StatementList #Token::CloseBrace
         ;
 
     DeclarationList
@@ -452,8 +452,11 @@ lalr! {
         ;
 
     StatementList
-       -> Statement
-        | StatementList Statement
+       -> Statement. Statement
+        | Declaration. Declaration
+        | StatementMore. StatementList Statement
+        | DeclarationMore. StatementList Declaration
+        | Epsilon
         ;
 
     ExpressionStatement

@@ -9,32 +9,53 @@ type State = ();
 pub enum Token {
     Constant(),
     Plus(),
+    Minus(),
 }
 
 lalr! {
-    S  -> A | B;
+    S  -> Ss;
+    Ss -> A | C;
     A  -> #Token::Constant
         | Epsilon;
-    B  -> #Token::Plus Bb;
-    Bb -> #Token::Plus Bb
+    C  -> #Token::Minus Cc;
+    Cc -> #Token::Minus Cc
         | Epsilon;
 }
 
 #[test]
-fn parse_empty() {
-    println!("1");
+fn parse_empty_1() {
     assert_eq!(
         driver(&mut [Token::Constant()].iter(), &mut ()),
-        Ok(S::A(S_A(A::Constant(A_Constant(Token::Constant())))))
+        Ok(S::Ss(S_Ss(Ss::A(Ss_A(A::Constant(A_Constant(Token::Constant())))))))
     );
-    println!("2");
+}
+
+#[test]
+fn parse_empty_2() {
     assert_eq!(
         driver(&mut [Token::Constant()].iter(), &mut ()),
-        Ok(S::A(S_A(A::Constant(A_Constant(Token::Constant())))))
+        Ok(S::Ss(S_Ss(Ss::A(Ss_A(A::Constant(A_Constant(Token::Constant())))))))
     );
-    println!("3");
+}
+
+#[test]
+fn parse_empty_3() {
     assert_eq!(
         driver(&mut [].iter(), &mut ()),
-        Err(None)
+        Ok(S::Ss(S_Ss(Ss::A(Ss_A(A::Epsilon(A_Epsilon()))))))
+    );
+}
+
+#[test]
+fn parse_empty_4() {
+    assert_eq!(
+        driver(&mut [Token::Minus(), Token::Minus()].iter(), &mut ()),
+        Ok(S::Ss(S_Ss(Ss::C(Ss_C(
+            C::Minus(C_Minus(
+                Token::Minus(),
+                Cc::Minus(Cc_Minus(
+                    Token::Minus(),
+                    Box::new(Cc::Epsilon(Cc_Epsilon()))
+        )))))))))
     );
 }

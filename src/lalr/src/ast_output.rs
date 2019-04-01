@@ -112,6 +112,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                 let mut total_span = rules.get(0).unwrap().span;
                 let vals = rules
                     .into_iter()
+                    .filter(|r| r.identifier != "Epsilon")
                     .map(|item| {
                         total_span = total_span.to(item.span);
                         //let (n, x, s) = item;
@@ -625,7 +626,6 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                         .iter()
                         .filter(|term| self.tm.indices.contains_key(&term.full_path))
                         .map(|term| {
-                            // 3 => reduction_match_body
                             self.cx.arm(
                                 self.span,
                                 vec![self
@@ -701,6 +701,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             ast::PatKind::Slice(
                 data.iter()
                     .enumerate()
+                    .filter(|(_, ruledata)| ruledata.identifier != "Epsilon" ) 
                     .map(|(i, ruledata)| {
                         self.cx.pat(
                             self.span,
@@ -730,7 +731,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
     fn wild_arm_fail(&self, func: &str) -> ast::Arm {
         let session = self.cx.parse_sess();
         let filename = FileName::Custom("lalr_driver_fn_coerce_panic".to_string());
-        let unreachable_expr = format!("{{ panic!(\"{{}}, {{}} {{}}\", index, subindex, \"{}\") }}", func);
+        let unreachable_expr = format!("{{ panic!(\"{{}}, {{}} {{}} - got {{:?}}\", index, subindex, \"{}\", data) }}", func);
         let expr = parse::new_parser_from_source_str(session, filename, unreachable_expr).parse_expr().unwrap();
         self.cx.arm( self.span, vec![self.cx.pat_wild(self.span)], expr)
     }
@@ -767,7 +768,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             .iter()
             .enumerate()
             .map(|(subindex, Component {real_name, rules, action, priority: _priority})| {
-                if rules.len() == 1 && rules[0].identifier == "Epsilon" {
+                if rules.len() == 1 && rules[0].identifier == "Epsilon" && false {
                     self.cx.arm(
                         *span,
                         vec![self.cx.pat_wild(*span)],
@@ -787,6 +788,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                     )
                 } else {
                     let args: Vec<P<ast::Expr>> = rules.iter().enumerate()
+                        .filter(|(_, data)| data.identifier != "Epsilon")
                         .map(|(i, data)|
                              self.box_or_star(
                                  data.indirect,
@@ -845,7 +847,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             });
         let has_eps = data.iter().any(|Component {rules, ..}| rules.len() == 1 && rules[0].identifier == "Epsilon");
         let eps_chain = iter::once( self.wild_arm_fail("coerce_panic"))
-            .filter(|_| !has_eps);
+            .filter(|_| true);
         self.cx.expr_match(
             *span,
             self.cx.expr_tuple(
@@ -968,7 +970,7 @@ pub fn output_parser(
 
     let mut items: SmallVec<[P<ast::Item>; 1]> = rules
         .iter()
-        .filter(|item| !(item.identifier == "Epsilon"))
+        .filter(|item| item.identifier != "Epsilon")
         .flat_map(|item| builder.get_enum_item(item))
         .collect();
 
