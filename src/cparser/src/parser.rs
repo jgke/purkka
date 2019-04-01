@@ -108,8 +108,7 @@ fn add_enum_type(state: &mut State, declaration: Box<EnumSpecifier>) {
 }
 
 fn is_type(state: &State, token: &Token) -> bool {
-    dbg!(state);
-    match dbg!(token) {
+    match token {
         Token::Identifier(_, i) => state.scope.iter()
                 .any(|s| s.types.contains(i)),
         _ => panic!()
@@ -130,10 +129,7 @@ fn maybe_add_label(state: &mut State, decl_spec: DeclarationSpecifiers, init_lis
                 TypeSpecifier::TypeNameStr(TypeSpecifier_TypeNameStr(t)))) => {
             let ty = ident_to_name(t);
             if ty == "__label__" {
-                dbg!(ty);
                 let labels = &mut state.scope.last_mut().unwrap().labels;
-                dbg!(&labels);
-                dbg!(&init_list);
                 get_decls(init_list).into_iter().for_each(|init_decl| {
                     let decl = match init_decl {
                         InitDeclarator::Declarator(InitDeclarator_Declarator(decl)) => decl,
@@ -144,7 +140,6 @@ fn maybe_add_label(state: &mut State, decl_spec: DeclarationSpecifiers, init_lis
                     get_decl_identifier(decl).into_iter()
                         .for_each(|name| { labels.insert(name); });
                 });
-                dbg!(&labels);
             }
         }
         _ => {}
@@ -152,7 +147,6 @@ fn maybe_add_label(state: &mut State, decl_spec: DeclarationSpecifiers, init_lis
 }
 
 fn push_scope(state: &mut State, _open_brace: Token) {
-    dbg!("Push");
     state.scope.push(ScopedState {
         types: HashSet::new(),
         labels: HashSet::new(),
@@ -160,7 +154,6 @@ fn push_scope(state: &mut State, _open_brace: Token) {
 }
 
 fn pop_scope(state: &mut State, _open: PushScope, _statements: Box<StatementList>, _close: Token) {
-    dbg!("Pop");
     state.scope.pop();
 }
 
@@ -328,6 +321,10 @@ lalr! {
         -> #Token::Identifier
          | #TypeNameStr;
 
+    IdentifierOrLabel
+        -> #Token::Identifier
+         | #Label;
+
     StructOrUnionSpecifier
        -> NewType. StructOrUnion IdentifierOrType #Token::OpenBrace StructDeclarationList #Token::CloseBrace
         | Anonymous. StructOrUnion #Token::OpenBrace StructDeclarationList #Token::CloseBrace
@@ -488,7 +485,7 @@ lalr! {
         ;
 
     LabeledStatement
-       -> #Token::Identifier #Token::Colon Statement
+       -> IdentifierOrLabel #Token::Colon Statement
         | Case. #Token::Case GeneralExpression #Token::Colon Statement
         | RangeCase. #Token::Case GeneralExpression #Token::Varargs GeneralExpression #Token::Colon Statement
         | #Token::Default #Token::Colon Statement
