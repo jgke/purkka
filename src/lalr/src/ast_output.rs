@@ -21,7 +21,7 @@ struct AstBuilderCx<'a, 'c> {
     lalr_table: &'a LRTable,
     terminals: &'a HashSet<Terminal>,
     special_rules: &'a HashMap<String, String>,
-    special_provides: &'a HashMap<String, (String, String)>,
+    special_provides: &'a HashMap<String, Vec<(String, String)>>,
 }
 
 impl<'a, 'c> AstBuilderCx<'a, 'c> {
@@ -323,25 +323,26 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             vec![],
         );
         match self.special_provides.get(&term.full_path) {
-            Some((actual, function)) => {
-                if self.tm.indices.get(actual).is_none() {
-                    println!("Warning: unused special case: {}", actual);
-                    return default_case;
-                }
-                let is_special = self.cx.expr_call_ident(
-                    term.span,
-                    self.cx.ident_of(function),
-                    vec![
-                        self.cx.expr_ident(term.span, self.cx.ident_of("_state")),
-                        token_unwrap,
-                    ],
-                );
-                let special_case = self.cx.expr_usize(term.span, self.tm.indices[actual]);
-                self.cx.expr_if(term.span,
-                                is_special,
-                                special_case,
-                                Some(default_case))
-            }
+            Some(functions) => functions.iter().rev()
+               .fold(default_case, |default_case, (actual, function)| {
+                   if self.tm.indices.get(actual).is_none() {
+                       println!("Warning: unused special case: {}", actual);
+                       return default_case;
+                   }
+                   let is_special = self.cx.expr_call_ident(
+                       term.span,
+                       self.cx.ident_of(function),
+                       vec![
+                           self.cx.expr_ident(term.span, self.cx.ident_of("_state")),
+                           token_unwrap.clone(),
+                       ],
+                   );
+                   let special_case = self.cx.expr_usize(term.span, self.tm.indices[actual]);
+                   self.cx.expr_if(term.span,
+                                   is_special,
+                                   special_case,
+                                   Some(default_case))
+               }),
             None => default_case
         }
     }
@@ -845,9 +846,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
 
                 }
             });
-        let has_eps = data.iter().any(|Component {rules, ..}| rules.len() == 1 && rules[0].identifier == "Epsilon");
-        let eps_chain = iter::once( self.wild_arm_fail("coerce_panic"))
-            .filter(|_| true);
+
         self.cx.expr_match(
             *span,
             self.cx.expr_tuple(
@@ -858,7 +857,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                 ],
             ),
             bodies
-                .chain(eps_chain)
+                .chain(iter::once( self.wild_arm_fail("coerce_panic")))
                 .collect(),
         )
     }
@@ -948,15 +947,19 @@ pub fn output_parser(
         })
         .collect();
 
-    let special_provides: HashMap<String, (String, String)> = terminals.iter()
-        .filter(|term| term.conversion_fn.is_some())
-        .map(|term| {
-            let identifier = term.identifier.clone();
-            let dependant = term.conversion_fn.as_ref().unwrap().1.clone();
-            let provider = term.conversion_fn.as_ref().unwrap().0.clone();
-            (dependant, (identifier, provider))
-        })
-        .collect();
+    let mut special_provides: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    
+    for term in terminals {
+        if term.conversion_fn.is_none() {
+            continue;
+        }
+
+        let identifier = term.identifier.clone();
+        let dependant = term.conversion_fn.as_ref().unwrap().1.clone();
+        let provider = term.conversion_fn.as_ref().unwrap().0.clone();
+        let list = special_provides.entry(dependant).or_insert(Vec::new());
+        list.push((identifier, provider));
+    }
 
     let builder = AstBuilderCx {
         cx,

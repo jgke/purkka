@@ -11,14 +11,22 @@ pub mod parser;
 
 use std::collections::HashSet;
 
-use parser::driver;
+use parser::{driver, State, ScopedState};
 use ctoken::token::Token;
 
 pub fn parse(input: Vec<Token>) -> Result<parser::S, Option<Token>> {
-    let mut types = HashSet::new();
-    types.insert("va_list".to_string());
-    types.insert("size_t".to_string());
-    types.insert("_Bool".to_string());
-    types.insert("_Complex".to_string());
-    driver(&mut input.iter(), &mut types)
+    let mut state = State {
+        scope: Vec::new(),
+    };
+    state.scope.push(ScopedState {
+        types: HashSet::new(),
+        labels: HashSet::new(),
+    });
+    state.scope[0].types.insert("va_list".to_string());
+    state.scope[0].types.insert("__builtin_va_list".to_string());
+    state.scope[0].types.insert("size_t".to_string());
+    state.scope[0].types.insert("_Bool".to_string());
+    state.scope[0].types.insert("_Complex".to_string());
+    state.scope[0].types.insert("__label__".to_string());
+    driver(&mut input.iter(), &mut state)
 }

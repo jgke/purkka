@@ -647,6 +647,8 @@ where
                     panic!("Unexpected character: {}", end.display(&sub_iter));
                 };
 
+                dbg!(&filename);
+
                 let content = (self.get_file)(is_quote, iter.current_filename(), filename.clone());
                 iter.split_and_push_file(&content.1, &content.0);
             }

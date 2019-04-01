@@ -2,7 +2,16 @@ use std::collections::HashSet;
 
 use ctoken::token::Token;
 
-type State = HashSet<String>;
+#[derive(Debug)]
+pub struct ScopedState {
+    pub types: HashSet<String>,
+    pub labels: HashSet<String>,
+}
+
+#[derive(Debug)]
+pub struct State {
+    pub scope: Vec<ScopedState>,
+}
 
 fn get_decls(decl: InitDeclaratorList) -> Vec<InitDeclarator> {
     match decl {
@@ -43,7 +52,7 @@ fn get_decl_identifier(decl: Declarator) -> Vec<String> {
 
 fn add_type(state: &mut State, name: String) {
     println!("Adding new type {}", name);
-    state.insert(name);
+    state.scope.last_mut().unwrap().types.insert(name);
 }
 
 fn add_decl(state: &mut State, init_decl: InitDeclarator) {
@@ -99,23 +108,65 @@ fn add_enum_type(state: &mut State, declaration: Box<EnumSpecifier>) {
 }
 
 fn is_type(state: &State, token: &Token) -> bool {
-    match token {
-        Token::Identifier(_, i) => match state.get(i) {
-            Some(_) => {
-                println!("Identifier {} is a type", i);
-                true
-            }
-            None => {
-                println!("Identifier {} is not a type", i);
-                false
-            }
-        }
+    dbg!(state);
+    match dbg!(token) {
+        Token::Identifier(_, i) => state.scope.iter()
+                .any(|s| s.types.contains(i)),
         _ => panic!()
     }
 }
 
+fn is_label(state: &State, token: &Token) -> bool {
+    match token {
+        Token::Identifier(_, i) => state.scope.iter()
+                .any(|s| s.labels.contains(i)),
+        _ => panic!()
+    }
+}
+
+fn maybe_add_label(state: &mut State, decl_spec: DeclarationSpecifiers, init_list: InitDeclaratorList, _semicolon: Token) {
+    match decl_spec {
+        DeclarationSpecifiers::TypeSpecifier(DeclarationSpecifiers_TypeSpecifier(
+                TypeSpecifier::TypeNameStr(TypeSpecifier_TypeNameStr(t)))) => {
+            let ty = ident_to_name(t);
+            if ty == "__label__" {
+                dbg!(ty);
+                let labels = &mut state.scope.last_mut().unwrap().labels;
+                dbg!(&labels);
+                dbg!(&init_list);
+                get_decls(init_list).into_iter().for_each(|init_decl| {
+                    let decl = match init_decl {
+                        InitDeclarator::Declarator(InitDeclarator_Declarator(decl)) => decl,
+                        InitDeclarator::Asm(..) => panic!("Invalid __label__"),
+                        InitDeclarator::Assign(..) => panic!("Invalid __label__")
+                    };
+
+                    get_decl_identifier(decl).into_iter()
+                        .for_each(|name| { labels.insert(name); });
+                });
+                dbg!(&labels);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn push_scope(state: &mut State, _open_brace: Token) {
+    dbg!("Push");
+    state.scope.push(ScopedState {
+        types: HashSet::new(),
+        labels: HashSet::new(),
+    });
+}
+
+fn pop_scope(state: &mut State, _open: PushScope, _statements: Box<StatementList>, _close: Token) {
+    dbg!("Pop");
+    state.scope.pop();
+}
+
 lalr! {
     !TypeNameStr -> is_type #Token::Identifier;
+    !Label -> is_label #Token::Identifier;
 
     S -> TranslationUnit;
 
@@ -126,6 +177,7 @@ lalr! {
         | #Token::CharLiteral
         | #Token::Sizeof
         | #Token::Asm
+        | #Token::And #Label // Weird GCC extension around label values
         | Statement. #Token::OpenParen &CompoundStatement #Token::CloseParen
         | Expression. #Token::OpenParen &Expression #Token::CloseParen
         ;
@@ -221,7 +273,7 @@ lalr! {
 
     Declaration
        -> DeclarationSpecifiers #Token::Semicolon
-        | List. DeclarationSpecifiers InitDeclaratorList #Token::Semicolon
+        | !maybe_add_label List. DeclarationSpecifiers InitDeclaratorList #Token::Semicolon
         ;
 
     TypeDeclaration
@@ -442,8 +494,12 @@ lalr! {
         | #Token::Default #Token::Colon Statement
         ;
 
+    PushScope
+       -> !push_scope #Token::OpenBrace
+        ;
+
     CompoundStatement
-       -> #Token::OpenBrace &StatementList #Token::CloseBrace
+       -> !pop_scope PushScope &StatementList #Token::CloseBrace
         ;
 
     DeclarationList

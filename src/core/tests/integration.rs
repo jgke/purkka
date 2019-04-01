@@ -48,3 +48,13 @@ int main() {
 }
 ").is_ok());
 }
+
+#[test]
+fn va_types() {
+    assert!(parse("
+int main() {
+    int a;
+    __builtin_va_list foo;
+}
+").is_ok());
+}
