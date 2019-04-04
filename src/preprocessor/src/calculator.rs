@@ -103,7 +103,7 @@ fn eval_expression_postfix(expr: Vec<ConstExprToken>) -> i64 {
         match tok {
             Number(t) => stack.push(t),
             // unary
-            Op(Operator::Not) => expr1b!(stack, |x| x != 0),
+            Op(Operator::Not) => expr1b!(stack, |x| x == 0),
             Op(Operator::BitNot) => expr1i!(stack, |x: i64| !x),
 
             // bitwise
@@ -131,9 +131,9 @@ fn eval_expression_postfix(expr: Vec<ConstExprToken>) -> i64 {
             Op(Operator::Divide) => expr2i!(stack, |l, r| l / r),
 
             // ternary
-            Op(Operator::Terniary) => panic!(),
-            Op(Operator::TerniaryAlternative) => {
-                assert_eq!(iter.next(), Some(Op(Operator::Terniary)));
+            Op(Operator::Ternary) => panic!(),
+            Op(Operator::TernaryAlternative) => {
+                assert_eq!(iter.next(), Some(Op(Operator::Ternary)));
                 let right = stack.pop().unwrap();
                 let left = stack.pop().unwrap();
                 let condition = stack.pop().unwrap();
@@ -255,13 +255,13 @@ fn shunt_plus() {
 fn shunt_ternary() {
     assert_eq!(
         shunt(&vec![Number(0), Op(Operator::Plus), Number(0),
-            Op(Operator::Terniary), Number(1), Op(Operator::Plus), Number(2),
-            Op(Operator::TerniaryAlternative), Number(3), Op(Operator::Minus), Number(4)]),
+            Op(Operator::Ternary), Number(1), Op(Operator::Plus), Number(2),
+            Op(Operator::TernaryAlternative), Number(3), Op(Operator::Minus), Number(4)]),
             vec![
             Number(0), Number(0), Op(Operator::Plus),
             Number(1), Number(2), Op(Operator::Plus),
             Number(3), Number(4), Op(Operator::Minus),
-            Op(Operator::TerniaryAlternative), Op(Operator::Terniary)
+            Op(Operator::TernaryAlternative), Op(Operator::Ternary)
             ],
         );
 }
@@ -271,8 +271,8 @@ fn shunt_ternary() {
 fn eval_ternary() {
     assert_eq!(
         eval_expression_postfix(shunt(&vec![Number(0), Op(Operator::Plus), Number(1),
-            Op(Operator::Terniary), Number(1), Op(Operator::Plus), Number(2),
-            Op(Operator::TerniaryAlternative), Number(3), Op(Operator::Minus), Number(4)])),
+            Op(Operator::Ternary), Number(1), Op(Operator::Plus), Number(2),
+            Op(Operator::TernaryAlternative), Number(3), Op(Operator::Minus), Number(4)])),
             -1
         );
 }
@@ -316,6 +316,8 @@ fn check(expr: &str, expected: i64) {
 
 #[test]
 fn common_operations() {
+    check("! 0", 1);
+    check("! 1", 0);
     check("1 + 2 + 3", 6);
     check("1 + 2 - 3", 0);
     check("1 - 3 + 2", 0);

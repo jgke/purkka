@@ -28,8 +28,8 @@ pub enum Operator {
     BitOr,
     And,
     Or,
-    Terniary,
-    TerniaryAlternative,
+    Ternary,
+    TernaryAlternative,
     Assign,
     TimesAssign,
     DivAssign,
@@ -205,8 +205,8 @@ pub static OPERATORS: &[(&str, &Operator)] = &[
     ("^", &BitXor),
     ("~", &BitNot),
     ("!", &Not),
-    ("?", &Terniary),
-    (":", &TerniaryAlternative),
+    ("?", &Ternary),
+    (":", &TernaryAlternative),
     (".", &Dot),
     (",", &Comma),
     ("#", &Macro),
@@ -248,8 +248,8 @@ pub static PRECEDENCE: &[(usize, &Operator)] = &[
 
     (11, &Or),
 
-    (12, &Terniary),
-    (12, &TerniaryAlternative),
+    (12, &Ternary),
+    (12, &TernaryAlternative),
 ];
 
 // return (precedence, is-right-to-left)
@@ -264,7 +264,7 @@ pub fn get_precedence(op: &Operator) -> usize {
 
 pub fn is_left_associative(op: &Operator) -> bool {
     match op {
-        Terniary | TerniaryAlternative => false,
+        Ternary | TernaryAlternative => false,
         _ => true
     }
 }

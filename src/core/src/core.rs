@@ -110,5 +110,6 @@ pub fn real_main() {
     };
 
     parse_files(&input, get_file, &options).iter()
-        .for_each(|t| println!("{:?}", t));
+        .for_each(|t| println!("{:?}", input));
+        //.for_each(|t| println!("{:?}", t));
 }

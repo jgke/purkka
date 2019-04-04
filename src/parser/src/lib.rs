@@ -80,7 +80,7 @@ fn get_source_index(token: &Token) -> usize {
         Token::StringLiteral(index,_) => *index,
         Token::Struct(index,) => *index,
         Token::Switch(index,) => *index,
-        Token::Terniary(index,) => *index,
+        Token::Ternary(index,) => *index,
         Token::Times(index,) => *index,
         Token::TimesAssign(index,) => *index,
         Token::Typedef(index,) => *index,
@@ -94,15 +94,32 @@ fn get_source_index(token: &Token) -> usize {
 }
 
 pub fn parse(input: Vec<MacroToken>, context: &FragmentIterator) -> Result<cparser::parser::S, Option<Token>> {
-    let tokens: Vec<Token> = input.iter().enumerate().map(|(i, t)| preprocessor_to_parser(context, &t, i)).collect();
+    let tokens: Vec<Token> = input.iter()
+        .enumerate()
+        .map(|(i, t)| preprocessor_to_parser(context, &t, i))
+        .fold(Vec::new(), |mut list, t| {
+            if let Some(Token::StringLiteral(_, s)) = list.last_mut() {
+                if let Token::StringLiteral(_, ss) = t {
+                    s.push_str(&ss);
+                    return list;
+                }
+            }
+            list.push(t);
+            list
+        });
     //for (t, s) in tokens.iter().zip(input.iter()) {
     //    println!("{:?} {}", t, s.to_src());
     //}
+    println!("{:?}", tokens.last());
     match cparser::parse(tokens) {
         Err(Some(token)) => {
             let index = get_source_index(&token);
             println!("\nCaused by:\n{}", context.source_to_str(&input[index].source));
             Err(Some(token))
+        }
+        Ok(t) => {
+            println!("Success!");
+            Ok(t)
         }
         any => any
     }

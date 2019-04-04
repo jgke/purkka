@@ -32,7 +32,7 @@ pub enum Token {
     BitOr(usize,),
     And(usize,),
     Or(usize,),
-    Terniary(usize,),
+    Ternary(usize,),
     Assign(usize,),
     TimesAssign(usize,),
     DivAssign(usize,),

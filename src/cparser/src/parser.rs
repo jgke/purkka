@@ -66,8 +66,8 @@ fn add_decl(state: &mut State, init_decl: InitDeclarator) {
         .for_each(|name| add_type(state, name));
 }
 
-fn add_typedef(state: &mut State, declaration: TypeDeclaration) {
-    let (_spec, list) = match declaration {
+fn add_typedef(state: &mut State, declaration: Box<TypeDeclaration>) {
+    let (_spec, list) = match *declaration {
         TypeDeclaration::Typedef(TypeDeclaration_Typedef(..)) => {
             println!("Warning: useless typedef");
             return;
@@ -228,7 +228,7 @@ lalr! {
 
     TernaryExpression
        -> GeneralExpression
-        | Ternary. GeneralExpression #Token::Terniary &Expression #Token::Colon TernaryExpression
+        | Ternary. GeneralExpression #Token::Ternary &Expression #Token::Colon TernaryExpression
         ;
 
     AssignmentExpression
@@ -291,7 +291,7 @@ lalr! {
     InitDeclarator
        -> Declarator
         | Asm. Declarator #Token::Asm
-        | Assign. Declarator #Token::Assign Initializer
+        | Assign. Declarator #Token::Assign AssignmentOrInitializerList
         ;
 
     StorageClassSpecifier
@@ -338,6 +338,7 @@ lalr! {
     StructDeclarationList
        -> StructDeclaration
         | StructDeclarationList StructDeclaration
+        | Epsilon
         ;
 
     StructDeclaration
@@ -370,15 +371,18 @@ lalr! {
         | NameOnly. #Token::Enum #Token::Identifier
         ;
 
-    EnumeratorList
+    EnumeratorListContent
        -> Enumerator
-        | EnumeratorList #Token::Comma Enumerator
-        | TrailingComma. EnumeratorList #Token::Comma
+        | EnumeratorListContent #Token::Comma Enumerator
+        ;
+
+    EnumeratorList
+       -> EnumeratorListContent TrailingComma
         ;
 
     Enumerator
        -> #Token::Identifier
-        | Assign. #Token::Identifier #Token::Assign GeneralExpression
+        | Assign. #Token::Identifier #Token::Assign TernaryExpression
         ;
 
     TypeQualifier
@@ -462,16 +466,29 @@ lalr! {
         | AbstractFunctionParams. DirectAbstractDeclarator #Token::OpenParen &ParameterTypeList #Token::CloseParen
         ;
 
-    Initializer
+    AssignmentOrInitializerList
        -> AssignmentExpression
         | #Token::OpenBrace InitializerList #Token::CloseBrace
-        | TrailingComma. #Token::OpenBrace InitializerList #Token::Comma #Token::CloseBrace
-        | #Token::Dot #Token::Identifier #Token::Assign AssignmentExpression
+        ;
+
+    Initializer
+       -> AssignmentOrInitializerList
+        | #Token::Dot #Token::Identifier #Token::Assign AssignmentOrInitializerList
+        ;
+
+    InitializerListContent
+       -> &Initializer
+        | &InitializerListContent #Token::Comma &Initializer
         ;
 
     InitializerList
-       -> &Initializer
-        | InitializerList #Token::Comma &Initializer
+       -> &InitializerListContent TrailingComma
+        | Epsilon
+        ;
+
+    TrailingComma
+       -> #Token::Comma
+        | Epsilon
         ;
 
     Statement
@@ -481,7 +498,7 @@ lalr! {
         | &SelectionStatement
         | &IterationStatement
         | &JumpStatement
-        | !add_typedef TypeDeclaration
+        | !add_typedef &TypeDeclaration
         ;
 
     LabeledStatement
@@ -545,9 +562,10 @@ lalr! {
         ;
 
     ExternalDeclaration
-       -> FunctionDefinition
-        | Declaration
-        | !add_typedef TypeDeclaration
+       -> &FunctionDefinition
+        | &Declaration
+        | !add_typedef &TypeDeclaration
+        | #Token::Semicolon
         ;
 
     FunctionDefinition

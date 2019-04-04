@@ -224,7 +224,7 @@ where
             "/*" => {
                 iter.next(); // /
                 iter.next(); // *
-                self.preprocess_flush_until("*/", iter);
+                self.preprocess_flush_until("*/", iter, false);
                 (None, parse_macro)
             }
             "\\\n" => {
@@ -275,11 +275,17 @@ where
         token
     }
 
-    fn preprocess_flush_until(&self, until: &str, iter: &mut FragmentIterator) {
+    fn preprocess_flush_until(&self, until: &str, iter: &mut FragmentIterator, preserve_last: bool) {
         while iter.peek().is_some() && !iter.as_str().starts_with(until) {
             iter.next();
         }
-        for _ in 0..until.len() {
+        for _ in 0..until.len()-1 {
+            match iter.next() {
+                Some(_) => {}
+                None => panic!("Unexpected end of file"),
+            }
+        }
+        if !preserve_last {
             match iter.next() {
                 Some(_) => {}
                 None => panic!("Unexpected end of file"),
@@ -319,13 +325,8 @@ where
                         "/*" => {
                             i.next(); // /
                             i.next(); // *
-                            self.preprocess_flush_until("*/", i);
-                            if i.peek() == Some('\n') {
-                                i.next();
-                                None
-                            } else {
-                                Some(vec![])
-                            }
+                            self.preprocess_flush_until("*/", i, true);
+                            Some(vec![])
                         }
                         _ => Some(vec![c])
                     }
@@ -647,8 +648,6 @@ where
                     panic!("Unexpected character: {}", end.display(&sub_iter));
                 };
 
-                dbg!(&filename);
-
                 let content = (self.get_file)(is_quote, iter.current_filename(), filename.clone());
                 iter.split_and_push_file(&content.1, &content.0);
             }
@@ -813,7 +812,7 @@ where
                             ("/*", _) => {
                                 iter.next(); // /
                                 iter.next(); // *
-                                self.preprocess_flush_until("*/", iter);
+                                self.preprocess_flush_until("*/", iter, false);
                                 continue 'outer;
                             }
                             (_, Some('\n')) => {

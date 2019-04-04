@@ -58,3 +58,16 @@ int main() {
 }
 ").is_ok());
 }
+
+#[test]
+fn init_array() {
+    assert!(parse(" int main() { int a[] = {}; } ").is_ok());
+
+    assert!(parse(" int main() { int a[] = {1}; } ").is_ok());
+    assert!(parse(" int main() { int a[] = {1,2}; } ").is_ok());
+    assert!(parse(" int main() { int a[] = {1,2,3}; } ").is_ok());
+
+    assert!(parse(" int main() { int a[] = {1,}; } ").is_ok());
+    assert!(parse(" int main() { int a[] = {1,2,}; } ").is_ok());
+    assert!(parse(" int main() { int a[] = {1,2,3,}; } ").is_ok());
+}
