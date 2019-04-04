@@ -16,7 +16,7 @@ pub struct State {
 
 fn is_special(state: &State, token: &Token) -> bool {
     match token {
-        Token::Constant(i) => state.special == *i,
+        Token::Constant(i) => state.special == *i && *i <= 10,
         _ => panic!()
     }
 }
@@ -29,7 +29,6 @@ fn is_extra_special(state: &State, token: &Token) -> bool {
 }
 
 fn make_special(state: &mut State, token: Token) {
-    dbg!(&token);
     match token {
         Token::Constant(i) => state.special = i,
         _ => panic!()

@@ -31,23 +31,13 @@ fn ident_to_name(token: Token) -> String {
     }
 }
 
-fn get_direct_decl_identifier(decl: DirectDeclarator) -> Vec<String> {
-    match decl {
-        DirectDeclarator::Identifier(DirectDeclarator_Identifier(t)) => vec![ident_to_name(t)],
-        DirectDeclarator::OpenParen(DirectDeclarator_OpenParen(_, decl, _)) => get_decl_identifier(*decl),
-        DirectDeclarator::SizedArray(DirectDeclarator_SizedArray(decl, ..)) => get_direct_decl_identifier(*decl),
-        DirectDeclarator::Array(DirectDeclarator_Array(decl, ..)) => get_direct_decl_identifier(*decl),
-        DirectDeclarator::Function(DirectDeclarator_Function(decl, ..)) => get_direct_decl_identifier(*decl),
-        DirectDeclarator::FunctionParams(DirectDeclarator_FunctionParams(decl, ..)) => get_direct_decl_identifier(*decl),
-    }
-}
-
 fn get_decl_identifier(decl: Declarator) -> Vec<String> {
-    let direct_decl = match decl {
-        Declarator::Pointer(Declarator_Pointer(_, direct_decl)) => vec![direct_decl],
-        Declarator::DirectDeclarator(Declarator_DirectDeclarator(direct_decl)) => vec![direct_decl],
-    };
-    direct_decl.into_iter().flat_map(|s| get_direct_decl_identifier(s).into_iter()).collect()
+    match decl {
+        Declarator::Pointer(Declarator_Pointer(_, t, _)) => vec![identifier_or_type_to_str(t)],
+        Declarator::Identifier(Declarator_Identifier(t, _)) => vec![ident_to_name(t)],
+        Declarator::FunctionPointer(Declarator_FunctionPointer(_, decl, ..)) => get_decl_identifier(*decl),
+        Declarator::FunctionPointerReturningPointer(Declarator_FunctionPointerReturningPointer(_, _, decl, ..)) => get_decl_identifier(*decl),
+    }
 }
 
 fn add_type(state: &mut State, name: String) {
@@ -391,13 +381,14 @@ lalr! {
         ;
 
     Declarator
-       -> Pointer DirectDeclarator
-        | DirectDeclarator
+       -> Pointer IdentifierOrType DirectDeclarator
+        | #Token::Identifier DirectDeclarator
+        | FunctionPointer. #Token::OpenParen &Declarator #Token::CloseParen DirectDeclarator
+        | FunctionPointerReturningPointer. Pointer #Token::OpenParen &Declarator #Token::CloseParen DirectDeclarator
         ;
 
     DirectDeclarator
-       -> #Token::Identifier
-        | #Token::OpenParen &Declarator #Token::CloseParen
+       -> Epsilon
         | SizedArray. DirectDeclarator #Token::OpenBracket GeneralExpression #Token::CloseBracket
         | Array. DirectDeclarator #Token::OpenBracket #Token::CloseBracket
         | Function. DirectDeclarator #Token::OpenParen #Token::CloseParen
