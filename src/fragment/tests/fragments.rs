@@ -32,7 +32,7 @@ fn fragment_spans() {
     assert_eq!(
         iter.current_source(),
         Source {
-            filename: "foo.h".to_string(),
+            filename: From::from("foo.h"),
             span: Span {
                 lo: 0,
                 hi: 0,
@@ -48,7 +48,7 @@ fn fragment_spans() {
     assert_eq!(
         iter.current_source(),
         Source {
-            filename: "other.h".to_string(),
+            filename: From::from("other.h"),
             span: Span {
                 lo: 0,
                 hi: 2,
@@ -62,7 +62,7 @@ fn fragment_spans() {
     assert_eq!(
         iter.current_source(),
         Source {
-            filename: "foo.h".to_string(),
+            filename: From::from("foo.h"),
             span: Span {
                 lo: 1,
                 hi: 2,
@@ -107,7 +107,7 @@ fn take_while_mut() {
     assert_eq!(
         span,
         Source {
-            filename: "foo.h".to_string(),
+            filename: From::from("foo.h"),
             span: Span {
                 lo: 0,
                 hi: 2,
@@ -132,7 +132,7 @@ fn take_while_mut() {
     assert_eq!(
         span,
         Source {
-            filename: "foo.h".to_string(),
+            filename: From::from("foo.h"),
             span: Span {
                 lo: 4,
                 hi: 6,

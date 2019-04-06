@@ -16,7 +16,7 @@ fn function_macro_constant() {
             "foo.c",
             14,
             16, // foo
-            MacroTokenType::Identifier("foo".to_string()),
+            ident("foo"),
             Some(s("foo.c", 0, 17, None)),
         )],
     );
@@ -30,7 +30,7 @@ fn function_macro_one_arg() {
             "foo.c",
             21,
             21, // b
-            MacroTokenType::Identifier("b".to_string()),
+            ident("b"),
             Some(s(
                 "foo.c",
                 17,
@@ -57,7 +57,7 @@ fn function_macro_nested() {
             "foo.c",
             43,
             43, // b
-            MacroTokenType::Identifier("b".to_string()),
+            ident("b"),
             Some(s(
                 "foo.c",
                 39,
@@ -94,7 +94,7 @@ fn macro_expand_infinite_recursive() {
             "foo.c",
             15,
             17, // FOO
-            MacroTokenType::Identifier("FOO".to_string()),
+            ident("FOO"),
             Some(s(
                 "foo.c", 0, 18, // #define FOO(a) FOO
                 None,
@@ -112,7 +112,7 @@ fn function_macro_multiple_arguments() {
                 "foo.c",
                 25,
                 25, // 1
-                MacroTokenType::Number("1".to_string()),
+                MacroTokenType::Number(From::from("1")),
                 Some(s(
                     "foo.c",
                     21,
@@ -132,7 +132,7 @@ fn function_macro_multiple_arguments() {
                 "foo.c",
                 27,
                 27, // 2,
-                MacroTokenType::Number("2".to_string()),
+                MacroTokenType::Number(From::from("2")),
                 Some(s(
                     "foo.c",
                     21,
@@ -161,7 +161,7 @@ fn function_macro_with_trailing_paren() {
                 "foo.c",
                 22,
                 24, // foo
-                MacroTokenType::Identifier("foo".to_string()),
+                ident("foo"),
                 Some(s(
                     "foo.c",
                     18,
@@ -218,7 +218,7 @@ fn variadic_macros() {
             "foo.c",
             33,
             33, // a
-            MacroTokenType::Identifier("a".to_string()),
+            ident("a"),
             Some(s(
                 "foo.c",
                 29,
@@ -241,7 +241,7 @@ fn variadic_macros() {
             "foo.c",
             33,
             33, // a
-            MacroTokenType::Identifier("a".to_string()),
+            ident("a"),
             Some(s(
                 "foo.c",
                 29,
@@ -281,7 +281,7 @@ fn variadic_macros() {
             "foo.c",
             36,
             36, // b
-            MacroTokenType::Identifier("b".to_string()),
+            ident("b"),
             Some(s(
                 "foo.c",
                 29,
@@ -314,7 +314,7 @@ fn variadic_named_macros() {
             "foo.c",
             29,
             29, // a
-            MacroTokenType::Number("1".to_string()),
+            MacroTokenType::Number(From::from("1")),
             Some(s(
                 "foo.c",
                 25,
@@ -337,7 +337,7 @@ fn variadic_named_macros() {
             "foo.c",
             24,
             24, // a
-            MacroTokenType::Identifier("a".to_string()),
+            ident("a"),
             Some(s(
                 "foo.c",
                 20,
@@ -361,7 +361,7 @@ fn variadic_named_macros() {
             "foo.c",
             24,
             24, // a
-            MacroTokenType::Identifier("a".to_string()),
+            ident("a"),
             Some(s(
                 "foo.c",
                 20,
@@ -401,7 +401,7 @@ fn variadic_named_macros() {
             "foo.c",
             27,
             27, // a
-            MacroTokenType::Identifier("b".to_string()),
+            ident("b"),
             Some(s(
                 "foo.c",
                 20,
@@ -443,7 +443,7 @@ FOO(,c)
                 "foo.c",
                 26,
                 26, // foo
-                MacroTokenType::Identifier("c".to_string()),
+                ident("c"),
                 Some(s("foo.c", 21, 27,
                     Some(s("foo.c", 19, 19,
                         Some(s("foo.c", 1, 20, None)),
@@ -460,7 +460,7 @@ ARG_COUNT(a)
                 "foo.c",
                 91,
                 91, // foo
-                MacroTokenType::Number("1".to_string()),
+                MacroTokenType::Number(From::from("1")),
                 Some(s("foo.c", 40, 96,
                     Some(s("foo.c", 37, 38,
                         Some(s("foo.c", 1, 39, None)),

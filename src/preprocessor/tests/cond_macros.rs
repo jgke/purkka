@@ -5,7 +5,6 @@ extern crate ctoken;
 mod common;
 
 use common::*;
-use preprocessor::macrotoken::{MacroTokenType};
 
 #[test]
 fn ifdef_else_endif() {
@@ -24,12 +23,12 @@ baz
         vec![mt(
             "foo.c",
             22, 24,
-            MacroTokenType::Identifier("baz".to_string()),
+            ident("baz"),
         ),
         mt(
             "foo.c",
             56, 58,
-            MacroTokenType::Identifier("bar".to_string()),
+            ident("bar"),
         )
         ],
     );
@@ -66,7 +65,7 @@ fn trailing_comments_true() {
 #[test]
 fn if_1() {
     process("#if 1\nfoo\n#endif", vec![
-            mt("foo.c", 6, 8, MacroTokenType::Identifier("foo".to_string()))
+            mt("foo.c", 6, 8, ident("foo"))
     ]);
 }
 
@@ -85,7 +84,7 @@ fn if_1_gt_2() {
 #[test]
 fn if_defined() {
     process("#define foo\n#if defined ( foo )\nbar\n#endif", vec![
-            mt("foo.c", 32, 34, MacroTokenType::Identifier("bar".to_string()))
+            mt("foo.c", 32, 34, ident("bar"))
     ]);
     process("#if defined foo\nfoo\n#endif", vec![
     ]);
@@ -124,7 +123,7 @@ fn if_nested() {
 #endif
 ",
     vec![
-            mt("foo.c", 60, 62, MacroTokenType::Identifier("bar".to_string()))
+            mt("foo.c", 60, 62, ident("bar"))
     ]);
     process("
 #define FOO
@@ -140,7 +139,7 @@ fn if_nested() {
 #endif
 ",
     vec![
-            mt("foo.c", 85, 87, MacroTokenType::Identifier("baz".to_string()))
+            mt("foo.c", 85, 87, ident("baz"))
     ]);
     process("
 #define FOO
@@ -155,7 +154,7 @@ fn if_nested() {
 #endif
 ",
     vec![
-            mt("foo.c", 86, 88, MacroTokenType::Identifier("foo".to_string()))
+            mt("foo.c", 86, 88, ident("foo"))
     ]);
     process("
 #if defined FOO && defined BAR
@@ -166,7 +165,7 @@ baz
 #endif
 ",
     vec![
-            mt("foo.c", 43, 45, MacroTokenType::Identifier("baz".to_string()))
+            mt("foo.c", 43, 45, ident("baz"))
     ]);
     process("
 #define V 46000

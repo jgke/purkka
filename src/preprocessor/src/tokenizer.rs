@@ -1,7 +1,9 @@
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use fragment::fragment::{FragmentIterator, Source};
 use debug::debug::*;
+use shared::intern::StringInterner;
 use shared::utils::*;
 
 use ctoken::token::SizeofExpression;
@@ -19,7 +21,7 @@ pub struct Output {
 #[derive(Clone, Debug)]
 enum Macro {
     Text(Source, Vec<MacroToken>),
-    Function(Source, Vec<String>, Vec<MacroToken>, Option<String>),
+    Function(Source, Vec<Rc<str>>, Vec<MacroToken>, Option<Rc<str>>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,22 +56,24 @@ enum MacroType {
 /// Macro context.
 ///
 /// CB has the following signature:
-/// FnMut(is_local: bool, current_file: String, opened_file: String) -> String
+/// FnMut(is_local: bool, current_file: String, opened_file: String)
+///     -> (full_path: String, file_content: String)
 pub(crate) struct MacroContext<CB>
 where
     CB: FnMut(bool, String, String) -> (String, String),
 {
-    symbols: HashMap<String, Macro>,
+    symbols: HashMap<Rc<str>, Macro>,
     if_stack: Vec<Option<bool>>,
     get_file: CB,
-    iter: Option<FragmentIterator>
+    iter: Option<FragmentIterator>,
+    intern: StringInterner
 }
 
 pub type ParseResult<T> = Result<T, &'static str>;
 
 #[derive(Debug)]
 struct MacroParseIter<'a>(
-    &'a mut Vec<(MacroToken, HashSet<String>)>,
+    &'a mut Vec<(MacroToken, HashSet<Rc<str>>)>,
     usize,
     &'a mut FragmentIterator,
 );
@@ -79,33 +83,35 @@ where
     CB: FnMut(bool, String, String) -> (String, String),
 {
     pub(crate) fn new(get_file: CB) -> MacroContext<CB> {
+        let mut intern = StringInterner::new();
         let mut symbols = HashMap::new();
-        symbols.insert("__extension__".to_string(),
+        symbols.insert(intern.get_ref("__extension__"),
                        Macro::Text(Source::dummy(), Vec::new()));
-        symbols.insert("__restrict".to_string(),
+        symbols.insert(intern.get_ref("__restrict"),
                        Macro::Text(Source::dummy(), Vec::new()));
-        symbols.insert("__attribute__".to_string(),
+        symbols.insert(intern.get_ref("__attribute__"),
                        Macro::Function(Source::dummy(),
                        vec![],
                        vec![],
-                       Some("__va_args__".to_string())));
-        symbols.insert("__alignof__".to_string(),
+                       Some(intern.get_ref("__va_args__"))));
+        symbols.insert(intern.get_ref("__alignof__"),
                        Macro::Function(Source::dummy(),
                        vec![],
                        vec![MacroToken {
-                           ty: MacroTokenType::Number("1".to_string()),
+                           ty: MacroTokenType::Number(intern.get_ref("1")),
                            source: Source::dummy()
                        }],
-                       Some("__va_args__".to_string())));
-        symbols.insert("__builtin_va_list".to_string(),
+                       Some(intern.get_ref("__va_args__"))));
+        symbols.insert(intern.get_ref("__builtin_va_list"),
                        Macro::Text(Source::dummy(), vec![
-                                   MacroToken::dummy(MacroTokenType::Identifier("va_list".to_string())
-                       )]));
+                                   MacroToken::dummy(MacroTokenType::Identifier(intern.get_ref("va_list")))
+                       ]));
         MacroContext {
             symbols,
             if_stack: Vec::new(),
             get_file,
-            iter: None
+            iter: None,
+            intern
         }
     }
 
@@ -144,7 +150,7 @@ where
                 vals = vec![MacroToken::dummy(MacroTokenType::Empty)];
             }
             self.symbols.insert(
-                key.to_string(),
+                self.intern.get_ref(key),
                 Macro::Text(Source::dummy(), vals));
             assert!(iter.peek().is_none());
         }
@@ -341,7 +347,7 @@ where
         (s, src)
     }
 
-    fn read_identifier(&self, iter: &mut FragmentIterator) -> MacroToken {
+    fn read_identifier(&mut self, iter: &mut FragmentIterator) -> MacroToken {
         let (identifier, source) = self.read_identifier_raw(iter);
         MacroToken {
             source: source,
@@ -349,14 +355,15 @@ where
         }
     }
 
-    fn read_identifier_raw(&self, iter: &mut FragmentIterator) -> (String, Source) {
-        iter.collect_while(|c| match c {
+    fn read_identifier_raw(&mut self, iter: &mut FragmentIterator) -> (Rc<str>, Source) {
+        let (ident, src) = iter.collect_while(|c| match c {
             '0'...'9' | 'a'...'z' | 'A'...'Z' | '_' => true,
             _ => false,
-        })
+        });
+        (self.intern.get_ref(&ident), src)
     }
 
-    fn read_number(&self, iter: &mut FragmentIterator) -> MacroToken {
+    fn read_number(&mut self, iter: &mut FragmentIterator) -> MacroToken {
         let exponents = &["e+", "e-", "E+", "E-", "p+", "p-", "P+", "P-"];
         let (number, source) = iter.collect_while_flatmap(|c, i| {
             exponents
@@ -377,11 +384,11 @@ where
         });
         MacroToken {
             source: source,
-            ty: MacroTokenType::Number(number.iter().map(|t| t.1).collect()),
+            ty: MacroTokenType::Number(self.intern.get_ref(&number.iter().map(|t| t.1).collect::<String>())),
         }
     }
 
-    fn read_string(&self, iter: &mut FragmentIterator) -> MacroToken {
+    fn read_string(&mut self, iter: &mut FragmentIterator) -> MacroToken {
         let mut end = false;
         let (content, source) = iter.collect_while_flatmap(|c, iter| match c {
             '"' => {
@@ -406,11 +413,11 @@ where
         });
         MacroToken {
             source: source,
-            ty: MacroTokenType::StringLiteral(content.iter().map(|t| t.1).collect()),
+            ty: MacroTokenType::StringLiteral(self.intern.get_ref(&content.iter().map(|t| t.1).collect::<String>())),
         }
     }
 
-    fn read_char(&self, iter: &mut FragmentIterator) -> MacroToken {
+    fn read_char(&mut self, iter: &mut FragmentIterator) -> MacroToken {
         let mut end = false;
         let (content, source) = iter.collect_while_flatmap(|c, iter| match c {
             '\'' => {
@@ -561,7 +568,7 @@ where
                     let mut args = Vec::new();
                     let mut had_comma = None;
                     let mut varargs = false;
-                    let mut varargs_str: Option<String> = None;
+                    let mut varargs_str: Option<Rc<str>> = None;
                     while sub_iter.peek().is_some() {
                         if let (Some(token), _) = self.get_token(&mut sub_iter, false) {
                             match (varargs, had_comma, token.ty.clone()) {
@@ -586,7 +593,7 @@ where
                                 }
                                 (false, _, MacroTokenType::Punctuation(Punctuation::Varargs)) => {
                                     varargs = true;
-                                    varargs_str = Some("__VA_ARGS__".to_string());
+                                    varargs_str = Some(self.intern.get_ref("__VA_ARGS__"));
                                     had_comma = Some(false);
                                 }
                                 _ => panic!("Unexpected token: {:?}\n{}", token.ty, iter.source_to_str(&token.source)),
@@ -648,7 +655,7 @@ where
                     panic!("Unexpected character: {}", end.display(&sub_iter));
                 };
 
-                let content = (self.get_file)(is_quote, iter.current_filename(), filename.clone());
+                let content = (self.get_file)(is_quote, iter.current_filename().to_string(), filename.clone());
                 iter.split_and_push_file(&content.1, &content.0);
             }
             MacroType::Undef => {
@@ -700,27 +707,27 @@ where
         let mut tokens = vec![];
         while sub_iter.peek().is_some() {
             if let Some(token) = self.get_token(sub_iter, false).0 {
-                if token.get_identifier_str() == Some("defined".to_string()) {
+                if token.get_identifier_str().map(|t| t.as_ref() == "defined") == Some(true) {
                     let next = self.get_some_token(sub_iter, false).0;
                     let (ident, source) = if next.ty == MacroTokenType::Punctuation(Punctuation::OpenParen) {
                         let ident_token = self.get_some_token(sub_iter, false).0;
-                        let tmp_ident = ident_token.get_identifier_str().unwrap().to_string();
+                        let tmp_ident = ident_token.get_identifier_str().unwrap();
                         let close_paren = self.get_some_token(sub_iter, false).0.ty;
                         assert!(close_paren == MacroTokenType::Punctuation(Punctuation::CloseParen));
                         (tmp_ident, ident_token.source)
                     } else {
-                        let tmp_ident = next.get_identifier_str().unwrap().to_string();
+                        let tmp_ident = next.get_identifier_str().unwrap();
                         (tmp_ident, next.source)
                     };
                     let tok = if self.symbols.contains_key(&ident) {
                         MacroToken {
                             source,
-                            ty: MacroTokenType::Number("1".to_string())
+                            ty: MacroTokenType::Number(self.intern.get_ref("1"))
                         }
                     } else {
                         MacroToken {
                             source,
-                            ty: MacroTokenType::Number("0".to_string())
+                            ty: MacroTokenType::Number(self.intern.get_ref("0"))
                         }
                     };
                     tokens.push(tok);
@@ -735,7 +742,7 @@ where
         }
         for ref mut token in &mut tokens {
             if token.get_identifier_str().is_some() {
-                token.ty = MacroTokenType::Number("0".to_string());
+                token.ty = MacroTokenType::Number(self.intern.get_ref("0"));
             }
         }
 
@@ -899,7 +906,7 @@ where
     fn get_next_token(
         &mut self,
         ctx: &mut MacroParseIter,
-    ) -> (Option<(MacroToken, HashSet<String>)>, bool) {
+    ) -> (Option<(MacroToken, HashSet<Rc<str>>)>, bool) {
         let MacroParseIter(list, index, iter) = ctx;
 
         if list.len() > *index {
@@ -914,7 +921,7 @@ where
     fn get_next_token_mut(
         &mut self,
         ctx: &mut MacroParseIter,
-    ) -> Option<(MacroToken, HashSet<String>)> {
+    ) -> Option<(MacroToken, HashSet<Rc<str>>)> {
         if let (Some((token, used_names)), consumed_index) = self.get_next_token(ctx) {
             if consumed_index {
                 ctx.0.remove(ctx.1);
@@ -968,7 +975,7 @@ where
         token: MacroToken,
         iter: &mut FragmentIterator,
     ) -> Vec<MacroToken> {
-        let mut list: Vec<(MacroToken, HashSet<String>)> = vec![(token.clone(), HashSet::new())];
+        let mut list: Vec<(MacroToken, HashSet<Rc<str>>)> = vec![(token.clone(), HashSet::new())];
         {
             let mut iter = MacroParseIter(&mut list, 0, iter);
             while iter.1 < iter.0.len() {
@@ -978,7 +985,7 @@ where
 
         for t in &list {
             if let MacroTokenType::Identifier(ref ident) = t.0.ty {
-                if ident == "sizeof" || ident == "asm" {
+                if ident.as_ref() == "sizeof" || ident.as_ref() == "asm" {
                     panic!();
                 }
             }
@@ -1054,13 +1061,19 @@ where
                              println!("Not expanding {:?}", &ident_str));
                     match ident_str.as_ref().map(|t| t.as_ref()).unwrap_or("") {
                         "sizeof" => self.parse_sizeof_expr(iter),
-                        t @ "typeof" | t @ "__typeof__" =>
-                            self.parse_builtin(iter, t, MacroTokenType::Identifier("int".to_string())),
-                        t @ "__builtin_offsetof" =>
-                            self.parse_builtin(iter, t, MacroTokenType::Number("1".to_string())),
-                        t @ "__builtin_types_compatible_p" =>
+                        t @ "typeof" | t @ "__typeof__" => {
+                            let replace_with = MacroTokenType::Identifier(self.intern.get_ref("int"));
+                            self.parse_builtin(iter, t, replace_with);
+                        }
+                        t @ "__builtin_offsetof" => {
+                            let replace_with =  MacroTokenType::Number(self.intern.get_ref("1"));
+                            self.parse_builtin(iter, t, replace_with);
+                        }
+                        t @ "__builtin_types_compatible_p" => {
                             // XXX: Not a good hack
-                            self.parse_builtin(iter, t, MacroTokenType::Number("1".to_string())),
+                            let replace_with = MacroTokenType::Number(self.intern.get_ref("1"));
+                            self.parse_builtin(iter, t, replace_with);
+                        }
                         "asm" => self.parse_asm_expr(iter),
                         _ => iter.1 += 1
                     }
@@ -1139,7 +1152,7 @@ where
         let start = self.get_next_token_mut(iter).map(|(t, _)| t);
         assert_eq!(
             start.as_ref().map(|t| &t.ty),
-            Some(&MacroTokenType::Identifier("sizeof".to_string())));
+            Some(&MacroTokenType::Identifier(self.intern.get_ref("sizeof"))));
         let mut start_span = start.unwrap().source;
         let ident_or_open_paren = self.get_next_token_mut(iter).map(|(t, _)| t);
         if let Some(MacroTokenType::Punctuation(Punctuation::OpenParen)) = ident_or_open_paren.as_ref().map(|t| &t.ty) {
@@ -1166,7 +1179,7 @@ where
         let start = self.get_next_token_mut(iter).map(|(t, _)| t);
         assert_eq!(
             start.as_ref().map(|t| &t.ty),
-            Some(&MacroTokenType::Identifier("asm".to_string())));
+            Some(&MacroTokenType::Identifier(self.intern.get_ref("asm"))));
         loop {
             let t = self.get_next_token_mut(iter);
             match t.map(|t| t.0.ty) {
@@ -1195,7 +1208,7 @@ where
         let start = self.get_next_token_mut(iter).map(|(t, _)| t);
         let ident = start.as_ref().and_then(|t| t.get_identifier_str()).unwrap();
 
-        assert!(expected.contains(&ident));
+        assert!(expected == ident.as_ref());
         let mut source = start.unwrap().source;
         assert_eq!(
             self.get_next_token_mut(iter).map(|(t, _)| t.ty),
@@ -1209,12 +1222,12 @@ where
         &mut self,
         iter: &mut MacroParseIter,
         t: &MacroToken,
-        used_names: &HashSet<String>,
-        ident_str: Option<String>,
+        used_names: &HashSet<Rc<str>>,
+        ident_str: Option<Rc<str>>,
         span: &Source,
-        args: &Vec<String>,
+        args: &Vec<Rc<str>>,
         body: &Vec<MacroToken>,
-        varargs: Option<String>
+        varargs: Option<Rc<str>>
     ) {
         // else if t not in used_macros
         //         and (t, args, replacement list) is function macro
@@ -1292,11 +1305,11 @@ where
         body_span: &Source,
         ident_span: &Source,
         body: &Vec<MacroToken>,
-        used_names: &HashSet<String>,
+        used_names: &HashSet<Rc<str>>,
         frag_iter: &FragmentIterator
-    ) -> Vec<(MacroToken, HashSet<String>)> {
+    ) -> Vec<(MacroToken, HashSet<Rc<str>>)> {
         let mut more_used_names = used_names.clone();
-        more_used_names.insert(ident.to_string());
+        more_used_names.insert(self.intern.get_ref(ident));
         let mut out = Vec::new();
         let mut pos = 0;
         let mut body_iter = body.clone();
@@ -1340,11 +1353,11 @@ where
         ident: &str,
         body_span: &Source,
         args_span: &Source,
-        fn_args: &Vec<String>,
+        fn_args: &Vec<Rc<str>>,
         body: &Vec<MacroToken>,
-        used_names: &HashSet<String>,
-        varargs: Option<String>,
-    ) -> (usize, Vec<(MacroToken, HashSet<String>)>) {
+        used_names: &HashSet<Rc<str>>,
+        varargs: Option<Rc<str>>,
+    ) -> (usize, Vec<(MacroToken, HashSet<Rc<str>>)>) {
         // Example:
         // #define BAR(a) a
         // #define FOO(a) BAR(a) a
@@ -1362,7 +1375,7 @@ where
         //  Expanded from: #define FOO(a) BAR(a) a
 
         let mut used_syms = used_names.clone();
-        used_syms.insert(ident.to_string());
+        used_syms.insert(self.intern.get_ref(ident));
 
         let mut allow_parse_fail = HashSet::new();
         let mut force_parse = HashSet::new();
@@ -1386,7 +1399,7 @@ where
                                                 varargs.clone(), ident, body_span);
         total_span.span.source = None;
         let mut sub_iter = body.iter().peekable();
-        let mut res: Vec<(MacroToken, HashSet<String>)> = Vec::new();
+        let mut res: Vec<(MacroToken, HashSet<Rc<str>>)> = Vec::new();
 
         while let Some(t) = sub_iter.next() {
             let outer_source = t.source.clone();
@@ -1437,7 +1450,7 @@ where
                 MacroTokenType::Operator(Operator::Macro) => {
                     if let Some(ident) = sub_iter.peek().and_then(|t| t.get_identifier_str().clone()) {
                         if let Some(span) = arg_spans.get(&ident) {
-                            let t_ty = MacroTokenType::StringLiteral(iter.2.top_source_to_str(span));
+                            let t_ty = MacroTokenType::StringLiteral(self.intern.get_ref(&iter.2.top_source_to_str(span)));
 
                             sub_iter.next(); // identifier
                             let t = MacroToken {
@@ -1489,13 +1502,13 @@ where
         &mut self,
         iter: &mut MacroParseIter,
         start: &Source,
-        args: &Vec<String>,
-        do_not_expand: &HashSet<&String>,
-        varargs: Option<String>,
+        args: &Vec<Rc<str>>,
+        do_not_expand: &HashSet<&Rc<str>>,
+        varargs: Option<Rc<str>>,
         expanding: &str,
         expanding_src: &Source,
-    ) -> (usize, HashMap<String, Vec<MacroToken>>, Source, bool, HashMap<String, Source>) {
-        let mut more_syms: HashMap<String, Vec<MacroToken>> = HashMap::new();
+    ) -> (usize, HashMap<Rc<str>, Vec<MacroToken>>, Source, bool, HashMap<Rc<str>, Source>) {
+        let mut more_syms: HashMap<Rc<str>, Vec<MacroToken>> = HashMap::new();
         let mut depth = 0; // paren depth
         let mut total_span = Some(start.clone());
         let mut consume_count = 0;
@@ -1505,11 +1518,11 @@ where
         let mut closing_paren = None;
 
         let has_varargs = varargs.is_some();
-        let varargs_str = varargs.unwrap_or("__VA_ARGS__".to_string());
+        let varargs_str = varargs.unwrap_or(self.intern.get_ref("__VA_ARGS__"));
         let mut empty_iter = std::iter::empty();
         let mut looping_iter = std::iter::repeat(varargs_str.clone());
 
-        let varargs_iter: &mut Iterator<Item = String> = match has_varargs {
+        let varargs_iter: &mut Iterator<Item = Rc<str>> = match has_varargs {
             true => &mut looping_iter,
             false => &mut empty_iter
         };
@@ -1657,7 +1670,8 @@ fn combine_tokens(left: &MacroToken, source: &Source, right: &MacroToken, iter: 
         get_file: unreachable_file_open,
         if_stack: Vec::new(),
         symbols: HashMap::new(),
-        iter: None
+        iter: None,
+        intern: StringInterner::new()
     }
     .get_token(&mut tmp_iter, false);
 

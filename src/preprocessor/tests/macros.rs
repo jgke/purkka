@@ -17,7 +17,7 @@ fn one_identifier() {
             "foo.c",
             0,
             2,
-            MacroTokenType::Identifier("Foo".to_string()),
+            ident("Foo"),
         )],
     );
 }
@@ -27,13 +27,13 @@ fn three_identifiers() {
     process(
         "Foo Bar Baz",
         vec![
-            mt("foo.c", 0, 2, MacroTokenType::Identifier("Foo".to_string())),
-            mt("foo.c", 4, 6, MacroTokenType::Identifier("Bar".to_string())),
+            mt("foo.c", 0, 2, ident("Foo")),
+            mt("foo.c", 4, 6, ident("Bar")),
             mt(
                 "foo.c",
                 8,
                 10,
-                MacroTokenType::Identifier("Baz".to_string()),
+                ident("Baz"),
             ),
         ],
     );
@@ -48,13 +48,13 @@ fn strings() {
                 "foo.c",
                 0,
                 4,
-                MacroTokenType::StringLiteral("foo".to_string()),
+                MacroTokenType::StringLiteral(From::from("foo")),
             ),
             mt(
                 "foo.c",
                 6,
                 15,
-                MacroTokenType::StringLiteral("bar\nbaz".to_string()),
+                MacroTokenType::StringLiteral(From::from("bar\nbaz")),
             ),
         ],
     );
@@ -65,14 +65,14 @@ fn numbers() {
     process(
         "1 .54e+1..a5 4%",
         vec![
-            mt("foo.c", 0, 0, MacroTokenType::Number("1".to_string())),
+            mt("foo.c", 0, 0, MacroTokenType::Number(From::from("1"))),
             mt(
                 "foo.c",
                 2,
                 11,
-                MacroTokenType::Number(".54e+1..a5".to_string()),
+                MacroTokenType::Number(From::from(".54e+1..a5")),
             ),
-            mt("foo.c", 13, 13, MacroTokenType::Number("4".to_string())),
+            mt("foo.c", 13, 13, MacroTokenType::Number(From::from("4"))),
             mt("foo.c", 14, 14, MacroTokenType::Operator(Operator::Mod)),
         ],
     );
@@ -105,7 +105,7 @@ fn period() {
                 MacroTokenType::Punctuation(Punctuation::Varargs),
             ),
             mt("foo.c", 6, 6, MacroTokenType::Operator(Operator::Dot)),
-            mt("foo.c", 7, 7, MacroTokenType::Identifier("a".to_string())),
+            mt("foo.c", 7, 7, ident("a")),
             mt("foo.c", 8, 8, MacroTokenType::Operator(Operator::Dot)),
         ],
     );
@@ -120,19 +120,19 @@ fn comments() {
                 "foo.c",
                 10,
                 12,
-                MacroTokenType::Identifier("bar".to_string()),
+                ident("bar"),
             ),
             mt(
                 "foo.c",
                 21,
                 23,
-                MacroTokenType::Identifier("qux".to_string()),
+                ident("qux"),
             ),
             mt(
                 "foo.c",
                 44,
                 46,
-                MacroTokenType::Identifier("asd".to_string()),
+                ident("asd"),
             ),
         ],
     );
@@ -149,7 +149,7 @@ fn spurious_backslash() {
         "\\a",
         vec![
             mt("foo.c", 0, 0, MacroTokenType::Other('\\')),
-            mt("foo.c", 1, 1, MacroTokenType::Identifier("a".to_string())),
+            mt("foo.c", 1, 1, ident("a")),
         ],
     );
 }
@@ -162,7 +162,7 @@ fn simple_macro() {
             "foo.c",
             16,
             18,
-            MacroTokenType::Identifier("BAR".to_string()),
+            ident("BAR"),
             Some(s("foo.c", 0, 15, Some(s("foo.c", 12, 14, None)))),
         )],
     );
@@ -176,7 +176,7 @@ fn simple_macro_with_offset() {
             "foo.c",
             18,
             20,
-            MacroTokenType::Identifier("BAR".to_string()),
+            ident("BAR"),
             Some(s("foo.c", 2, 17, Some(s("foo.c", 14, 16, None)))),
         )],
     );
@@ -190,7 +190,7 @@ fn multiple_macros() {
             "foo.c",
             32,
             34,
-            MacroTokenType::Identifier("BAZ".to_string()),
+            ident("BAZ"),
             Some(s(
                 "foo.c",
                 16,
@@ -222,7 +222,7 @@ fn recursive_macro() {
             "foo.c",
             18,
             20,
-            MacroTokenType::Identifier("FOO".to_string()),
+            ident("FOO"),
             Some(s("foo.c", 2, 17, Some(s("foo.c", 14, 16, None)))),
         )],
     );
@@ -236,7 +236,7 @@ fn mutually_recursive_macros() {
             "foo.c",
             32,
             34,
-            MacroTokenType::Identifier("FOO".to_string()),
+            ident("FOO"),
             Some(s(
                 "foo.c",
                 16,
@@ -272,7 +272,7 @@ fn included_macro() {
             "bar.h",
             17,
             19, // FOO
-            MacroTokenType::Identifier("foo".to_string()),
+            ident("foo"),
             Some(s(
                 "foo.h",
                 0,

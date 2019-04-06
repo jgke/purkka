@@ -1,4 +1,5 @@
 use std::fmt;
+use std::rc::Rc;
 
 use fragment::fragment::{FragmentIterator, Source};
 
@@ -6,9 +7,9 @@ use crate::tokentype::{Operator, Punctuation, OPERATORS, PUNCTUATION};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MacroTokenType {
-    Identifier(String),
-    Number(String),
-    StringLiteral(String),
+    Identifier(Rc<str>),
+    Number(Rc<str>),
+    StringLiteral(Rc<str>),
     Char(char),
     Operator(Operator),
     Punctuation(Punctuation),
@@ -153,10 +154,10 @@ impl MacroToken {
             MacroTokenType::Punctuation(punc) =>
                 PUNCTUATION.iter().filter(|(_, t)| t == &punc).map(|(s, _)| s).next().unwrap().to_string(),
 
-            MacroTokenType::Identifier(ident) => ident.clone(),
+            MacroTokenType::Identifier(ident) => ident.to_string(),
 
-            MacroTokenType::StringLiteral(s) => s.clone(),
-            MacroTokenType::Number(s) => s.clone(),
+            MacroTokenType::StringLiteral(s) => s.to_string(),
+            MacroTokenType::Number(s) => s.to_string(),
             MacroTokenType::Special(SpecialType::Sizeof(expr)) =>
                 format!("sizeof({:?})", expr),
             MacroTokenType::Special(SpecialType::Asm(exprs)) =>
@@ -207,18 +208,18 @@ impl MacroToken {
         self.source.merge(source)
     }
 
-    pub(crate) fn get_identifier_str(&self) -> Option<String> {
+    pub(crate) fn get_identifier_str(&self) -> Option<Rc<str>> {
         match &self.ty {
-            MacroTokenType::Identifier(ident) => Some(ident.clone()),
+            MacroTokenType::Identifier(ident) => Some(Rc::clone(ident)),
             _ => None,
         }
     }
 
-    pub(crate) fn get_macro_paste_str(&self) -> Option<String> {
+    pub(crate) fn get_macro_paste_str(&self) -> Option<Rc<str>> {
         match &self.ty {
-            MacroTokenType::Identifier(ident) => Some(ident.clone()),
-            MacroTokenType::Number(num) => Some(num.clone()),
-            MacroTokenType::StringLiteral(s) => Some(format!("\"{}\"", s)),
+            MacroTokenType::Identifier(ident) => Some(Rc::clone(ident)),
+            MacroTokenType::Number(num) => Some(Rc::clone(num)),
+            MacroTokenType::StringLiteral(s) => Some(From::from(format!("\"{}\"", s))),
             _ => None,
         }
     }

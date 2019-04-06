@@ -96,7 +96,7 @@ pub fn mt_s(
 
 pub fn s(file: &str, lo: usize, hi: usize, s: Option<Source>) -> Source {
     Source {
-        filename: file.to_string(),
+        filename: From::from(file),
         span: Span {
             lo,
             hi,
@@ -111,4 +111,8 @@ pub fn macro_panics(arg: &str) {
         assert!(preprocess_string("foo.c", arg).is_err());
     });
     assert!(result.is_err());
+}
+
+pub fn ident(arg: &str) -> MacroTokenType {
+    MacroTokenType::Identifier(From::from(arg))
 }

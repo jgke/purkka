@@ -15,7 +15,7 @@ fn token_pasting() {
             "foo.c",
             17,
             19, // FOO
-            MacroTokenType::Identifier("ab".to_string()),
+            ident("ab"),
             Some(s(
                 "foo.c",
                 0,
@@ -34,7 +34,7 @@ fn token_pasting_with_macro_content() {
             "foo.c",
             35,
             37, // FOO
-            MacroTokenType::Identifier("BARb".to_string()),
+            ident("BARb"),
             Some(s(
                 "foo.c",
                 16,
@@ -56,7 +56,7 @@ fn token_pasting_with_function_macro() {
             "foo.c",
             17,
             20, // a##b
-            MacroTokenType::Identifier("foobar".to_string()),
+            ident("foobar"),
             Some(s(
                 "foo.c",
                 22,
@@ -78,7 +78,7 @@ fn function_macro_with_expanded_argument() {
             "foo.c",
             15,
             20, // foo##a
-            MacroTokenType::Identifier("foobarbaz".to_string()),
+            ident("foobarbaz"),
             Some(s(
                 "foo.c",
                 44,
@@ -100,7 +100,7 @@ fn stringify_function_macro() {
             "foo.c",
             22,
             24, // foo
-            MacroTokenType::StringLiteral("foo".to_string()),
+            MacroTokenType::StringLiteral(From::from("foo")),
             Some(s(
                 "foo.c",
                 0,
@@ -119,7 +119,7 @@ fn stringify_function_macro_no_expand() {
             "foo.c",
             48,
             52, // foo##a
-            MacroTokenType::StringLiteral("BAR()".to_string()),
+            MacroTokenType::StringLiteral(From::from("BAR()")),
             Some(s(
                 "foo.c",
                 21,
@@ -130,7 +130,7 @@ fn stringify_function_macro_no_expand() {
             "foo.c",
             59,
             59, // 1
-            MacroTokenType::Number("1".to_string()),
+            MacroTokenType::Number(From::from("1")),
             Some(s(
                 "foo.c",
                 55,
@@ -161,7 +161,7 @@ fn stringify_function_macro_no_expand() {
             "foo.c",
             61,
             61, // 2
-            MacroTokenType::Number("2".to_string()),
+            MacroTokenType::Number(From::from("2")),
             Some(s(
                 "foo.c",
                 55,

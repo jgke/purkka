@@ -133,44 +133,10 @@ pub enum Punctuation {
     //Macro
 }
 
-//#[derive(Clone, Debug)]
-//pub enum Macro {
-//    MacroIf,
-//    MacroIfdef,
-//    MacroIfndef,
-//    MacroElif,
-//    MacroEndif,
-//    Define, Undef,
-//    Line, Error, Pragma
-//}
-
-//#[derive(Clone, Debug)]
-//pub enum MacroInclude {
-//    IncludeSystem(String),
-//    IncludeLocal(String),
-//}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Constant {
     Integer(),
 }
-
-pub type Identifier = String;
-pub type StringLiteral = String;
-
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//pub enum TokenType {
-//    Keyword(&'static Keyword),
-//    Identifier(),
-//    Constant(Constant),
-//    StringLiteral(StringLiteral),
-//    Operator(&'static Operator),
-//    UnaryOperator(UnaryOperator),
-//    Punctuation(&'static Punctuation),
-//    //Macro(&'static Macro),
-//    //MacroInclude(MacroInclude),
-//    Whitespace
-//}
 
 pub static OPERATORS: &[(&str, &Operator)] = &[
     ("<<=", &BitShiftLeftAssign),
@@ -316,16 +282,3 @@ pub static KEYWORDS: &'static [(&'static str, &'static Keyword)] = &[
     ("volatile", &Volatile),
     ("while", &While),
 ];
-
-//pub static SIMPLE_MACROS: &'static [(&'static str, &'static Macro)] = &[
-//    ("if ", &MacroIf),
-//    ("ifdef ", &MacroIfdef),
-//    ("ifndef ", &MacroIfndef),
-//    ("elif ", &MacroElif),
-//    ("endif ", &MacroEndif),
-//    ("define ", &Define),
-//    ("undef ", &Undef),
-//    ("line ", &Line),
-//    ("error ", &Error),
-//    ("pragma ", &Pragma)
-//];

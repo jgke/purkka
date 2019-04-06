@@ -36,20 +36,22 @@ use std::cmp::min;
 use std::collections::HashMap;
 use std::fmt;
 use std::str::CharIndices;
+use std::rc::Rc;
 
 use rand::{Rng, thread_rng, distributions::Alphanumeric};
+use shared::intern::StringInterner;
 
 use crate::traits::PeekableCharsExt;
 
 use debug::debug::{is_debug_enabled, DebugVal::DebugFragment};
 
 /// This struct converts a &str to &'static str. Unsafe.
-struct StringInterner {
+struct UnsafeStringInterner {
     /// Hack: list of interned strings. Fragments actually point to a leaked Box<String>.
     pub strs: Vec<*mut str>,
 }
 
-impl StringInterner {
+impl UnsafeStringInterner {
     /// Convert a &str to a &'static str. The &'static str is valid as long as `free()` is not
     /// called.
     fn intern_str(&mut self, s: &str) -> &'static str {
@@ -59,7 +61,7 @@ impl StringInterner {
         unsafe { Box::leak(Box::from_raw(unsafe_str)) }
     }
 
-    /// Drop all references. This COULD be implemented as `impl Drop for StringInterner`, but I
+    /// Drop all references. This COULD be implemented as `impl Drop for UnsafeStringInterner`, but I
     /// think it's better to be more explicit here, as accidental drops mean undefined behaviour.
     fn free(&mut self) {
         for s in self.strs.drain(..) {
@@ -71,7 +73,7 @@ impl StringInterner {
     }
 }
 
-impl Clone for StringInterner {
+impl Clone for UnsafeStringInterner {
     fn clone(&self) -> Self {
         let mut new = Self { strs: vec![] };
         unsafe {
@@ -99,7 +101,7 @@ pub struct Span {
 pub struct Source {
     /// The file where the expansion originated in.
     /// Todo: change to a interned shared reference (eg. Rc<> with interning)
-    pub filename: String,
+    pub filename: Rc<str>,
     /// The location in the file for the expansion.
     pub span: Span,
 }
@@ -143,7 +145,7 @@ impl Source {
     /// Get a dummy source
     pub fn dummy() -> Source {
         Source {
-            filename: "".to_string(),
+            filename: From::from("".to_string()),
             span: Span { lo: usize::max_value(), hi: usize::max_value(), source: None }
         }
     }
@@ -210,8 +212,10 @@ pub struct FragmentIterator {
     vec_iter: (Vec<(usize, char)>, usize),
     /// All inserted files
     contents: HashMap<String, String>,
-    /// Hack: list of interned strings. Fragments actually point to a leaked Box<String>.
-    interner: StringInterner,
+    /// Hack: (unsafe) list of interned strings. Fragments actually point to a leaked Box<String>.
+    interner: UnsafeStringInterner,
+    /// Interned filenames for Sources. Safe.
+    file_interner: StringInterner,
     /// Debug output is enabled (env DEBUG_FRAGMENT is defined)
     debug: Option<String>,
 }
@@ -269,7 +273,8 @@ impl FragmentIterator {
     fn _with_offset(filename: &str, content: &str, offset: usize,
                     vec_iter: Vec<(usize, char)>,
                     mut contents: HashMap<String, String>) -> FragmentIterator {
-        let mut interner = StringInterner { strs: Vec::new() };
+        let mut interner = UnsafeStringInterner { strs: Vec::new() };
+        let mut file_interner = StringInterner::new();
         let static_content = interner.intern_str(content);
         let mut fragments = Vec::new();
         fragments.push(Fragment {
@@ -289,6 +294,7 @@ impl FragmentIterator {
         } else {
             None
         };
+
         FragmentIterator {
             fragments,
             current_fragment: 0,
@@ -296,7 +302,7 @@ impl FragmentIterator {
             vec_iter: (vec_iter, 0),
             contents,
             current_source: Source {
-                filename: filename.to_string(),
+                filename: file_interner.get_ref(filename),
                 span: Span {
                     lo: offset,
                     hi: offset,
@@ -304,6 +310,7 @@ impl FragmentIterator {
                 },
             },
             interner,
+            file_interner,
             debug
         }
     }
@@ -370,7 +377,7 @@ impl FragmentIterator {
 
         // We want to nest the span here.
         self.current_source = Source {
-            filename: filename.to_string(),
+            filename: self.file_interner.get_ref(filename),
             span: Span {
                 lo: 0,
                 hi: 0,
@@ -541,8 +548,8 @@ impl FragmentIterator {
     }
 
     /// Get the current filename.
-    pub fn current_filename(&self) -> String {
-        self.current_source.filename.clone()
+    pub fn current_filename(&self) -> &str {
+        &self.current_source.filename
     }
 
     /// Get the current fragment.
@@ -588,10 +595,10 @@ impl FragmentIterator {
         let mut lines: Vec<(String, (&str, usize, usize))> = Vec::new();
         let mut out = "".to_string();
 
-        if !self.contents.contains_key(&source.filename) {
+        if !self.contents.contains_key(source.filename.as_ref()) {
             lines.push((builtin.clone(), (&source.filename, 0, 0)));
         } else {
-            let s = &self.contents[&source.filename];
+            let s = &self.contents[source.filename.as_ref()];
             out.push_str(s[source.span.lo..=source.span.hi].trim());
             lines.push((
                     s[source.span.lo..=source.span.hi].trim().to_string(),
@@ -600,13 +607,13 @@ impl FragmentIterator {
         }
         let mut current_source = &source.span.source;
         while let Some(src) = current_source {
-            if src.is_dummy() || !self.contents.contains_key(&src.filename) {
+            if src.is_dummy() || !self.contents.contains_key(src.filename.as_ref()) {
                 lines.push((
                         builtin.clone(),
                         (&src.filename, 0, 0),
                 ));
             } else {
-                let s = &self.contents[&src.filename];
+                let s = &self.contents[src.filename.as_ref()];
                 lines.push((
                         s[src.span.lo..=src.span.hi].trim().to_string(),
                         (src.filename.as_ref(), src.span.lo, src.span.hi),
@@ -657,13 +664,13 @@ impl FragmentIterator {
         if source.span.lo == source.span.hi && source.span.lo == usize::max_value() {
             return "".to_string();
         }
-        let s = &self.contents[&source.filename];
+        let s = &self.contents[source.filename.as_ref()];
         s[source.span.lo..=source.span.hi].trim().to_string()
     }
 
     /// Get the current content
     pub fn get_current_content(&self) -> String {
-        let s = &self.contents[&self.current_source().filename];
+        let s = &self.contents[self.current_source().filename.as_ref()];
         s.to_string()
     }
 }
@@ -683,7 +690,7 @@ impl fmt::Debug for FragmentIterator {
 
 #[test]
 fn interner_one_string() {
-    let mut intern = StringInterner { strs: Vec::new() };
+    let mut intern = UnsafeStringInterner { strs: Vec::new() };
 
     let reference = intern.intern_str("foo");
     assert_eq!(reference, "foo");
@@ -692,7 +699,7 @@ fn interner_one_string() {
 
 #[test]
 fn interner_more_strings() {
-    let mut intern = StringInterner { strs: Vec::new() };
+    let mut intern = UnsafeStringInterner { strs: Vec::new() };
 
     intern.intern_str("A relatively long string");
     intern.intern_str("more strings");

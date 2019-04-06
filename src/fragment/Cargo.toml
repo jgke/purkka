@@ -6,4 +6,5 @@ edition = "2018"
 
 [dependencies]
 debug = { path="../debug" }
+shared = { path="../shared" }
 rand = "0.6.5"
