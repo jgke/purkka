@@ -465,32 +465,6 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                               body))
     }
 
-    pub fn get_translation_enum(&self) -> P<ast::Item> {
-        let enumdef = ast::EnumDef {
-            variants: self
-                .tm
-                .rules
-                .iter()
-                .flat_map(|(name, rule)| {
-                    let tmp: Vec<_> = rule
-                        .data
-                        .iter()
-                        .map(|Component {real_name, rules, ..}| {
-                            let var_id = self.cx.ident_of(&format!("{}_{}", self.tm.rev_indices[name], real_name));
-                            let span = rules.get(0).unwrap().span;
-                            self.cx
-                                .variant(span, var_id, vec![self.cx.ty_ident(self.span, var_id)])
-                        })
-                        .collect();
-                    tmp
-                })
-                .collect(),
-        };
-
-        let ident = self.cx.ident_of("_lalr_symbols");
-        self.item_enum_derive(self.span, ident, enumdef)
-    }
-
     pub fn enum_variant(&self, name: &str, args: Vec<&str>) -> Spanned<ast::Variant_> {
         self.cx.variant(
             self.span,
@@ -1011,7 +985,6 @@ pub fn output_parser(
     items.push(builder.get_debug_translation_fn());
     items.push(builder.get_debug_reduce_translation_fn());
     items.push(builder.get_translation_fn());
-    items.push(builder.get_translation_enum());
     items.push(builder.get_action_enum());
     items.push(builder.get_starter_var());
     items.push(builder.get_wrapper_fn(terminals));
