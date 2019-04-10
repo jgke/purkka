@@ -18,7 +18,7 @@ struct AstBuilderCx<'a, 'c> {
     cx: &'a ExtCtxt<'c>,
     span: Span,
     tm: &'a RuleTranslationMap,
-    lalr_table: &'a LRTable,
+    lalr_table: Option<&'a LRTable>,
     terminals: &'a HashSet<Terminal>,
     special_rules: &'a HashMap<String, String>,
     special_provides: &'a HashMap<String, Vec<(String, String)>>,
@@ -542,6 +542,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             .collect();
         rows.sort_unstable_by(|(_, index1), (_, index2)| index1.cmp(index2));
         self.lalr_table
+            .unwrap()
             .actions
             .iter()
             .enumerate()
@@ -549,6 +550,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                 rows.iter()
                     .map(|(lookahead, _)| {
                         self.lalr_table
+                            .unwrap()
                             .clone()
                             .actions
                             .get(index)
@@ -565,7 +567,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
     pub fn get_lalr_table(&self) -> P<ast::Item> {
         let act_ty = self.ty_ident("_Act");
         let count = self.tm.indices.len();
-        let ty_return = self.sliced(self.sliced(act_ty, count), self.lalr_table.actions.len());
+        let ty_return = self.sliced(self.sliced(act_ty, count), self.lalr_table.unwrap().actions.len());
         let content = self.get_full_lalr_table();
         self.cx.item_static(
             self.span,
@@ -910,7 +912,7 @@ pub fn output_parser(
     tm: &RuleTranslationMap,
     rules: &Vec<Rule>,
     terminals: &HashSet<Terminal>,
-    lalr_table: &LRTable,
+    lalr_table: Option<&LRTable>,
 ) -> Box<MacResult + 'static> {
     let special_rules: HashMap<String, String> = terminals.iter()
         .filter(|term| term.conversion_fn.is_some())
@@ -980,15 +982,6 @@ pub fn output_parser(
     ));
 
     items.push(builder.item_enum_derive(span, cx.ident_of("_Data"), all_structs_enum));
-
-    items.push(builder.get_lalr_table());
-    items.push(builder.get_debug_translation_fn());
-    items.push(builder.get_debug_reduce_translation_fn());
-    items.push(builder.get_translation_fn());
-    items.push(builder.get_action_enum());
-    items.push(builder.get_starter_var());
-    items.push(builder.get_wrapper_fn(terminals));
-    items.push(builder.get_reduction_fn(rules));
 
     let mut driver_fn = r#"
 pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> Result<S, Option<Token>> {
@@ -1062,7 +1055,18 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> R
 
     let session = cx.parse_sess();
     let filename = FileName::Custom("lalr_driver_fn".to_string());
-    items.push(parse::new_parser_from_source_str(session, filename, driver_fn).parse_item().unwrap().unwrap());
+
+    if lalr_table.is_some() {
+        items.push(builder.get_lalr_table());
+        items.push(builder.get_debug_translation_fn());
+        items.push(builder.get_debug_reduce_translation_fn());
+        items.push(builder.get_translation_fn());
+        items.push(builder.get_action_enum());
+        items.push(builder.get_starter_var());
+        items.push(builder.get_wrapper_fn(terminals));
+        items.push(builder.get_reduction_fn(rules));
+        items.push(parse::new_parser_from_source_str(session, filename, driver_fn).parse_item().unwrap().unwrap());
+}
 
     return MacEager::items(items);
 }

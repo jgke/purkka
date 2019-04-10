@@ -293,7 +293,7 @@ fn parse_item(
     ParseResult::Success(rule)
 }
 
-fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult + 'static> {
+fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree], compute_lalr_table: bool) -> Box<MacResult + 'static> {
     let mut tm = RuleTranslationMap {
         ..Default::default()
     };
@@ -345,11 +345,24 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult 
         }
     }
 
-    let lalr_table = compute_lalr(&tm, &terminals);
-    return output_parser(cx, sp, &tm, &items, &terminals, &lalr_table);
+    if compute_lalr_table {
+        let lalr_table = compute_lalr(&tm, &terminals);
+        output_parser(cx, sp, &tm, &items, &terminals, Some(&lalr_table))
+    } else {
+        output_parser(cx, sp, &tm, &items, &terminals, None)
+    }
+}
+
+fn expand_full_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult + 'static> {
+    expand_lalr(cx, sp, args, true)
+}
+
+fn expand_only_enums(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult + 'static> {
+    expand_lalr(cx, sp, args, false)
 }
 
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
-    reg.register_macro("lalr", expand_lalr);
+    reg.register_macro("lalr", expand_full_lalr);
+    reg.register_macro("grammar", expand_only_enums);
 }
