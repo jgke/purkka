@@ -15,8 +15,8 @@ pub struct State {
 
 fn get_decls(decl: InitDeclaratorList) -> Vec<InitDeclarator> {
     match decl {
-        InitDeclaratorList::InitDeclarator(InitDeclaratorList_InitDeclarator(decl)) => vec![decl],
-        InitDeclaratorList::Comma(InitDeclaratorList_Comma(more, _, decl)) => {
+        InitDeclaratorList::InitDeclarator(decl) => vec![decl],
+        InitDeclaratorList::Comma(more, _, decl) => {
             let mut decls = get_decls(*more);
             decls.push(decl);
             decls
@@ -33,10 +33,10 @@ fn ident_to_name(token: Token) -> String {
 
 fn get_decl_identifier(decl: Declarator) -> Vec<String> {
     match decl {
-        Declarator::Pointer(Declarator_Pointer(_, t, _)) => vec![identifier_or_type_to_str(t)],
-        Declarator::Identifier(Declarator_Identifier(t, _)) => vec![ident_to_name(t)],
-        Declarator::FunctionPointer(Declarator_FunctionPointer(_, decl, ..)) => get_decl_identifier(*decl),
-        Declarator::FunctionPointerReturningPointer(Declarator_FunctionPointerReturningPointer(_, _, decl, ..)) => get_decl_identifier(*decl),
+        Declarator::Pointer(_, t, _) => vec![identifier_or_type_to_str(t)],
+        Declarator::Identifier(t, _) => vec![ident_to_name(t)],
+        Declarator::FunctionPointer(_, decl, ..) => get_decl_identifier(*decl),
+        Declarator::FunctionPointerReturningPointer(_, _, decl, ..) => get_decl_identifier(*decl),
     }
 }
 
@@ -47,7 +47,7 @@ fn add_type(state: &mut State, name: String) {
 
 fn add_decl(state: &mut State, init_decl: InitDeclarator) {
     let decl = match init_decl {
-        InitDeclarator::Declarator(InitDeclarator_Declarator(decl)) => decl,
+        InitDeclarator::Declarator(decl) => decl,
         InitDeclarator::Asm(..) => panic!("Cannot typedef asm"),
         InitDeclarator::Assign(..) => panic!("Assignment to a typedef")
     };
@@ -58,11 +58,11 @@ fn add_decl(state: &mut State, init_decl: InitDeclarator) {
 
 fn add_typedef(state: &mut State, declaration: Box<TypeDeclaration>) {
     let (_spec, list) = match *declaration {
-        TypeDeclaration::Typedef(TypeDeclaration_Typedef(..)) => {
+        TypeDeclaration::Typedef(..) => {
             println!("Warning: useless typedef");
             return;
         },
-        TypeDeclaration::List(TypeDeclaration_List(_, spec, list, ..)) => (spec, list)
+        TypeDeclaration::List(_, spec, list, ..) => (spec, list)
     };
     
     let decls = get_decls(list);
@@ -71,27 +71,27 @@ fn add_typedef(state: &mut State, declaration: Box<TypeDeclaration>) {
 
 fn identifier_or_type_to_str(ty: IdentifierOrType) -> String {
     match ty {
-        IdentifierOrType::Identifier(IdentifierOrType_Identifier(token)) => ident_to_name(token),
-        IdentifierOrType::TypeNameStr(IdentifierOrType_TypeNameStr(token)) => ident_to_name(token),
+        IdentifierOrType::Identifier(token) => ident_to_name(token),
+        IdentifierOrType::TypeNameStr(token) => ident_to_name(token),
     }
 }
 
 fn add_struct_type(state: &mut State, declaration: Box<StructOrUnionSpecifier>) {
     match *declaration {
-        StructOrUnionSpecifier::NewType(StructOrUnionSpecifier_NewType(_, ty, ..)) =>
+        StructOrUnionSpecifier::NewType(_, ty, ..) =>
             add_type(state, identifier_or_type_to_str(ty)),
-        StructOrUnionSpecifier::Anonymous(StructOrUnionSpecifier_Anonymous(..)) => {}
-        StructOrUnionSpecifier::NameOnly(StructOrUnionSpecifier_NameOnly(_, ty, ..)) =>
+        StructOrUnionSpecifier::Anonymous(..) => {}
+        StructOrUnionSpecifier::NameOnly(_, ty, ..) =>
             add_type(state, identifier_or_type_to_str(ty)),
     };
 }
 
 fn add_enum_type(state: &mut State, declaration: Box<EnumSpecifier>) {
     match *declaration {
-        EnumSpecifier::List(EnumSpecifier_List(_, _, ..)) => {}
-        EnumSpecifier::Empty(EnumSpecifier_Empty(_, token, ..)) =>
+        EnumSpecifier::List(_, _, ..) => {}
+        EnumSpecifier::Empty(_, token, ..) =>
             add_type(state, ident_to_name(token)),
-        EnumSpecifier::NameOnly(EnumSpecifier_NameOnly(_, token, ..)) =>
+        EnumSpecifier::NameOnly(_, token, ..) =>
             add_type(state, ident_to_name(token)),
         EnumSpecifier::ExistingType(..) => {}
     };
@@ -115,14 +115,13 @@ fn is_label(state: &State, token: &Token) -> bool {
 
 fn maybe_add_label(state: &mut State, decl_spec: DeclarationSpecifiers, init_list: InitDeclaratorList, _semicolon: Token) {
     match decl_spec {
-        DeclarationSpecifiers::TypeSpecifier(DeclarationSpecifiers_TypeSpecifier(
-                TypeSpecifier::TypeNameStr(TypeSpecifier_TypeNameStr(t)))) => {
+        DeclarationSpecifiers::TypeSpecifier(TypeSpecifier::TypeNameStr(t)) => {
             let ty = ident_to_name(t);
             if ty == "__label__" {
                 let labels = &mut state.scope.last_mut().unwrap().labels;
                 get_decls(init_list).into_iter().for_each(|init_decl| {
                     let decl = match init_decl {
-                        InitDeclarator::Declarator(InitDeclarator_Declarator(decl)) => decl,
+                        InitDeclarator::Declarator(decl) => decl,
                         InitDeclarator::Asm(..) => panic!("Invalid __label__"),
                         InitDeclarator::Assign(..) => panic!("Invalid __label__")
                     };
