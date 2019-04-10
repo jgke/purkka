@@ -31,6 +31,6 @@ fn parse_lalr() {
     println!("1");
     assert_eq!(
         driver(&mut [Token::Id(), Token::Id()].iter(), &mut ()),
-        Ok(S::SS(S_SS(SS::C(SS_C(C::Id(C_Id(Token::Id())), C::Id(C_Id(Token::Id())))))))
+        Ok(S::SS(SS::C(C::Id(Token::Id()), C::Id(Token::Id()))))
     );
 }

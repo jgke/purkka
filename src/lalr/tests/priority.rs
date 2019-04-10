@@ -26,36 +26,36 @@ fn parse_priority() {
 
     assert_eq!(
         driver(&mut [Constant(), Times(), Constant(), Plus(), Constant()].iter(), &mut ()),
-        Ok(S::Expr(S_Expr(
-                    Expr::Plus(Expr_Plus(
-                            Box::new(Expr::Times(Expr_Times(
-                                    Box::new(Expr::PrimaryExpr(Expr_PrimaryExpr(
-                                            PrimaryExpr::Constant(PrimaryExpr_Constant(
-                                                    Constant()))))),
+        Ok(S::Expr(
+                    Expr::Plus(
+                            Box::new(Expr::Times(
+                                    Box::new(Expr::PrimaryExpr(
+                                            PrimaryExpr::Constant(
+                                                    Constant()))),
                                     Times(),
-                                    Box::new(Expr::PrimaryExpr(Expr_PrimaryExpr(
-                                            PrimaryExpr::Constant(PrimaryExpr_Constant(
-                                                    Constant())))))))),
+                                    Box::new(Expr::PrimaryExpr(
+                                            PrimaryExpr::Constant(
+                                                    Constant()))))),
                             Plus(),
-                            Box::new(Expr::PrimaryExpr(Expr_PrimaryExpr(
-                                    PrimaryExpr::Constant(PrimaryExpr_Constant(
-                                            Constant()))))))))))
+                            Box::new(Expr::PrimaryExpr(
+                                    PrimaryExpr::Constant(
+                                            Constant()))))))
     );
     assert_eq!(
         driver(&mut [Constant(), Plus(), Constant(), Times(), Constant()].iter(), &mut ()),
-        Ok(S::Expr(S_Expr(
-                    Expr::Plus(Expr_Plus(
-                            Box::new(Expr::PrimaryExpr(Expr_PrimaryExpr(
-                                    PrimaryExpr::Constant(PrimaryExpr_Constant(
-                                            Constant()))))),
+        Ok(S::Expr(
+                    Expr::Plus(
+                            Box::new(Expr::PrimaryExpr(
+                                    PrimaryExpr::Constant(
+                                            Constant()))),
                             Plus(),
-                            Box::new(Expr::Times(Expr_Times(
-                                    Box::new(Expr::PrimaryExpr(Expr_PrimaryExpr(
-                                            PrimaryExpr::Constant(PrimaryExpr_Constant(
-                                                    Constant()))))),
+                            Box::new(Expr::Times(
+                                    Box::new(Expr::PrimaryExpr(
+                                            PrimaryExpr::Constant(
+                                                    Constant()))),
                                     Times(),
-                                    Box::new(Expr::PrimaryExpr(Expr_PrimaryExpr(
-                                            PrimaryExpr::Constant(PrimaryExpr_Constant(
-                                                    Constant())))))))))))))
+                                    Box::new(Expr::PrimaryExpr(
+                                            PrimaryExpr::Constant(
+                                                    Constant()))))))))
     );
 }

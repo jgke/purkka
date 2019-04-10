@@ -54,10 +54,10 @@ fn parse_special() {
     };
     assert_eq!(
         driver(&mut [Token::Constant(1), Token::Plus(), Token::Constant(1)].iter(), &mut state),
-        Ok(S::T(S_T(T::A(T_A(
-                            A::Constant(A_Constant(Token::Constant(1))),
-                            Token::Plus(),
-                            B::Special(B_Special(Token::Constant(1))))))))
+        Ok(S::T(T::A(
+                    A::Constant(Token::Constant(1)),
+                    Token::Plus(),
+                    B::Special(Token::Constant(1)))))
     );
 }
 
@@ -68,9 +68,9 @@ fn parse_extra_special() {
     };
     assert_eq!(
         driver(&mut [Token::Constant(11), Token::Times(), Token::Constant(11)].iter(), &mut state),
-        Ok(S::T(S_T(T::C(T_C(
-                            A::Constant(A_Constant(Token::Constant(11))),
-                            Token::Times(),
-                            C::ExtraSpecial(C_ExtraSpecial(Token::Constant(11))))))))
+        Ok(S::T(T::C(
+                    A::Constant(Token::Constant(11)),
+                    Token::Times(),
+                    C::ExtraSpecial(Token::Constant(11)))))
     );
 }

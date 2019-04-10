@@ -26,7 +26,7 @@ lalr! {
 fn parse_empty_1() {
     assert_eq!(
         driver(&mut [Token::Constant()].iter(), &mut ()),
-        Ok(S::Ss(S_Ss(Ss::A(Ss_A(A::Constant(A_Constant(Token::Constant())))))))
+        Ok(S::Ss(Ss::A(A::Constant(Token::Constant()))))
     );
 }
 
@@ -34,7 +34,7 @@ fn parse_empty_1() {
 fn parse_empty_2() {
     assert_eq!(
         driver(&mut [Token::Constant()].iter(), &mut ()),
-        Ok(S::Ss(S_Ss(Ss::A(Ss_A(A::Constant(A_Constant(Token::Constant())))))))
+        Ok(S::Ss(Ss::A(A::Constant(Token::Constant()))))
     );
 }
 
@@ -42,7 +42,7 @@ fn parse_empty_2() {
 fn parse_empty_3() {
     assert_eq!(
         driver(&mut [].iter(), &mut ()),
-        Ok(S::Ss(S_Ss(Ss::A(Ss_A(A::Epsilon(A_Epsilon()))))))
+        Ok(S::Ss(Ss::A(A::Epsilon())))
     );
 }
 
@@ -50,12 +50,12 @@ fn parse_empty_3() {
 fn parse_empty_4() {
     assert_eq!(
         driver(&mut [Token::Minus(), Token::Minus()].iter(), &mut ()),
-        Ok(S::Ss(S_Ss(Ss::C(Ss_C(
-            C::Minus(C_Minus(
+        Ok(S::Ss(Ss::C(
+            C::Minus(
                 Token::Minus(),
-                Cc::Minus(Cc_Minus(
+                Cc::Minus(
                     Token::Minus(),
-                    Box::new(Cc::Epsilon(Cc_Epsilon()))
-        )))))))))
+                    Box::new(Cc::Epsilon())
+        )))))
     );
 }

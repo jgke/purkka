@@ -61,19 +61,6 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             ast::ItemKind::Enum(enumdef, ast::Generics::default()),
         )
     }
-    fn item_struct_derive(
-        &self,
-        span: Span,
-        ident: ast::Ident,
-        structdef: ast::VariantData,
-    ) -> P<ast::Item> {
-        self.item_derive(
-            span,
-            ident,
-            ast::ItemKind::Struct(structdef, ast::Generics::default()),
-        )
-    }
-
     fn boxed(&self, ty: P<ast::Ty>) -> P<ast::Ty> {
         self.cx.ty_path(self.cx.path_all(
             self.span,
@@ -102,71 +89,51 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             .variant(span, self.cx.ident_of(ty), vec![self.ty_ident(ty)])
     }
 
-    fn get_enum_item(&self, rule: &Rule) -> Vec<P<ast::Item>> {
+    fn get_enum_item(&self, rule: &Rule) -> P<ast::Item> {
         let enum_name = &rule.identifier;
-        let mut enum_items: Vec<P<ast::Item>> = rule
-            .data
-            .clone()
-            .into_iter()
-            .map(|Component {real_name, rules, ..}| {
-                let mut total_span = rules.get(0).unwrap().span;
-                let vals = rules
-                    .into_iter()
-                    .filter(|r| r.identifier != "Epsilon")
-                    .map(|item| {
-                        total_span = total_span.to(item.span);
-                        //let (n, x, s) = item;
-                        let ident_arr = item.full_path.rsplitn(2, "::");
-                        // .unwrap() here is always safe
-                        let ident_str = ident_arr.last().unwrap();
-                        let ident_ty = self.ty_ident(ident_str);
-                        let ty = match self.special_rules.get(ident_str) {
-                            Some(_) => self.ty_ident("Token"),
-                            None => if item.indirect || &item.identifier == enum_name {
-                                self.boxed(ident_ty)
-                            } else {
-                                ident_ty
-                            }
-                        };
-                        ast::StructField {
-                            span: item.span,
-                            ty,
-                            ident: None,
-                            vis: respan(item.span.shrink_to_lo(), ast::VisibilityKind::Inherited),
-                            attrs: Vec::new(),
-                            id: ast::DUMMY_NODE_ID,
-                        }
-                    })
-                    .collect();
-                let struct_name = format!("{}_{}", rule.identifier, real_name);
-                let item = self.item_struct_derive(
-                    total_span,
-                    self.cx.ident_of(&struct_name),
-                    ast::VariantData::Tuple(vals, ast::DUMMY_NODE_ID),
-                );
-                item
-            })
-            .collect();
         let enumdef = ast::EnumDef {
             variants: rule
                 .data
                 .clone()
                 .into_iter()
                 .map(|Component {real_name, rules, ..}| {
-                    let var_id = &format!("{}_{}", rule.identifier, real_name);
                     let total_span = rules.get(0).unwrap().span;
-                    self.cx.variant(
+
+                    let vals = rules
+                        .clone()
+                        .into_iter()
+                        .filter(|r| r.identifier != "Epsilon")
+                        .map(|item| {
+                            let ident_arr = item.full_path.rsplitn(2, "::");
+                            let ident_str = ident_arr.last().unwrap();
+                            let ident_ty = self.ty_ident(ident_str);
+                            let ty = match self.special_rules.get(ident_str) {
+                                Some(_) => self.ty_ident("Token"),
+                                None => if item.indirect || &item.identifier == enum_name {
+                                    self.boxed(ident_ty)
+                                } else {
+                                    ident_ty
+                                }
+                            };
+                            ty
+                        })
+                        .collect::<Vec<_>>();
+                    let is_empty = vals.is_empty();
+                    let mut variant = self.cx.variant(
                         total_span,
                         self.cx.ident_of(&real_name),
-                        vec![self.ty_ident(var_id)],
-                    )
+                        vals
+                    );
+                    if is_empty {
+                        variant.node.data = ast::VariantData::Tuple(Vec::new(), ast::DUMMY_NODE_ID);
+                    }
+                    variant
                 })
                 .collect(),
         };
 
         let ident = self.cx.ident_of(enum_name);
-        enum_items.push(self.item_enum_derive(rule.span, ident, enumdef));
-        enum_items
+        self.item_enum_derive(rule.span, ident, enumdef)
     }
 
     fn terminal_pattern(&self, symbol: &String) -> P<ast::Pat> {
@@ -785,14 +752,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                     *span,
                                     vec![self.cx.ident_of(identifier), self.cx.ident_of(real_name)],
                                 )),
-                                vec![
-                            self.cx.expr_call(
-                                *span,
-                                self.cx.expr_path(self.cx.path_ident(
-                                        *span,
-                                        self.cx.ident_of(&format!("{}_{}", identifier, real_name)))),
                                 args.clone()
-                                )],
                             )],
                     ));
 
@@ -950,7 +910,7 @@ pub fn output_parser(
     let mut items: SmallVec<[P<ast::Item>; 1]> = rules
         .iter()
         .filter(|item| item.identifier != "Epsilon")
-        .flat_map(|item| builder.get_enum_item(item))
+        .map(|item| builder.get_enum_item(item))
         .collect();
 
     let all_structs_enum = ast::EnumDef {
@@ -1046,7 +1006,7 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> R
     driver_fn.push_str(&format!(
         "
     if let box _Data::{0}(s) = t {{
-        Ok(S::{0}(S_{0}(s)))
+        Ok(S::{0}(s))
     }} else {{
         Err(None)
     }} }}",

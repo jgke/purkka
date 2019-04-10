@@ -20,5 +20,5 @@ grammar! {
 fn grammar_compiles() {
     use Token::*;
 
-    let _tree = S::A(S_A(A::B(A_B(B::Plus(B_Plus(Plus()))))));
+    let _tree = S::A(A::B(B::Plus(Plus())));
 }
