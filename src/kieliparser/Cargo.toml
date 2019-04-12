@@ -1,0 +1,8 @@
+[package]
+name = "kieliparser"
+version = "0.1.0"
+authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
+edition = "2018"
+
+[dependencies]
+lalr = { path="../lalr" }

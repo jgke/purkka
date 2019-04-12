@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use syntax_pos::Span;
+use syntax::{ast, ptr::P};
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -22,6 +23,7 @@ pub struct Rule {
     pub identifier: String,
     pub span: Span,
     pub data: Vec<Component>,
+    pub enumdef: Option<P<ast::Item>>,
 }
 
 #[derive(Debug, Clone)]
@@ -29,7 +31,7 @@ pub struct Component {
     pub real_name: String,
     pub action: Option<String>,
     pub priority: Option<(i32, bool)>,
-    pub rules: Vec<RuleData>
+    pub rules: Vec<RuleData>,
 }
 
 #[derive(Debug, Clone)]

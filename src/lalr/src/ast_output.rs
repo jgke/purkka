@@ -13,6 +13,7 @@ use std::collections::{HashSet, HashMap};
 use std::iter;
 
 use crate::types::{Action, Component, LRTable, Rule, RuleData, RuleTranslationMap, Terminal};
+use crate::generator::first;
 
 struct AstBuilderCx<'a, 'c> {
     cx: &'a ExtCtxt<'c>,
@@ -707,7 +708,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         &self,
         rule: &Rule
     ) -> P<ast::Expr> {
-        let Rule {identifier, span, data} = rule;
+        let Rule {identifier, span, data, ..} = rule;
         let bodies = data
             .iter()
             .enumerate()
@@ -864,6 +865,56 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             body,
         )
     }
+    pub fn get_first_fn(&self, rules: &Vec<Rule>) -> P<ast::Item> {
+        let header = r#"
+    macro_rules! match_first {
+        ($val:expr => $bind:ident, default $else:expr, $($body:tt)* ) => {
+            match_first!(@rules $val, $bind, $else, {}, $($body)* )
+        };
+        "#;
+
+        let single_match_start = r#"(@rules $val:expr, $bind:ident, $else:expr, {$($arms:tt)*}, "#;
+        let single_match_middle = r#" => $e:expr, $($tail:tt)*) => {
+            match_first!(@rules $val, $bind, $else, {
+                $($arms)* "#;
+        let single_match_tail = r#"
+            },
+            $($tail)*)
+        };
+        "#;
+
+        let tail = r#"
+        (@rules $val:expr, $bind:ident, $else:expr, {$($arms:tt)*}, $(,)*) => {
+            match $val {
+                $($arms)*
+                $bind => { $else }
+            }
+        };
+   }
+        "#;
+
+        let mut result = header.to_string();
+        for rule in rules.iter().filter(|t| t.identifier != "$") {
+            let mut single_match = single_match_start.to_string();
+            single_match += &rule.identifier;
+            single_match += single_match_middle;
+            let mut first_terms = HashSet::new();
+            let has_e = first(self.tm, &mut first_terms, &mut HashSet::new(), self.tm.indices[&rule.identifier]);
+            single_match += &first_terms.iter()
+                .map(|t| format!("Some($bind @ {}(..))", self.tm.rev_indices[t]))
+                .collect::<Vec<String>>()
+                .join("|");
+            single_match += " => { $e }";
+            single_match += single_match_tail;
+            result += &single_match;
+        }
+        result += tail;
+
+        let session = self.cx.parse_sess();
+        let filename = FileName::Custom("lalr_first_macro".to_string());
+        let tmp = parse::new_parser_from_source_str(session, filename, result).parse_item();
+        tmp.unwrap().unwrap()
+    }
 }
 
 pub fn output_parser(
@@ -910,7 +961,7 @@ pub fn output_parser(
     let mut items: SmallVec<[P<ast::Item>; 1]> = rules
         .iter()
         .filter(|item| item.identifier != "Epsilon")
-        .map(|item| builder.get_enum_item(item))
+        .map(|item| item.enumdef.clone().unwrap_or_else(|| builder.get_enum_item(item)))
         .collect();
 
     let all_structs_enum = ast::EnumDef {
@@ -1013,9 +1064,6 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> R
         tm.rules[&tm.indices["S"]].data[0].rules[0].identifier
     ));
 
-    let session = cx.parse_sess();
-    let filename = FileName::Custom("lalr_driver_fn".to_string());
-
     if lalr_table.is_some() {
         items.push(builder.get_lalr_table());
         items.push(builder.get_debug_translation_fn());
@@ -1025,8 +1073,13 @@ pub fn driver(tokenstream: &mut Iterator<Item = &Token>, state: &mut State) -> R
         items.push(builder.get_starter_var());
         items.push(builder.get_wrapper_fn(terminals));
         items.push(builder.get_reduction_fn(rules));
+
+        let session = cx.parse_sess();
+        let filename = FileName::Custom("lalr_driver_fn".to_string());
         items.push(parse::new_parser_from_source_str(session, filename, driver_fn).parse_item().unwrap().unwrap());
-}
+    } else {
+        items.push(builder.get_first_fn(rules));
+    }
 
     return MacEager::items(items);
 }

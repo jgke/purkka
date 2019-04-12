@@ -11,6 +11,9 @@ extern crate syntax_pos;
 use rustc_plugin::Registry;
 use syntax::ext::base::{DummyResult, ExtCtxt, MacResult};
 use syntax_pos::Span;
+use syntax::ast;
+use syntax::ptr::P;
+use syntax::parse;
 use syntax::parse::token;
 use syntax::tokenstream::TokenTree;
 
@@ -40,26 +43,23 @@ fn is_semi(tree: Option<&&TokenTree>) -> bool {
     }
 }
 
-enum ParseResult<SuccessType> {
-    Success(SuccessType),
-    Failure(Option<Span>),
-}
+type ParseResult<SuccessType> = Result<SuccessType, Option<Span>>;
 
 fn parse_failure<SuccessType>(cx: &mut ExtCtxt, outer_span: Span, tt: Option<&TokenTree>) -> ParseResult<SuccessType> {
     match tt {
         Some(TokenTree::Token(span, t)) => {
             let s: Span = *span;
             cx.span_err(s, &format!("Unexpected token: {:?}", t));
-            return ParseResult::Failure(Some(s));
+            return Err(Some(s));
         }
         Some(TokenTree::Delimited(span, _, t)) => {
             let s: Span = span.entire();
             cx.span_err(s, &format!("Unexpected span: {:?}", t));
-            return ParseResult::Failure(Some(s));
+            return Err(Some(s));
         }
         None => {
             cx.span_err(outer_span, "Unexpected end of input");
-            return ParseResult::Failure(None);
+            return Err(None);
         }
     }
 }
@@ -82,7 +82,7 @@ fn parse_special(
         Some(TokenTree::Token(span, _)) => {
             let s: Span = *span;
             cx.span_err(s, "Special rule name must be followed by ->");
-            return ParseResult::Failure(Some(s));
+            return Err(Some(s));
         }
         tt => return parse_failure(cx, *s, tt),
     }
@@ -136,7 +136,44 @@ fn parse_special(
 
     assert!(is_semi_r(iter.next()));
 
-    ParseResult::Success(special_component)
+    Ok(special_component)
+}
+
+fn parse_enumdef(cx: &mut ExtCtxt, iter: &mut Peekable<Iter<'_, TokenTree>>, sp: &Span) -> ParseResult<P<ast::Item>> {
+    let mut res = Vec::new();
+    let mut break_next = false;
+
+    loop {
+        match iter.next() {
+            Some(t@TokenTree::Delimited(..)) => {
+                res.push(t.clone());
+                if break_next {
+                    break;
+                }
+            }
+            Some(t@TokenTree::Token(_, token::Ident(..))) => {
+                res.push(t.clone());
+                if let TokenTree::Token(_, token::Ident(ident, _)) = t {
+                    if ident.name.to_string() == "enum" {
+                        break_next = true;
+                    }
+                }
+            }
+            Some(t) => res.push(t.clone()),
+            None => return parse_failure(cx, *res.last()
+                                         .and_then(|t| if let TokenTree::Token(s, _) = t {
+                                             Some(s)
+                                         } else {
+                                             None
+                                         })
+                                         .unwrap_or(sp), None)
+        }
+    }
+
+    let sess = cx.parse_sess();
+    let mut parser = parse::new_parser_from_tts(sess, res);
+
+    Ok(parser.parse_item().unwrap().unwrap())
 }
 
 fn parse_item(
@@ -157,7 +194,7 @@ fn parse_item(
         Some(TokenTree::Token(span, _)) => {
             let s: Span = *span;
             cx.span_err(s, "Rule name must be followed by ->");
-            return ParseResult::Failure(Some(s));
+            return Err(Some(s));
         }
         tt => return parse_failure(cx, s.to(rsp), tt),
     }
@@ -167,6 +204,7 @@ fn parse_item(
     let mut current_components: Vec<RuleData> = Vec::new();
     let mut action = None;
     let mut priority: Option<(i32, bool)> = None;
+    let mut enumdef = None;
 
     while !is_semi(iter.peek()) {
         match iter.next() {
@@ -243,7 +281,7 @@ fn parse_item(
                     real_name: real_real_name,
                     action,
                     rules: current_components,
-                    priority
+                    priority,
                 });
                 action = None;
                 priority = None;
@@ -256,6 +294,9 @@ fn parse_item(
                 } else {
                     return parse_failure(cx, s.to(rsp), None);
                 }
+            }
+            Some(TokenTree::Token(s, token::Token::At)) => {
+                enumdef = Some(parse_enumdef(cx, iter, s)?);
             }
             tt => return parse_failure(cx, s.to(rsp), tt),
         }
@@ -280,6 +321,7 @@ fn parse_item(
         identifier: identifier.to_string(),
         span,
         data: components,
+        enumdef
     };
 
     if tm
@@ -287,10 +329,10 @@ fn parse_item(
         .is_none()
     {
         cx.span_err(s.to(rsp), "Duplicate rule (Hint: Mark the expression A -> B; A -> C; with A -> B | C;)");
-        return ParseResult::Failure(Some(s.to(rsp)));
+        return Err(Some(s.to(rsp)));
     }
 
-    ParseResult::Success(rule)
+    Ok(rule)
 }
 
 fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree], compute_lalr_table: bool) -> Box<MacResult + 'static> {
@@ -306,11 +348,13 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree], compute_lalr_tabl
         identifier: "Epsilon".to_string(),
         span: sp,
         data: vec![],
+        enumdef: None,
     });
     items.push(Rule {
         identifier: "$".to_string(),
         span: sp,
         data: vec![],
+        enumdef: None,
     });
     for rule in &items {
         tm.push_rule(rule.identifier.clone(), rule.clone());
@@ -319,13 +363,13 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree], compute_lalr_tabl
     loop {
         match iter.peek() {
             Some(TokenTree::Token(_, token::Not)) => match parse_special(cx, sp, &mut iter) {
-                ParseResult::Success(item) => {
+                Ok(item) => {
                     terminals.insert(item);
                 }
-                ParseResult::Failure(span) => return DummyResult::any(span.unwrap_or(sp)),
+                Err(span) => return DummyResult::any(span.unwrap_or(sp)),
             }
             Some(_) => match parse_item(cx, sp, &mut iter, &mut tm) {
-                ParseResult::Success(item) => {
+                Ok(item) => {
                     item.data.iter().for_each(|rules| {
                         rules.rules.iter().filter(|x| x.terminal).for_each(|x| {
                             terminals.insert(Terminal {
@@ -339,7 +383,7 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree], compute_lalr_tabl
 
                     items.push(item);
                 }
-                ParseResult::Failure(span) => return DummyResult::any(span.unwrap_or(sp)),
+                Err(span) => return DummyResult::any(span.unwrap_or(sp)),
             }
             None => break,
         }

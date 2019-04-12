@@ -5,6 +5,7 @@ members = [
     "src/ctoken",
     "src/fragment",
     "src/kieli",
+    "src/kieliparser",
     "src/lalr",
     "src/parser",
     "src/preprocessor",

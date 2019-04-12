@@ -10,7 +10,7 @@ use rayon::prelude::*;
 use crate::types::{Action, Component, Core, Item, Index, LRTable, RuleData, RuleTranslationMap, Terminal};
 use debug::debug::{if_debug, DebugVal::DumpLalrTable};
 
-fn first(
+pub fn first(
     tm: &RuleTranslationMap,
     set: &mut HashSet<Index>,
     cache: &mut HashSet<Index>,
