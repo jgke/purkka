@@ -1,27 +1,40 @@
-//! String interner.
+//! Generic HashMap-based interner.
 
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::rc::Rc;
+use std::borrow::Borrow;
 
-#[derive(Clone, Debug)]
-pub struct StringInterner {
-    interner: HashMap<String, Rc<str>>
+
+/// Simple HashMap-based interner.
+pub struct Interner<K, V>
+where K: Hash + Eq,
+      V: ?Sized {
+    interner: HashMap<K, Rc<V>>
 }
 
-impl StringInterner {
-    pub fn new() -> StringInterner {
-        StringInterner {
+impl<K, V> Interner<K, V>
+where K: Hash + Eq,
+      V: ?Sized {
+    pub fn new() -> Interner<K, V> {
+        Interner {
             interner: HashMap::new()
         }
     }
 
-    pub fn get_ref(&mut self, name: &str) -> Rc<str> {
+    pub fn get_ref<'a, B: ?Sized>(&mut self, name: &'a B) -> Rc<V>
+        where K: Borrow<B> + From<&'a B>,
+              Rc<V>: From<&'a B>,
+              B: Hash + Eq
+    {
         if !self.interner.contains_key(name) {
-            self.interner.insert(name.to_string(), From::from(name.to_string()));
+            self.interner.insert(From::from(name), From::from(name));
         }
         Rc::clone(&self.interner[name])
     }
 }
+
+type StringInterner = Interner<String, str>;
 
 #[test]
 fn simple_intern() {
