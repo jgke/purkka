@@ -5,4 +5,6 @@ authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 edition = "2018"
 
 [dependencies]
+fragment = { path="../fragment" }
 lalr = { path="../lalr" }
+shared = { path="../shared" }

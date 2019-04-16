@@ -6,8 +6,13 @@
 #![allow(non_camel_case_types)]
 
 pub mod parser;
+pub mod token;
+pub mod tokenizer;
 
-use parser::*;
+use parser::{parse, S};
+use tokenizer::tokenize;
 
-pub fn it_compiles() {
+pub fn parse_file(content: &str) -> S {
+    let (tokens, _interner) = tokenize(content);
+    parse(&mut tokens.iter().peekable())
 }

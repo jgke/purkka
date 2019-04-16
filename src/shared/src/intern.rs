@@ -7,14 +7,23 @@ use std::borrow::Borrow;
 
 
 /// Simple HashMap-based interner.
+#[derive(Debug)]
 pub struct Interner<K, V>
-where K: Hash + Eq,
+where K: Clone + Hash + Eq,
       V: ?Sized {
     interner: HashMap<K, Rc<V>>
 }
 
+impl<K, V> Clone for Interner<K, V>
+where K: Clone + Hash + Eq,
+      V: ?Sized {
+    fn clone(&self) -> Self {
+        Self { interner: self.interner.clone() }
+    }
+}
+
 impl<K, V> Interner<K, V>
-where K: Hash + Eq,
+where K: Clone + Hash + Eq,
       V: ?Sized {
     pub fn new() -> Interner<K, V> {
         Interner {
@@ -34,7 +43,7 @@ where K: Hash + Eq,
     }
 }
 
-type StringInterner = Interner<String, str>;
+pub type StringInterner = Interner<String, str>;
 
 #[test]
 fn simple_intern() {
@@ -49,4 +58,7 @@ fn simple_intern() {
     assert_eq!(interner.interner.len(), 2);
     interner.get_ref("bar");
     assert_eq!(interner.interner.len(), 2);
+
+    // quick test for derived traits
+    println!("{:?}", interner.clone());
 }
