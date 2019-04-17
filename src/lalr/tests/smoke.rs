@@ -41,26 +41,24 @@ fn parse_simple() {
     use Token::*;
 
     //let tree = driver(&mut [Times(), Times(), Plus(), Plus()].iter());
-    let tree = driver(&mut [Constant(), Plus(), OpenParen(), Constant(), CloseParen()].iter(), &mut ());
+    let tree = driver(
+        &mut [Constant(), Plus(), OpenParen(), Constant(), CloseParen()].iter(),
+        &mut (),
+    );
     assert_eq!(
         tree,
         Ok(S::PlusExpr(PlusExpr::Plus(
-            Box::new(PlusExpr::TimesExpr(
-                TimesExpr::PrimaryExpr(PrimaryExpr::Constant(
-                    Constant()
-                )))
-            ),
+            Box::new(PlusExpr::TimesExpr(TimesExpr::PrimaryExpr(
+                PrimaryExpr::Constant(Constant())
+            ))),
             Plus(),
             TimesExpr::PrimaryExpr(PrimaryExpr::OpenParen(
-                    OpenParen(),
-                    Box::new(PlusExpr::TimesExpr(
-                        TimesExpr::PrimaryExpr(PrimaryExpr::Constant(
-                            Constant()
-                        ))
-                    )),
-                    CloseParen()
-                )
-            )))
-        )
+                OpenParen(),
+                Box::new(PlusExpr::TimesExpr(TimesExpr::PrimaryExpr(
+                    PrimaryExpr::Constant(Constant())
+                ))),
+                CloseParen()
+            ))
+        )))
     );
 }

@@ -17,10 +17,6 @@ use syntax::parse::token;
 use syntax::tokenstream::TokenTree;
 use syntax_pos::{FileName, Span};
 
-
-
-
-
 pub fn format_blocks(
     cx: &mut ExtCtxt,
     fmap: bool,
@@ -40,7 +36,10 @@ pub fn format_blocks(
     );
     let trait_name = format!("{}_{}", this, fn_name);
     let impl_enter_match = if fmap {
-        format!("if let Some({}) = self {{ t.as_ref() }} else {{ None }}", pat)
+        format!(
+            "if let Some({}) = self {{ t.as_ref() }} else {{ None }}",
+            pat
+        )
     } else {
         format!("if let Some({}) = self {{ Some(t) }} else {{ None }}", pat)
     };

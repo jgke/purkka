@@ -1,12 +1,12 @@
 #[macro_use]
 pub mod macrotoken;
+pub mod calculator;
 pub mod tokenizer;
 pub mod tokentype;
-pub mod calculator;
 
+use fragment::fragment::FragmentIterator;
 use macrotoken::MacroToken;
 use tokenizer::{MacroContext, ParseResult};
-use fragment::fragment::FragmentIterator;
 
 pub struct PreprocessorOptions<'a> {
     pub include_path: Vec<&'a str>,
@@ -14,19 +14,24 @@ pub struct PreprocessorOptions<'a> {
     pub definitions: Vec<(&'a str, &'a str)>,
 }
 
-pub fn preprocess<CB>(get_file: CB, filename: &str)
-    -> ParseResult<(Vec<MacroToken>, FragmentIterator)>
+pub fn preprocess<CB>(
+    get_file: CB,
+    filename: &str,
+) -> ParseResult<(Vec<MacroToken>, FragmentIterator)>
 where
-    CB: Fn(bool, String, String) -> (String, String)
+    CB: Fn(bool, String, String) -> (String, String),
 {
     let mut context = MacroContext::new(get_file);
     Ok(context.preprocess(filename))
 }
 
-pub fn preprocess_file<CB>(filename: &str, get_file: CB, options: &PreprocessorOptions)
-    -> ParseResult<(Vec<MacroToken>, FragmentIterator)>
+pub fn preprocess_file<CB>(
+    filename: &str,
+    get_file: CB,
+    options: &PreprocessorOptions,
+) -> ParseResult<(Vec<MacroToken>, FragmentIterator)>
 where
-    CB: Fn(bool, String, String) -> (String, String)
+    CB: Fn(bool, String, String) -> (String, String),
 {
     let mut context = MacroContext::new(get_file);
     context.add_definitions(&options.definitions);

@@ -4,13 +4,14 @@ extern crate test;
 
 use test::Bencher;
 
-use fragment::fragment::{FragmentIterator};
+use fragment::fragment::FragmentIterator;
 
+use preprocessor::macrotoken::MacroToken;
 
-use preprocessor::macrotoken::{MacroToken};
-
-
-pub fn process_files(files: Vec<(&str, &str)>, start: &str) -> Result<(Vec<MacroToken>, FragmentIterator), &'static str> {
+pub fn process_files(
+    files: Vec<(&str, &str)>,
+    start: &str,
+) -> Result<(Vec<MacroToken>, FragmentIterator), &'static str> {
     let processed = preprocessor::preprocess(
         |_is_quoted, _current_file, filename| {
             for (name, content) in &files {

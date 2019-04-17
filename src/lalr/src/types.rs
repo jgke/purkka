@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use syntax_pos::Span;
 use syntax::{ast, ptr::P};
+use syntax_pos::Span;
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -72,7 +72,7 @@ pub struct Item {
 pub struct Core {
     pub index: Index,
     pub subindex: usize,
-    pub position: usize
+    pub position: usize,
 }
 
 impl Item {
@@ -84,7 +84,7 @@ impl Item {
         Core {
             index: self.index,
             subindex: self.subindex,
-            position: self.position
+            position: self.position,
         }
     }
 }
@@ -99,7 +99,7 @@ impl Core {
             index: self.index,
             subindex: self.subindex,
             position: self.position,
-            lookahead
+            lookahead,
         }
     }
 }
@@ -123,7 +123,8 @@ pub struct CoreWithTr<'a>(pub &'a RuleTranslationMap, pub &'a Core);
 
 impl Ord for Item {
     fn cmp(&self, other: &Item) -> Ordering {
-        self.index.cmp(&other.index)
+        self.index
+            .cmp(&other.index)
             .then(self.subindex.cmp(&other.subindex))
             .then(self.position.cmp(&other.position))
             .then(self.lookahead.cmp(&other.lookahead))
@@ -141,7 +142,10 @@ impl fmt::Display for Rule {
         let mut output = String::new();
         let indentation = " ".repeat(self.identifier.len() + 2);
         let mut first = true;
-        for Component {real_name, rules, ..} in &self.data {
+        for Component {
+            real_name, rules, ..
+        } in &self.data
+        {
             if !first {
                 output.push_str("\n");
                 output.push_str(&indentation);
@@ -181,12 +185,17 @@ impl Eq for Terminal {}
 
 impl RuleTranslationMap {
     pub fn push_rule(&mut self, name: String, rule: Rule) -> Option<()> {
-        if self.indices.get(&name).and_then(|index| self.rules.get(index)).is_some() {
+        if self
+            .indices
+            .get(&name)
+            .and_then(|index| self.rules.get(index))
+            .is_some()
+        {
             return None;
         }
 
         self.push_symbol(&name);
-        rule.data.iter().for_each(|Component {rules, ..}| {
+        rule.data.iter().for_each(|Component { rules, .. }| {
             rules
                 .iter()
                 .for_each(|ruledata| self.push_symbol(&ruledata.full_path))
@@ -202,7 +211,8 @@ impl RuleTranslationMap {
         }
 
         self.indices.insert(symbol.to_string(), self.current_index);
-        self.rev_indices.insert(self.current_index, symbol.to_string());
+        self.rev_indices
+            .insert(self.current_index, symbol.to_string());
         self.current_index += 1;
     }
 }
@@ -211,12 +221,12 @@ impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Action::Error => write!(f, "{: >7.5}", ""),
-            Action::Shift(to, _priority) => write!(f, "{: >7.5}", String::from("s") + &to.to_string()),
-            Action::Reduce(rule, subrule, _length, _priority) => write!(
-                f,
-                "{: >7.5}",
-                format!("r{}{}", rule, subrule)
-            ),
+            Action::Shift(to, _priority) => {
+                write!(f, "{: >7.5}", String::from("s") + &to.to_string())
+            }
+            Action::Reduce(rule, subrule, _length, _priority) => {
+                write!(f, "{: >7.5}", format!("r{}{}", rule, subrule))
+            }
             Action::Accept => write!(f, "{: >7.5}", "acc"),
             Action::Goto(to) => write!(f, "{: >7.5}", String::from("g") + &to.to_string()),
         }
@@ -227,7 +237,7 @@ impl<'a> fmt::Display for ItemWithTr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut output = String::new();
         let ItemWithTr(tm, item) = self;
-        let Component {ref rules, ..} = tm.rules[&item.index].data[item.subindex];
+        let Component { ref rules, .. } = tm.rules[&item.index].data[item.subindex];
         for (i, symbol) in rules.iter().enumerate() {
             if i == item.position {
                 output.push_str(" . ");
@@ -250,7 +260,7 @@ impl<'a> fmt::Display for CoreWithTr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut output = String::new();
         let CoreWithTr(tm, core) = self;
-        let Component {ref rules, ..} = tm.rules[&core.index].data[core.subindex];
+        let Component { ref rules, .. } = tm.rules[&core.index].data[core.subindex];
         for (i, symbol) in rules.iter().enumerate() {
             if i == core.position {
                 output.push_str(" . ");

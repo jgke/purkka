@@ -33,11 +33,7 @@ fn parse_ty(s: &str) -> S {
 }
 
 fn get_ty(s: &S) -> Option<&TypeSignature> {
-    Some(s)
-        .translation_unit()
-        .leaf()
-        .declaration()
-        .ty()
+    Some(s).translation_unit().leaf().declaration().ty()
 }
 
 #[test]
@@ -75,8 +71,8 @@ fn parse_types() {
                 ty: Box::new(TypeSignature::Pointer {
                     nullable: false,
                     ty: Box::new(TypeSignature::Plain(From::from("int")))
-                }
-            )}))],
+                })
+            }))],
             Box::new(TypeSignature::Plain(From::from("int")))
         )
     );

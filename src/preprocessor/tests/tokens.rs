@@ -9,7 +9,7 @@ fn test_char(input: &str, expected: char) {
         vec![mt(
             "foo.c",
             0,
-            input.len()-1,
+            input.len() - 1,
             MacroTokenType::Char(expected),
         )],
     );

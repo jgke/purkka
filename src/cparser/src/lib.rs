@@ -1,5 +1,4 @@
-#![recursion_limit="100"]
-
+#![recursion_limit = "100"]
 #![feature(plugin, box_patterns)]
 #![plugin(lalr)]
 #![allow(dead_code)]
@@ -11,13 +10,11 @@ pub mod parser;
 
 use std::collections::HashSet;
 
-use parser::{driver, State, ScopedState};
 use ctoken::token::Token;
+use parser::{driver, ScopedState, State};
 
 pub fn parse(input: Vec<Token>) -> Result<parser::S, Option<Token>> {
-    let mut state = State {
-        scope: Vec::new(),
-    };
+    let mut state = State { scope: Vec::new() };
     state.scope.push(ScopedState {
         types: HashSet::new(),
         labels: HashSet::new(),

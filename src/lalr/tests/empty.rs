@@ -50,12 +50,9 @@ fn parse_empty_3() {
 fn parse_empty_4() {
     assert_eq!(
         driver(&mut [Token::Minus(), Token::Minus()].iter(), &mut ()),
-        Ok(S::Ss(Ss::C(
-            C::Minus(
-                Token::Minus(),
-                Cc::Minus(
-                    Token::Minus(),
-                    Box::new(Cc::Epsilon())
-        )))))
+        Ok(S::Ss(Ss::C(C::Minus(
+            Token::Minus(),
+            Cc::Minus(Token::Minus(), Box::new(Cc::Epsilon()))
+        ))))
     );
 }

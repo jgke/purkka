@@ -25,37 +25,33 @@ fn parse_priority() {
     use Token::*;
 
     assert_eq!(
-        driver(&mut [Constant(), Times(), Constant(), Plus(), Constant()].iter(), &mut ()),
-        Ok(S::Expr(
-                    Expr::Plus(
-                            Box::new(Expr::Times(
-                                    Box::new(Expr::PrimaryExpr(
-                                            PrimaryExpr::Constant(
-                                                    Constant()))),
-                                    Times(),
-                                    Box::new(Expr::PrimaryExpr(
-                                            PrimaryExpr::Constant(
-                                                    Constant()))))),
-                            Plus(),
-                            Box::new(Expr::PrimaryExpr(
-                                    PrimaryExpr::Constant(
-                                            Constant()))))))
+        driver(
+            &mut [Constant(), Times(), Constant(), Plus(), Constant()].iter(),
+            &mut ()
+        ),
+        Ok(S::Expr(Expr::Plus(
+            Box::new(Expr::Times(
+                Box::new(Expr::PrimaryExpr(PrimaryExpr::Constant(Constant()))),
+                Times(),
+                Box::new(Expr::PrimaryExpr(PrimaryExpr::Constant(Constant())))
+            )),
+            Plus(),
+            Box::new(Expr::PrimaryExpr(PrimaryExpr::Constant(Constant())))
+        )))
     );
     assert_eq!(
-        driver(&mut [Constant(), Plus(), Constant(), Times(), Constant()].iter(), &mut ()),
-        Ok(S::Expr(
-                    Expr::Plus(
-                            Box::new(Expr::PrimaryExpr(
-                                    PrimaryExpr::Constant(
-                                            Constant()))),
-                            Plus(),
-                            Box::new(Expr::Times(
-                                    Box::new(Expr::PrimaryExpr(
-                                            PrimaryExpr::Constant(
-                                                    Constant()))),
-                                    Times(),
-                                    Box::new(Expr::PrimaryExpr(
-                                            PrimaryExpr::Constant(
-                                                    Constant()))))))))
+        driver(
+            &mut [Constant(), Plus(), Constant(), Times(), Constant()].iter(),
+            &mut ()
+        ),
+        Ok(S::Expr(Expr::Plus(
+            Box::new(Expr::PrimaryExpr(PrimaryExpr::Constant(Constant()))),
+            Plus(),
+            Box::new(Expr::Times(
+                Box::new(Expr::PrimaryExpr(PrimaryExpr::Constant(Constant()))),
+                Times(),
+                Box::new(Expr::PrimaryExpr(PrimaryExpr::Constant(Constant())))
+            ))
+        )))
     );
 }

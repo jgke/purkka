@@ -31,7 +31,13 @@ fn bench_reductions(b: &mut Bencher) {
     use Token::*;
 
     b.iter(|| {
-        let tree = driver(&mut std::iter::repeat(Constant()).take(16384).collect::<Vec<_>>().iter(), &mut ());
+        let tree = driver(
+            &mut std::iter::repeat(Constant())
+                .take(16384)
+                .collect::<Vec<_>>()
+                .iter(),
+            &mut (),
+        );
         assert!(tree.is_ok());
         tree
     });

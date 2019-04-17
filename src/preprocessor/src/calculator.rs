@@ -2,22 +2,23 @@ use std::str::FromStr;
 
 use crate::macrotoken::{MacroToken, MacroTokenType, SpecialType};
 use crate::tokentype;
-use crate::tokentype::{Operator};
+use crate::tokentype::Operator;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Paren {
-    OpenParen, CloseParen
+    OpenParen,
+    CloseParen,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum ConstExprToken {
     Number(i64),
     Paren(Paren),
-    Op(tokentype::Operator)
+    Op(tokentype::Operator),
 }
 
-use self::Paren::*;
 use self::ConstExprToken::*;
+use self::Paren::*;
 
 fn parse_number(num: &str) -> i64 {
     let mut num_len = 0;
@@ -26,8 +27,8 @@ fn parse_number(num: &str) -> i64 {
         let c = iter.next();
         if c.is_some() {
             match c.unwrap() {
-                '0' ..= '9' => num_len += 1,
-                _ => break
+                '0'..='9' => num_len += 1,
+                _ => break,
             };
         } else {
             break;
@@ -46,8 +47,12 @@ fn const_expr_token_from_macro(ty: &MacroTokenType) -> ConstExprToken {
         MacroTokenType::Punctuation(tokentype::Punctuation::OpenParen) => Paren(OpenParen),
         MacroTokenType::Punctuation(tokentype::Punctuation::CloseParen) => Paren(CloseParen),
         MacroTokenType::Punctuation(_) => panic!("Invalid character in expression: {:?}", ty),
-        MacroTokenType::Special(SpecialType::Sizeof(..)) => panic!("Cannot use sizeof expressions in #if expressions"),
-        MacroTokenType::Special(SpecialType::Asm(..)) => panic!("Cannot use asm statemets in #if expressions"),
+        MacroTokenType::Special(SpecialType::Sizeof(..)) => {
+            panic!("Cannot use sizeof expressions in #if expressions")
+        }
+        MacroTokenType::Special(SpecialType::Asm(..)) => {
+            panic!("Cannot use asm statemets in #if expressions")
+        }
         MacroTokenType::Other(_) => panic!("Invalid character in expression: {:?}", ty),
         MacroTokenType::Empty => panic!(),
     }
@@ -61,7 +66,7 @@ macro_rules! expr1b {
         $stack.pop().unwrap();
         let result = if $func(right) { 1 } else { 0 };
         $stack.push(result);
-    }}
+    }};
 }
 
 // int -> int
@@ -72,7 +77,7 @@ macro_rules! expr1i {
         $stack.pop().unwrap();
         let result = $func(right);
         $stack.push(result);
-    }}
+    }};
 }
 
 // (int, int) -> bool
@@ -82,7 +87,7 @@ macro_rules! expr2b {
         let left = $stack.pop().unwrap();
         let result = if $func(left, right) { 1 } else { 0 };
         $stack.push(result);
-    }}
+    }};
 }
 
 // (int, int) -> int
@@ -92,7 +97,7 @@ macro_rules! expr2i {
         let left = $stack.pop().unwrap();
         let result = $func(left, right);
         $stack.push(result);
-    }}
+    }};
 }
 
 fn eval_expression_postfix(expr: Vec<ConstExprToken>) -> i64 {
@@ -142,11 +147,11 @@ fn eval_expression_postfix(expr: Vec<ConstExprToken>) -> i64 {
                 } else {
                     stack.push(right);
                 }
-            },
+            }
 
             Op(op) => panic!("Unsupported operator in macro expression: {:?}", op),
 
-            Paren(_) => unreachable!()
+            Paren(_) => unreachable!(),
         }
     }
     assert_eq!(stack.len(), 1);
@@ -157,10 +162,9 @@ fn stack_top(stack: &Vec<ConstExprToken>) -> Option<ConstExprToken> {
     if stack.len() == 0 {
         None
     } else {
-        Some(stack[stack.len()-1])
+        Some(stack[stack.len() - 1])
     }
 }
-
 
 // Use the shunting yard algorithm to convert infix to postfix
 fn shunt(expr: &Vec<ConstExprToken>) -> Vec<ConstExprToken> {
@@ -185,12 +189,15 @@ fn shunt(expr: &Vec<ConstExprToken>) -> Vec<ConstExprToken> {
                         None => break,
                         Some(Op(stack_op)) => {
                             /*
-        while ((there is an operator at the top of the operator stack with greater precedence)
-               or (the operator at the top of the operator stack has equal precedence and is left associative))
-              :
-                             */
+                            while ((there is an operator at the top of the operator stack with greater precedence)
+                                   or (the operator at the top of the operator stack has equal precedence and is left associative))
+                                  :
+                                                 */
                             let stack_op_prec = tokentype::get_precedence(&stack_op);
-                            if !(stack_op_prec < op_prec || (stack_op_prec == op_prec && tokentype::is_left_associative(&stack_op))) {
+                            if !(stack_op_prec < op_prec
+                                || (stack_op_prec == op_prec
+                                    && tokentype::is_left_associative(&stack_op)))
+                            {
                                 break;
                             }
                         }
@@ -203,23 +210,24 @@ fn shunt(expr: &Vec<ConstExprToken>) -> Vec<ConstExprToken> {
                 stack.push(tok);
             }
             Paren(OpenParen) => stack.push(tok),
-            Paren(CloseParen) => {
-                loop {
-                    let top = stack_top(&stack);
-                    match top {
-                        Some(Paren(OpenParen)) => {
-                            stack.pop();
-                            break;
-                        }
-                        Some(_) => out.push(stack.pop().unwrap()), 
-                        None => panic!()
+            Paren(CloseParen) => loop {
+                let top = stack_top(&stack);
+                match top {
+                    Some(Paren(OpenParen)) => {
+                        stack.pop();
+                        break;
                     }
+                    Some(_) => out.push(stack.pop().unwrap()),
+                    None => panic!(),
                 }
-            }
+            },
         }
         i += 1;
     }
-    if stack.iter().any(|t| t == &Paren(OpenParen) || t == &Paren(CloseParen)) {
+    if stack
+        .iter()
+        .any(|t| t == &Paren(OpenParen) || t == &Paren(CloseParen))
+    {
         panic!();
     }
     out.append(&mut stack.drain(..).rev().collect());
@@ -228,7 +236,10 @@ fn shunt(expr: &Vec<ConstExprToken>) -> Vec<ConstExprToken> {
 
 pub fn eval_expression(expr: &Vec<MacroToken>) -> bool {
     assert!(expr.len() > 0);
-    let tokens: Vec<ConstExprToken> = expr.iter().map(|t| const_expr_token_from_macro(&t.ty)).collect();
+    let tokens: Vec<ConstExprToken> = expr
+        .iter()
+        .map(|t| const_expr_token_from_macro(&t.ty))
+        .collect();
     let shunted = shunt(&tokens);
     let result = eval_expression_postfix(shunted);
 
@@ -237,44 +248,79 @@ pub fn eval_expression(expr: &Vec<MacroToken>) -> bool {
 
 #[test]
 fn shunt_const() {
-    assert_eq!(
-        shunt(&vec![Number(0)]),
-        vec![Number(0)]
-        );
+    assert_eq!(shunt(&vec![Number(0)]), vec![Number(0)]);
 }
 
 #[test]
 fn shunt_plus() {
     assert_eq!(
-        shunt(&vec![Number(0), Op(Operator::Plus), Number(1), Op(Operator::Plus), Number(2)]),
-        vec![Number(0), Number(1), Op(Operator::Plus), Number(2), Op(Operator::Plus)],
-        );
+        shunt(&vec![
+            Number(0),
+            Op(Operator::Plus),
+            Number(1),
+            Op(Operator::Plus),
+            Number(2)
+        ]),
+        vec![
+            Number(0),
+            Number(1),
+            Op(Operator::Plus),
+            Number(2),
+            Op(Operator::Plus)
+        ],
+    );
 }
 
 #[test]
 fn shunt_ternary() {
     assert_eq!(
-        shunt(&vec![Number(0), Op(Operator::Plus), Number(0),
-            Op(Operator::Ternary), Number(1), Op(Operator::Plus), Number(2),
-            Op(Operator::TernaryAlternative), Number(3), Op(Operator::Minus), Number(4)]),
-            vec![
-            Number(0), Number(0), Op(Operator::Plus),
-            Number(1), Number(2), Op(Operator::Plus),
-            Number(3), Number(4), Op(Operator::Minus),
-            Op(Operator::TernaryAlternative), Op(Operator::Ternary)
-            ],
-        );
+        shunt(&vec![
+            Number(0),
+            Op(Operator::Plus),
+            Number(0),
+            Op(Operator::Ternary),
+            Number(1),
+            Op(Operator::Plus),
+            Number(2),
+            Op(Operator::TernaryAlternative),
+            Number(3),
+            Op(Operator::Minus),
+            Number(4)
+        ]),
+        vec![
+            Number(0),
+            Number(0),
+            Op(Operator::Plus),
+            Number(1),
+            Number(2),
+            Op(Operator::Plus),
+            Number(3),
+            Number(4),
+            Op(Operator::Minus),
+            Op(Operator::TernaryAlternative),
+            Op(Operator::Ternary)
+        ],
+    );
 }
-
 
 #[test]
 fn eval_ternary() {
     assert_eq!(
-        eval_expression_postfix(shunt(&vec![Number(0), Op(Operator::Plus), Number(1),
-            Op(Operator::Ternary), Number(1), Op(Operator::Plus), Number(2),
-            Op(Operator::TernaryAlternative), Number(3), Op(Operator::Minus), Number(4)])),
-            -1
-        );
+        eval_expression_postfix(shunt(&vec![
+            Number(0),
+            Op(Operator::Plus),
+            Number(1),
+            Op(Operator::Ternary),
+            Number(1),
+            Op(Operator::Plus),
+            Number(2),
+            Op(Operator::TernaryAlternative),
+            Number(3),
+            Op(Operator::Minus),
+            Number(4)
+        ])),
+        -1
+    );
 }
 
 // testing utils
@@ -286,7 +332,7 @@ use tokentype::OPERATORS;
 fn get_op(op: &str) -> Option<Operator> {
     for (s, operator) in OPERATORS {
         if s == &op {
-            return Some(**operator)
+            return Some(**operator);
         }
     }
     None
@@ -297,13 +343,14 @@ fn get_paren(paren: &str) -> Option<Paren> {
     match paren {
         "(" => Some(OpenParen),
         ")" => Some(CloseParen),
-        _ => None
+        _ => None,
     }
 }
 
 #[cfg(test)]
 fn to_token(s: &str) -> ConstExprToken {
-    get_op(s).map(|t| Op(t))
+    get_op(s)
+        .map(|t| Op(t))
         .or_else(|| get_paren(s).map(|t| Paren(t)))
         .unwrap_or_else(|| Number(parse_number(s)))
 }

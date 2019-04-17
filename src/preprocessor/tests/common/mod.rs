@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
-use fragment::fragment::{FragmentIterator, Source, Span};
 use debug::debug::DEBUG_VALS;
+use fragment::fragment::{FragmentIterator, Source, Span};
 
 use preprocessor::macrotoken::{MacroToken, MacroTokenType};
-use preprocessor::tokenizer::{ParseResult};
+use preprocessor::tokenizer::ParseResult;
 
 pub fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<MacroToken>> {
     for s in DEBUG_VALS {
@@ -18,7 +18,8 @@ pub fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<Macro
             (content.to_string(), f)
         },
         filename,
-    ).map(|t| t.0)
+    )
+    .map(|t| t.0)
 }
 
 pub fn process_files(files: Vec<(&str, &str)>, start: &str, expected: Vec<MacroToken>) {

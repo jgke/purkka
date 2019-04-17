@@ -185,35 +185,24 @@ pub static OPERATORS: &[(&str, &Operator)] = &[
 pub static PRECEDENCE: &[(usize, &Operator)] = &[
     (1, &Not),
     (1, &BitNot),
-
     (2, &Mod),
     (2, &Times),
     (2, &Divide),
-
     (3, &Plus),
     (3, &Minus),
-
     (4, &BitShiftLeft),
     (4, &BitShiftRight),
-
     (5, &MoreThan),
     (5, &LessThan),
     (5, &LessEqThan),
     (5, &MoreEqThan),
-
     (6, &NotEquals),
     (6, &Equals),
-
     (7, &BitAnd),
-
     (8, &BitXor),
-
     (9, &BitOr),
-
     (10, &And),
-
     (11, &Or),
-
     (12, &Ternary),
     (12, &TernaryAlternative),
 ];
@@ -231,7 +220,7 @@ pub fn get_precedence(op: &Operator) -> usize {
 pub fn is_left_associative(op: &Operator) -> bool {
     match op {
         Ternary | TernaryAlternative => false,
-        _ => true
+        _ => true,
     }
 }
 

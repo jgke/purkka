@@ -1,11 +1,11 @@
+extern crate ctoken;
 extern crate preprocessor;
 extern crate shared;
-extern crate ctoken;
 
 mod common;
 
 use common::*;
-use preprocessor::macrotoken::{MacroTokenType};
+use preprocessor::macrotoken::MacroTokenType;
 
 #[test]
 fn token_pasting() {
@@ -102,12 +102,10 @@ fn stringify_function_macro() {
             24, // foo
             MacroTokenType::StringLiteral(From::from("foo")),
             Some(s(
-                "foo.c",
-                0,
-                17, // #define FOO(a) #a
-                None),
+                "foo.c", 0, 17, // #define FOO(a) #a
+                None,
             )),
-        ],
+        )],
     );
 }
 
@@ -115,79 +113,87 @@ fn stringify_function_macro() {
 fn stringify_function_macro_no_expand() {
     process(
         "#define BAR(a,b) a b\n#define FOO(a, b) #a b\nFOO(BAR(), BAR(1,2))",
-        vec![mt_s(
-            "foo.c",
-            48,
-            52, // foo##a
-            MacroTokenType::StringLiteral(From::from("BAR()")),
-            Some(s(
-                "foo.c",
-                21,
-                43, // #define FOO(a, b) #a b
-                None),
-            )),
+        vec![
             mt_s(
-            "foo.c",
-            59,
-            59, // 1
-            MacroTokenType::Number(From::from("1")),
-            Some(s(
                 "foo.c",
-                55,
-                62, // BAR(1,2)
+                48,
+                52, // foo##a
+                MacroTokenType::StringLiteral(From::from("BAR()")),
+                Some(s(
+                    "foo.c", 21, 43, // #define FOO(a, b) #a b
+                    None,
+                )),
+            ),
+            mt_s(
+                "foo.c",
+                59,
+                59, // 1
+                MacroTokenType::Number(From::from("1")),
                 Some(s(
                     "foo.c",
-                    17,
-                    17, // a
+                    55,
+                    62, // BAR(1,2)
                     Some(s(
                         "foo.c",
-                        0,
-                        20, // #define BAR(a,b) a b
+                        17,
+                        17, // a
                         Some(s(
                             "foo.c",
-                            44,
-                            63, // FOO(BAR(), BAR(1,2))
+                            0,
+                            20, // #define BAR(a,b) a b
                             Some(s(
                                 "foo.c",
-                                42,
-                                42, // b
+                                44,
+                                63, // FOO(BAR(), BAR(1,2))
                                 Some(s(
                                     "foo.c",
-                                    21,
-                                    43, // #define FOO(a, b) #a b
-                                    None))),
-            )))))))))),
+                                    42,
+                                    42, // b
+                                    Some(s(
+                                        "foo.c", 21, 43, // #define FOO(a, b) #a b
+                                        None,
+                                    )),
+                                )),
+                            )),
+                        )),
+                    )),
+                )),
+            ),
             mt_s(
-            "foo.c",
-            61,
-            61, // 2
-            MacroTokenType::Number(From::from("2")),
-            Some(s(
                 "foo.c",
-                55,
-                62, // BAR(1,2)
+                61,
+                61, // 2
+                MacroTokenType::Number(From::from("2")),
                 Some(s(
                     "foo.c",
-                    19,
-                    19, // b
+                    55,
+                    62, // BAR(1,2)
                     Some(s(
                         "foo.c",
-                        0,
-                        20, // #define BAR(a,b) a b
+                        19,
+                        19, // b
                         Some(s(
                             "foo.c",
-                            44,
-                            63, // FOO(BAR(), BAR(1,2))
+                            0,
+                            20, // #define BAR(a,b) a b
                             Some(s(
                                 "foo.c",
-                                42,
-                                42, // b
+                                44,
+                                63, // FOO(BAR(), BAR(1,2))
                                 Some(s(
                                     "foo.c",
-                                    21,
-                                    43, // #define FOO(a, b) #a b
-                                    None))),
-            )))))))))),
+                                    42,
+                                    42, // b
+                                    Some(s(
+                                        "foo.c", 21, 43, // #define FOO(a, b) #a b
+                                        None,
+                                    )),
+                                )),
+                            )),
+                        )),
+                    )),
+                )),
+            ),
         ],
     );
 }

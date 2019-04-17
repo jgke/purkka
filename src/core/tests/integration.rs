@@ -18,45 +18,59 @@ fn parse(content: &str) -> Result<cparser::parser::S, Option<ctoken::token::Toke
         &PreprocessorOptions {
             include_path: vec![],
             include_files: vec![],
-            definitions: vec![]
-        })[0].clone()
+            definitions: vec![],
+        },
+    )[0]
+    .clone()
 }
 
 #[test]
 fn fn_with_block_inside() {
-    assert!(parse("
+    assert!(parse(
+        "
 int main() {
     ({
     });
 }
-").is_ok());
+"
+    )
+    .is_ok());
 }
 
 #[test]
 fn typedef_with_complex_expression() {
-    assert!(parse("
+    assert!(parse(
+        "
 int a = (1);
-").is_ok());
+"
+    )
+    .is_ok());
 }
 
 #[test]
 fn asm_weirdness() {
-    assert!(parse("
+    assert!(parse(
+        "
 #define ASM_MACRO asm ();
 int main() {
     ASM_MACRO
 }
-").is_ok());
+"
+    )
+    .is_ok());
 }
 
 #[test]
 fn va_types() {
-    assert!(parse("
+    assert!(parse(
+        "
 int main() {
     int a;
     __builtin_va_list foo;
 }
-").is_ok());
+"
+    )
+    .is_ok());
 }
 
 #[test]

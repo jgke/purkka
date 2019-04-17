@@ -17,7 +17,10 @@ pub static DEBUG_VALS: &[&str] = &[
 ];
 
 pub fn is_debug_enabled(ident: DebugVal) -> bool {
-    if let Ok("1") = env::var(DEBUG_VALS[ident as usize]).as_ref().map(|t| t.as_str()) {
+    if let Ok("1") = env::var(DEBUG_VALS[ident as usize])
+        .as_ref()
+        .map(|t| t.as_str())
+    {
         true
     } else {
         false
@@ -26,7 +29,7 @@ pub fn is_debug_enabled(ident: DebugVal) -> bool {
 
 pub fn if_debug<CB>(ident: DebugVal, cb: CB)
 where
-    CB: Fn() -> ()
+    CB: Fn() -> (),
 {
     if is_debug_enabled(ident) {
         cb();

@@ -35,10 +35,10 @@
 use std::cmp::min;
 use std::collections::HashMap;
 use std::fmt;
-use std::str::CharIndices;
 use std::rc::Rc;
+use std::str::CharIndices;
 
-use rand::{Rng, thread_rng, distributions::Alphanumeric};
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use shared::intern::StringInterner;
 
 use crate::traits::PeekableCharsExt;
@@ -77,7 +77,9 @@ impl Clone for UnsafeStringInterner {
     fn clone(&self) -> Self {
         let mut new = Self { strs: vec![] };
         unsafe {
-            self.strs.iter().for_each(|s| { new.intern_str(&**s); });
+            self.strs.iter().for_each(|s| {
+                new.intern_str(&**s);
+            });
         }
         new
     }
@@ -130,33 +132,35 @@ impl Source {
             span: Span {
                 lo: self.span.lo,
                 hi: self.span.hi,
-                source: None
-            }
+                source: None,
+            },
         }
     }
 
     /// Provides an iterator.
     pub fn iter(&self) -> SourceIterator<'_> {
-        SourceIterator {
-            next: Some(self)
-        }
+        SourceIterator { next: Some(self) }
     }
 
     /// Get a dummy source
     pub fn dummy() -> Source {
         Source {
             filename: From::from("".to_string()),
-            span: Span { lo: usize::max_value(), hi: usize::max_value(), source: None }
+            span: Span {
+                lo: usize::max_value(),
+                hi: usize::max_value(),
+                source: None,
+            },
         }
     }
 
     pub fn is_dummy(&self) -> bool {
-        return self.span.lo == usize::max_value()
+        return self.span.lo == usize::max_value();
     }
 }
 
 pub struct SourceIterator<'a> {
-    next: Option<&'a Source>
+    next: Option<&'a Source>,
 }
 
 impl<'a> Iterator for SourceIterator<'a> {
@@ -164,9 +168,7 @@ impl<'a> Iterator for SourceIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next.map(|node| {
-            self.next = node.span.source
-                .as_ref()
-                .map(|source| &**source);
+            self.next = node.span.source.as_ref().map(|source| &**source);
             node
         })
     }
@@ -225,7 +227,7 @@ impl Iterator for FragmentIterator {
 
     /// Get next char in the current fragment.
     fn next(&mut self) -> Option<char> {
-        if self.vec_iter.0.len() > 0 { 
+        if self.vec_iter.0.len() > 0 {
             if self.vec_iter.0.len() > self.vec_iter.1 {
                 let (s, c) = self.vec_iter.0[self.vec_iter.1];
                 self.vec_iter.1 += 1;
@@ -264,15 +266,23 @@ impl FragmentIterator {
     }
 
     /// Initialize the iterator with a predetermined offset.
-    pub fn with_offset(filename: &str, content: Vec<(usize, char)>, offset: usize,
-                       parent: &FragmentIterator) -> FragmentIterator {
+    pub fn with_offset(
+        filename: &str,
+        content: Vec<(usize, char)>,
+        offset: usize,
+        parent: &FragmentIterator,
+    ) -> FragmentIterator {
         FragmentIterator::_with_offset(filename, "", offset, content, parent.contents.clone())
     }
 
     /// Initialize the iterator with a predetermined offset.
-    fn _with_offset(filename: &str, content: &str, offset: usize,
-                    vec_iter: Vec<(usize, char)>,
-                    mut contents: HashMap<String, String>) -> FragmentIterator {
+    fn _with_offset(
+        filename: &str,
+        content: &str,
+        offset: usize,
+        vec_iter: Vec<(usize, char)>,
+        mut contents: HashMap<String, String>,
+    ) -> FragmentIterator {
         let mut interner = UnsafeStringInterner { strs: Vec::new() };
         let mut file_interner = StringInterner::new();
         let static_content = interner.intern_str(content);
@@ -287,10 +297,12 @@ impl FragmentIterator {
         let iter = static_content.char_indices();
         let debug = if is_debug_enabled(DebugFragment) {
             let mut rng = thread_rng();
-            Some(std::iter::repeat(())
-                 .map(|()| rng.sample(Alphanumeric))
-                 .take(5)
-                 .collect())
+            Some(
+                std::iter::repeat(())
+                    .map(|()| rng.sample(Alphanumeric))
+                    .take(5)
+                    .collect(),
+            )
         } else {
             None
         };
@@ -311,7 +323,7 @@ impl FragmentIterator {
             },
             interner,
             file_interner,
-            debug
+            debug,
         }
     }
 
@@ -319,11 +331,16 @@ impl FragmentIterator {
         if self.debug.is_some() {
             let Source {
                 filename,
-                span: Span {
-                    lo, hi, ..
-                }
+                span: Span { lo, hi, .. },
             } = self.current_source();
-            println!("FragmentIterator[{}]: {}: {}..{}: '{}'", &self.debug.as_ref().unwrap(), filename, lo, hi, c);
+            println!(
+                "FragmentIterator[{}]: {}: {}..{}: '{}'",
+                &self.debug.as_ref().unwrap(),
+                filename,
+                lo,
+                hi,
+                c
+            );
             if check {
                 let f = self.get_current_content();
                 assert_eq!(f[hi..].chars().next().unwrap(), c);
@@ -387,7 +404,8 @@ impl FragmentIterator {
 
         // Insert the file to the content table, if not present.
         if !self.contents.contains_key(filename) {
-            self.contents.insert(filename.to_string(), content.to_string());
+            self.contents
+                .insert(filename.to_string(), content.to_string());
         }
     }
 
@@ -601,22 +619,19 @@ impl FragmentIterator {
             let s = &self.contents[source.filename.as_ref()];
             out.push_str(s[source.span.lo..=source.span.hi].trim());
             lines.push((
-                    s[source.span.lo..=source.span.hi].trim().to_string(),
-                    (source.filename.as_ref(), source.span.lo, source.span.hi),
+                s[source.span.lo..=source.span.hi].trim().to_string(),
+                (source.filename.as_ref(), source.span.lo, source.span.hi),
             ));
         }
         let mut current_source = &source.span.source;
         while let Some(src) = current_source {
             if src.is_dummy() || !self.contents.contains_key(src.filename.as_ref()) {
-                lines.push((
-                        builtin.clone(),
-                        (&src.filename, 0, 0),
-                ));
+                lines.push((builtin.clone(), (&src.filename, 0, 0)));
             } else {
                 let s = &self.contents[src.filename.as_ref()];
                 lines.push((
-                        s[src.span.lo..=src.span.hi].trim().to_string(),
-                        (src.filename.as_ref(), src.span.lo, src.span.hi),
+                    s[src.span.lo..=src.span.hi].trim().to_string(),
+                    (src.filename.as_ref(), src.span.lo, src.span.hi),
                 ));
             }
             current_source = &src.span.source;
@@ -625,21 +640,29 @@ impl FragmentIterator {
             .iter()
             .flat_map(|(s, _)| s.split("\n").map(str::to_owned).collect::<Vec<_>>())
             .fold(0, |prev, s| std::cmp::max(prev, s.len()));
-        lines.iter().enumerate()
+        lines
+            .iter()
+            .enumerate()
             .map(|(i, (s, (file, lo, hi)))| {
                 if i == 0 {
-                    return format!("{} ({}: {}-{})\n", s, file, lo, hi)
+                    return format!("{} ({}: {}-{})\n", s, file, lo, hi);
                 }
-                let lines = s.split("\n").map(|t| t.to_string()).collect::<Vec<String>>();
+                let lines = s
+                    .split("\n")
+                    .map(|t| t.to_string())
+                    .collect::<Vec<String>>();
                 if lines.len() == 1 {
                     if s == &builtin {
-                        format!(
-                            "Expanded from: {:width$} ({})\n",
-                            s, file, width = max + 1)
+                        format!("Expanded from: {:width$} ({})\n", s, file, width = max + 1)
                     } else {
                         format!(
                             "Expanded from: {:width$}({}: {}-{})\n",
-                            s, file, lo, hi, width = max + 1)
+                            s,
+                            file,
+                            lo,
+                            hi,
+                            width = max + 1
+                        )
                     }
                 } else {
                     let mut res = vec![];

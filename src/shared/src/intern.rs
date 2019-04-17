@@ -1,40 +1,48 @@
 //! Generic HashMap-based interner.
 
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::rc::Rc;
-use std::borrow::Borrow;
-
 
 /// Simple HashMap-based interner.
 #[derive(Debug)]
 pub struct Interner<K, V>
-where K: Clone + Hash + Eq,
-      V: ?Sized {
-    interner: HashMap<K, Rc<V>>
+where
+    K: Clone + Hash + Eq,
+    V: ?Sized,
+{
+    interner: HashMap<K, Rc<V>>,
 }
 
 impl<K, V> Clone for Interner<K, V>
-where K: Clone + Hash + Eq,
-      V: ?Sized {
+where
+    K: Clone + Hash + Eq,
+    V: ?Sized,
+{
     fn clone(&self) -> Self {
-        Self { interner: self.interner.clone() }
+        Self {
+            interner: self.interner.clone(),
+        }
     }
 }
 
 impl<K, V> Interner<K, V>
-where K: Clone + Hash + Eq,
-      V: ?Sized {
+where
+    K: Clone + Hash + Eq,
+    V: ?Sized,
+{
     pub fn new() -> Interner<K, V> {
         Interner {
-            interner: HashMap::new()
+            interner: HashMap::new(),
         }
     }
 
     pub fn get_ref<'a, B: ?Sized>(&mut self, name: &'a B) -> Rc<V>
-        where K: Borrow<B> + From<&'a B>,
-              Rc<V>: From<&'a B>,
-              B: Hash + Eq
+    where
+        K: Borrow<B> + From<&'a B>,
+        Rc<V>: From<&'a B>,
+        B: Hash + Eq,
     {
         if !self.interner.contains_key(name) {
             self.interner.insert(From::from(name), From::from(name));

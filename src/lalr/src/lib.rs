@@ -9,13 +9,13 @@ extern crate syntax;
 extern crate syntax_pos;
 
 use rustc_plugin::Registry;
-use syntax::ext::base::{DummyResult, ExtCtxt, MacResult};
-use syntax_pos::Span;
 use syntax::ast;
-use syntax::ptr::P;
+use syntax::ext::base::{DummyResult, ExtCtxt, MacResult};
 use syntax::parse;
 use syntax::parse::token;
+use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
+use syntax_pos::Span;
 
 use std::collections::HashSet;
 use std::iter::Peekable;
@@ -45,7 +45,11 @@ fn is_semi(tree: Option<&&TokenTree>) -> bool {
 
 type ParseResult<SuccessType> = Result<SuccessType, Option<Span>>;
 
-fn parse_failure<SuccessType>(cx: &mut ExtCtxt, outer_span: Span, tt: Option<&TokenTree>) -> ParseResult<SuccessType> {
+fn parse_failure<SuccessType>(
+    cx: &mut ExtCtxt,
+    outer_span: Span,
+    tt: Option<&TokenTree>,
+) -> ParseResult<SuccessType> {
     match tt {
         Some(TokenTree::Token(span, t)) => {
             let s: Span = *span;
@@ -104,10 +108,10 @@ fn parse_special(
                 identifier: tt.name.to_string(),
                 full_path: tt.name.to_string(),
                 span: s.to(rsp),
-                conversion_fn: None
+                conversion_fn: None,
             }
         }
-        tt => return parse_failure(cx, s.to(rsp), tt)
+        tt => return parse_failure(cx, s.to(rsp), tt),
     };
 
     while !is_semi(iter.peek()) {
@@ -139,19 +143,23 @@ fn parse_special(
     Ok(special_component)
 }
 
-fn parse_enumdef(cx: &mut ExtCtxt, iter: &mut Peekable<Iter<'_, TokenTree>>, sp: &Span) -> ParseResult<P<ast::Item>> {
+fn parse_enumdef(
+    cx: &mut ExtCtxt,
+    iter: &mut Peekable<Iter<'_, TokenTree>>,
+    sp: &Span,
+) -> ParseResult<P<ast::Item>> {
     let mut res = Vec::new();
     let mut break_next = false;
 
     loop {
         match iter.next() {
-            Some(t@TokenTree::Delimited(..)) => {
+            Some(t @ TokenTree::Delimited(..)) => {
                 res.push(t.clone());
                 if break_next {
                     break;
                 }
             }
-            Some(t@TokenTree::Token(_, token::Ident(..))) => {
+            Some(t @ TokenTree::Token(_, token::Ident(..))) => {
                 res.push(t.clone());
                 if let TokenTree::Token(_, token::Ident(ident, _)) = t {
                     if ident.name.to_string() == "enum" {
@@ -160,13 +168,21 @@ fn parse_enumdef(cx: &mut ExtCtxt, iter: &mut Peekable<Iter<'_, TokenTree>>, sp:
                 }
             }
             Some(t) => res.push(t.clone()),
-            None => return parse_failure(cx, *res.last()
-                                         .and_then(|t| if let TokenTree::Token(s, _) = t {
-                                             Some(s)
-                                         } else {
-                                             None
-                                         })
-                                         .unwrap_or(sp), None)
+            None => {
+                return parse_failure(
+                    cx,
+                    *res.last()
+                        .and_then(|t| {
+                            if let TokenTree::Token(s, _) = t {
+                                Some(s)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(sp),
+                    None,
+                )
+            }
         }
     }
 
@@ -210,26 +226,27 @@ fn parse_item(
         match iter.next() {
             Some(TokenTree::Token(_, token::Literal(token::Integer(new_prio), None))) => {
                 priority = match iter.next() {
-                    Some(TokenTree::Token(_, token::Colon)) =>
-                        Some((new_prio.to_string().parse().unwrap(), true)),
+                    Some(TokenTree::Token(_, token::Colon)) => {
+                        Some((new_prio.to_string().parse().unwrap(), true))
+                    }
                     Some(TokenTree::Token(_, token::Ident(tt, _))) => {
                         match (iter.next(), tt.name.to_string().as_ref()) {
-                            (Some(TokenTree::Token(_, token::Colon)), "l") =>
-                                Some((new_prio.to_string().parse().unwrap(), true)),
-                            (Some(TokenTree::Token(_, token::Colon)), "r") =>
-                                Some((new_prio.to_string().parse().unwrap(), false)),
-                            (tt, _) => return parse_failure(cx, s.to(rsp), tt)
+                            (Some(TokenTree::Token(_, token::Colon)), "l") => {
+                                Some((new_prio.to_string().parse().unwrap(), true))
+                            }
+                            (Some(TokenTree::Token(_, token::Colon)), "r") => {
+                                Some((new_prio.to_string().parse().unwrap(), false))
+                            }
+                            (tt, _) => return parse_failure(cx, s.to(rsp), tt),
                         }
-
                     }
-                    tt => return parse_failure(cx, s.to(rsp), tt)
+                    tt => return parse_failure(cx, s.to(rsp), tt),
                 };
             }
             Some(TokenTree::Token(_, token::Not)) => {
                 action = match iter.next() {
-                    Some(TokenTree::Token(_, token::Ident(tt, _))) =>
-                        Some(tt.name.to_string()),
-                    tt => return parse_failure(cx, s.to(rsp), tt)
+                    Some(TokenTree::Token(_, token::Ident(tt, _))) => Some(tt.name.to_string()),
+                    tt => return parse_failure(cx, s.to(rsp), tt),
                 };
             }
             Some(TokenTree::Token(s, token::Ident(tt, _))) => {
@@ -240,7 +257,7 @@ fn parse_item(
                     span: rsp,
                     terminal,
                     indirect: indirect || tt.name.as_str() == t.name.as_str(),
-                    conversion_fn: None
+                    conversion_fn: None,
                 });
                 terminal = false;
                 indirect = false;
@@ -321,21 +338,29 @@ fn parse_item(
         identifier: identifier.to_string(),
         span,
         data: components,
-        enumdef
+        enumdef,
     };
 
     if tm
         .push_rule(rule.identifier.clone(), rule.clone())
         .is_none()
     {
-        cx.span_err(s.to(rsp), "Duplicate rule (Hint: Mark the expression A -> B; A -> C; with A -> B | C;)");
+        cx.span_err(
+            s.to(rsp),
+            "Duplicate rule (Hint: Mark the expression A -> B; A -> C; with A -> B | C;)",
+        );
         return Err(Some(s.to(rsp)));
     }
 
     Ok(rule)
 }
 
-fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree], compute_lalr_table: bool) -> Box<MacResult + 'static> {
+fn expand_lalr(
+    cx: &mut ExtCtxt,
+    sp: Span,
+    args: &[TokenTree],
+    compute_lalr_table: bool,
+) -> Box<MacResult + 'static> {
     let mut tm = RuleTranslationMap {
         ..Default::default()
     };
@@ -367,7 +392,7 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree], compute_lalr_tabl
                     terminals.insert(item);
                 }
                 Err(span) => return DummyResult::any(span.unwrap_or(sp)),
-            }
+            },
             Some(_) => match parse_item(cx, sp, &mut iter, &mut tm) {
                 Ok(item) => {
                     item.data.iter().for_each(|rules| {
@@ -376,7 +401,7 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree], compute_lalr_tabl
                                 identifier: x.identifier.clone(),
                                 full_path: x.full_path.clone(),
                                 span: sp,
-                                conversion_fn: None
+                                conversion_fn: None,
                             });
                         })
                     });
@@ -384,7 +409,7 @@ fn expand_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree], compute_lalr_tabl
                     items.push(item);
                 }
                 Err(span) => return DummyResult::any(span.unwrap_or(sp)),
-            }
+            },
             None => break,
         }
     }

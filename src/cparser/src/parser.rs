@@ -27,7 +27,10 @@ fn get_decls(decl: InitDeclaratorList) -> Vec<InitDeclarator> {
 fn ident_to_name(token: Token) -> String {
     match token {
         Token::Identifier(_, s) => s,
-        t => panic!("Internal compiler error: Unexpected token: {:?}, expected identifier", t)
+        t => panic!(
+            "Internal compiler error: Unexpected token: {:?}, expected identifier",
+            t
+        ),
     }
 }
 
@@ -49,10 +52,11 @@ fn add_decl(state: &mut State, init_decl: InitDeclarator) {
     let decl = match init_decl {
         InitDeclarator::Declarator(decl) => decl,
         InitDeclarator::Asm(..) => panic!("Cannot typedef asm"),
-        InitDeclarator::Assign(..) => panic!("Assignment to a typedef")
+        InitDeclarator::Assign(..) => panic!("Assignment to a typedef"),
     };
 
-    get_decl_identifier(decl).into_iter()
+    get_decl_identifier(decl)
+        .into_iter()
         .for_each(|name| add_type(state, name));
 }
 
@@ -61,10 +65,10 @@ fn add_typedef(state: &mut State, declaration: Box<TypeDeclaration>) {
         TypeDeclaration::Typedef(..) => {
             println!("Warning: useless typedef");
             return;
-        },
-        TypeDeclaration::List(_, spec, list, ..) => (spec, list)
+        }
+        TypeDeclaration::List(_, spec, list, ..) => (spec, list),
     };
-    
+
     let decls = get_decls(list);
     decls.into_iter().for_each(|decl| add_decl(state, decl));
 }
@@ -78,42 +82,45 @@ fn identifier_or_type_to_str(ty: IdentifierOrType) -> String {
 
 fn add_struct_type(state: &mut State, declaration: Box<StructOrUnionSpecifier>) {
     match *declaration {
-        StructOrUnionSpecifier::NewType(_, ty, ..) =>
-            add_type(state, identifier_or_type_to_str(ty)),
+        StructOrUnionSpecifier::NewType(_, ty, ..) => {
+            add_type(state, identifier_or_type_to_str(ty))
+        }
         StructOrUnionSpecifier::Anonymous(..) => {}
-        StructOrUnionSpecifier::NameOnly(_, ty, ..) =>
-            add_type(state, identifier_or_type_to_str(ty)),
+        StructOrUnionSpecifier::NameOnly(_, ty, ..) => {
+            add_type(state, identifier_or_type_to_str(ty))
+        }
     };
 }
 
 fn add_enum_type(state: &mut State, declaration: Box<EnumSpecifier>) {
     match *declaration {
         EnumSpecifier::List(_, _, ..) => {}
-        EnumSpecifier::Empty(_, token, ..) =>
-            add_type(state, ident_to_name(token)),
-        EnumSpecifier::NameOnly(_, token, ..) =>
-            add_type(state, ident_to_name(token)),
+        EnumSpecifier::Empty(_, token, ..) => add_type(state, ident_to_name(token)),
+        EnumSpecifier::NameOnly(_, token, ..) => add_type(state, ident_to_name(token)),
         EnumSpecifier::ExistingType(..) => {}
     };
 }
 
 fn is_type(state: &State, token: &Token) -> bool {
     match token {
-        Token::Identifier(_, i) => state.scope.iter()
-                .any(|s| s.types.contains(i)),
-        _ => panic!()
+        Token::Identifier(_, i) => state.scope.iter().any(|s| s.types.contains(i)),
+        _ => panic!(),
     }
 }
 
 fn is_label(state: &State, token: &Token) -> bool {
     match token {
-        Token::Identifier(_, i) => state.scope.iter()
-                .any(|s| s.labels.contains(i)),
-        _ => panic!()
+        Token::Identifier(_, i) => state.scope.iter().any(|s| s.labels.contains(i)),
+        _ => panic!(),
     }
 }
 
-fn maybe_add_label(state: &mut State, decl_spec: DeclarationSpecifiers, init_list: InitDeclaratorList, _semicolon: Token) {
+fn maybe_add_label(
+    state: &mut State,
+    decl_spec: DeclarationSpecifiers,
+    init_list: InitDeclaratorList,
+    _semicolon: Token,
+) {
     match decl_spec {
         DeclarationSpecifiers::TypeSpecifier(TypeSpecifier::TypeNameStr(t)) => {
             let ty = ident_to_name(t);
@@ -123,11 +130,12 @@ fn maybe_add_label(state: &mut State, decl_spec: DeclarationSpecifiers, init_lis
                     let decl = match init_decl {
                         InitDeclarator::Declarator(decl) => decl,
                         InitDeclarator::Asm(..) => panic!("Invalid __label__"),
-                        InitDeclarator::Assign(..) => panic!("Invalid __label__")
+                        InitDeclarator::Assign(..) => panic!("Invalid __label__"),
                     };
 
-                    get_decl_identifier(decl).into_iter()
-                        .for_each(|name| { labels.insert(name); });
+                    get_decl_identifier(decl).into_iter().for_each(|name| {
+                        labels.insert(name);
+                    });
                 });
             }
         }

@@ -15,7 +15,7 @@ pub enum MacroTokenType {
     Punctuation(Punctuation),
     Special(SpecialType),
     Other(char),
-    Empty
+    Empty,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -24,7 +24,6 @@ pub enum SpecialType {
     Sizeof(SizeofExpression),
 }
 
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MacroToken {
     pub source: Source,
@@ -32,7 +31,7 @@ pub struct MacroToken {
 }
 
 use ctoken::token::Token::*;
-use ctoken::token::{Token, SizeofExpression};
+use ctoken::token::{SizeofExpression, Token};
 
 pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index: usize) -> Token {
     match &t.ty {
@@ -131,16 +130,24 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
 
         MacroTokenType::StringLiteral(s) => StringLiteral(index, s.to_string()),
         MacroTokenType::Number(s) => Number(index, s.to_string()),
-        MacroTokenType::Special(SpecialType::Sizeof(expr)) =>
-            Sizeof(index, expr.clone()),
-        MacroTokenType::Special(SpecialType::Asm(exprs)) =>
-            Asm(index, exprs.iter().map(|t| t.to_src()).collect::<Vec<_>>().join(" ")),
+        MacroTokenType::Special(SpecialType::Sizeof(expr)) => Sizeof(index, expr.clone()),
+        MacroTokenType::Special(SpecialType::Asm(exprs)) => Asm(
+            index,
+            exprs
+                .iter()
+                .map(|t| t.to_src())
+                .collect::<Vec<_>>()
+                .join(" "),
+        ),
         MacroTokenType::Char(c) => CharLiteral(index, *c),
-        MacroTokenType::Other(c) => panic!("Tried to convert Other({}) to parser\n{}", c, context.source_to_str(&t.source)),
-        MacroTokenType::Empty => panic!("Spurious empty token left in stream")
+        MacroTokenType::Other(c) => panic!(
+            "Tried to convert Other({}) to parser\n{}",
+            c,
+            context.source_to_str(&t.source)
+        ),
+        MacroTokenType::Empty => panic!("Spurious empty token left in stream"),
     }
 }
-
 
 impl MacroToken {
     pub fn display<'a>(&'a self, iter: &'a FragmentIterator) -> MacroTokenDisplay<'a> {
@@ -149,22 +156,37 @@ impl MacroToken {
 
     pub fn to_src(&self) -> String {
         match &self.ty {
-            MacroTokenType::Operator(op) =>
-                OPERATORS.iter().filter(|(_, t)| t == &op).map(|(s, _)| s).next().unwrap().to_string(),
-            MacroTokenType::Punctuation(punc) =>
-                PUNCTUATION.iter().filter(|(_, t)| t == &punc).map(|(s, _)| s).next().unwrap().to_string(),
+            MacroTokenType::Operator(op) => OPERATORS
+                .iter()
+                .filter(|(_, t)| t == &op)
+                .map(|(s, _)| s)
+                .next()
+                .unwrap()
+                .to_string(),
+            MacroTokenType::Punctuation(punc) => PUNCTUATION
+                .iter()
+                .filter(|(_, t)| t == &punc)
+                .map(|(s, _)| s)
+                .next()
+                .unwrap()
+                .to_string(),
 
             MacroTokenType::Identifier(ident) => ident.to_string(),
 
             MacroTokenType::StringLiteral(s) => s.to_string(),
             MacroTokenType::Number(s) => s.to_string(),
-            MacroTokenType::Special(SpecialType::Sizeof(expr)) =>
-                format!("sizeof({:?})", expr),
-            MacroTokenType::Special(SpecialType::Asm(exprs)) =>
-                format!("asm ({})", exprs.iter().map(|t| t.to_src()).collect::<Vec<_>>().join(" ")),
+            MacroTokenType::Special(SpecialType::Sizeof(expr)) => format!("sizeof({:?})", expr),
+            MacroTokenType::Special(SpecialType::Asm(exprs)) => format!(
+                "asm ({})",
+                exprs
+                    .iter()
+                    .map(|t| t.to_src())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
             MacroTokenType::Char(c) => format!("'{}'", c),
             MacroTokenType::Other(c) => c.to_string(),
-            MacroTokenType::Empty => " ".to_string()
+            MacroTokenType::Empty => " ".to_string(),
         }
     }
 }
@@ -195,7 +217,7 @@ impl MacroToken {
     pub(crate) fn dummy(ty: MacroTokenType) -> MacroToken {
         MacroToken {
             source: Source::dummy(),
-            ty
+            ty,
         }
     }
     pub(crate) fn respan_front(&mut self, source: &Source) {
@@ -227,6 +249,10 @@ impl MacroToken {
 
 macro_rules! matches_token {
     ($var:expr, $type:ident, $subtype:ident) => {
-        if let MacroTokenType::$type($type::$subtype) = &$var { true } else { false }
-    }
+        if let MacroTokenType::$type($type::$subtype) = &$var {
+            true
+        } else {
+            false
+        }
+    };
 }

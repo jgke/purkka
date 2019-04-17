@@ -1,6 +1,6 @@
+extern crate ctoken;
 extern crate preprocessor;
 extern crate shared;
-extern crate ctoken;
 
 mod common;
 
@@ -11,15 +11,7 @@ use preprocessor::tokentype::{Operator, Punctuation};
 
 #[test]
 fn one_identifier() {
-    process(
-        "Foo",
-        vec![mt(
-            "foo.c",
-            0,
-            2,
-            ident("Foo"),
-        )],
-    );
+    process("Foo", vec![mt("foo.c", 0, 2, ident("Foo"))]);
 }
 
 #[test]
@@ -29,12 +21,7 @@ fn three_identifiers() {
         vec![
             mt("foo.c", 0, 2, ident("Foo")),
             mt("foo.c", 4, 6, ident("Bar")),
-            mt(
-                "foo.c",
-                8,
-                10,
-                ident("Baz"),
-            ),
+            mt("foo.c", 8, 10, ident("Baz")),
         ],
     );
 }
@@ -116,24 +103,9 @@ fn comments() {
     process(
         "/* foo */ bar //baz \nqux // bax \\\nbux \n/**/ asd",
         vec![
-            mt(
-                "foo.c",
-                10,
-                12,
-                ident("bar"),
-            ),
-            mt(
-                "foo.c",
-                21,
-                23,
-                ident("qux"),
-            ),
-            mt(
-                "foo.c",
-                44,
-                46,
-                ident("asd"),
-            ),
+            mt("foo.c", 10, 12, ident("bar")),
+            mt("foo.c", 21, 23, ident("qux")),
+            mt("foo.c", 44, 46, ident("asd")),
         ],
     );
 }
@@ -308,27 +280,74 @@ fn undef() {
 fn sizeof_types() {
     process(
         "sizeof(int)",
-        vec![ mt("foo.c", 0, 10, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
+        vec![mt(
+            "foo.c",
+            0,
+            10,
+            MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))),
+        )],
+    );
     process(
         "sizeof(int *)",
-        vec![ mt("foo.c", 0, 12, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
+        vec![mt(
+            "foo.c",
+            0,
+            12,
+            MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))),
+        )],
+    );
     process(
         "sizeof(*int)",
-        vec![ mt("foo.c", 0, 11, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
+        vec![mt(
+            "foo.c",
+            0,
+            11,
+            MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))),
+        )],
+    );
     process(
         "sizeof((1))",
-        vec![ mt("foo.c", 0, 10, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
+        vec![mt(
+            "foo.c",
+            0,
+            10,
+            MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))),
+        )],
+    );
     process(
         "sizeof(((1)))",
-        vec![ mt("foo.c", 0, 12, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
+        vec![mt(
+            "foo.c",
+            0,
+            12,
+            MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))),
+        )],
+    );
     process(
         "sizeof ( 1 ) ",
-        vec![ mt("foo.c", 0, 11, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
+        vec![mt(
+            "foo.c",
+            0,
+            11,
+            MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))),
+        )],
+    );
     process(
         "sizeof(1+1)",
-        vec![ mt("foo.c", 0, 10, MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
+        vec![mt(
+            "foo.c",
+            0,
+            10,
+            MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))),
+        )],
+    );
     process(
         "sizeof int",
-        vec![ mt("foo.c", 0, 9,  MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))))]);
+        vec![mt(
+            "foo.c",
+            0,
+            9,
+            MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8))),
+        )],
+    );
 }
-

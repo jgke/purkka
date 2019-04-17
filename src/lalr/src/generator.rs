@@ -1,13 +1,15 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::sync::{Mutex, atomic};
-use std::sync::atomic::{AtomicUsize};
-use std::time::{Instant};
+use std::sync::atomic::AtomicUsize;
+use std::sync::{atomic, Mutex};
+use std::time::Instant;
 
 use rayon::prelude::*;
 
-use crate::types::{Action, Component, Core, Item, Index, LRTable, RuleData, RuleTranslationMap, Terminal};
+use crate::types::{
+    Action, Component, Core, Index, Item, LRTable, RuleData, RuleTranslationMap, Terminal,
+};
 use debug::debug::{if_debug, DebugVal::DumpLalrTable};
 
 pub fn first(
@@ -20,7 +22,13 @@ pub fn first(
         return false;
     }
     cache.insert(rule_index);
-    let rule = &tm.rules.get(&rule_index).unwrap_or_else(|| panic!("No rule found for index {} ({:?})", rule_index, tm.rev_indices.get(&rule_index)));
+    let rule = &tm.rules.get(&rule_index).unwrap_or_else(|| {
+        panic!(
+            "No rule found for index {} ({:?})",
+            rule_index,
+            tm.rev_indices.get(&rule_index)
+        )
+    });
     let mut has_e = false;
     // E -> A | B
     for (i, _) in rule.data.iter().enumerate() {
@@ -37,7 +45,7 @@ fn first_loop(
 ) -> bool {
     let (rule_index, rule_subindex, position) = rule;
     let rule = &tm.rules[&rule_index];
-    let Component {rules, ..} = &rule.data[rule_subindex];
+    let Component { rules, .. } = &rule.data[rule_subindex];
     let mut has_e = true;
     // E -> A
     for (i, ruledata) in rules.iter().enumerate() {
@@ -75,13 +83,18 @@ pub fn closure(tm: &RuleTranslationMap, items: &mut HashSet<Item>) {
         prevsize = items.len() + 1;
         // for each item [A -> a.Bb, a] in I
         for item in &added {
-            let Component {rules, ..} = &tm.rules[&item.index].data[item.subindex];
+            let Component { rules, .. } = &tm.rules[&item.index].data[item.subindex];
             match &rules.get(item.position) {
                 None => {}
                 Some(RuleData { terminal: true, .. }) => {}
                 Some(current_production) => {
-                    let inner_production = tm.indices.get(&current_production.identifier).and_then(|i| tm.rules.get(i))
-                        .unwrap_or_else(|| panic!("No rule found for {}", &current_production.identifier));
+                    let inner_production = tm
+                        .indices
+                        .get(&current_production.identifier)
+                        .and_then(|i| tm.rules.get(i))
+                        .unwrap_or_else(|| {
+                            panic!("No rule found for {}", &current_production.identifier)
+                        });
                     // for each production [B -> g] in G
                     for (i, _) in inner_production.data.iter().enumerate() {
                         let mut set = HashSet::new();
@@ -129,7 +142,7 @@ pub fn goto(
     rule: Index,
 ) {
     for item in items {
-        let Component {rules, ..} = &tm.rules[&item.index].data[item.subindex];
+        let Component { rules, .. } = &tm.rules[&item.index].data[item.subindex];
         if rules.len() > item.position && tm.indices[&rules[item.position].full_path] == rule {
             let mut goto_item = item.clone();
             goto_item.position += 1;
@@ -145,7 +158,7 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
         index: tm.indices["S"],
         subindex: 0,
         position: 0,
-        lookahead: tm.indices["$"]
+        lookahead: tm.indices["$"],
     });
     closure(&tm, &mut initial);
     println!("Closure computation done");
@@ -180,7 +193,14 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
 }
 
 fn get_cores(items: &HashSet<Item>) -> HashSet<Core> {
-    items.iter().map(|item| Core {index: item.index.clone(), subindex: item.subindex, position: item.position}).collect()
+    items
+        .iter()
+        .map(|item| Core {
+            index: item.index.clone(),
+            subindex: item.subindex,
+            position: item.position,
+        })
+        .collect()
 }
 
 pub fn get_lalr_items(lalr_items: &mut Vec<HashSet<Item>>, lr_items: &Vec<HashSet<Item>>) {
@@ -217,7 +237,12 @@ pub fn get_lalr_items(lalr_items: &mut Vec<HashSet<Item>>, lr_items: &Vec<HashSe
     }
 }
 
-pub fn panic_insert(rev_indices: &HashMap<Index, String>, map: &mut HashMap<Index, Action>, identifier: Index, action: Action) {
+pub fn panic_insert(
+    rev_indices: &HashMap<Index, String>,
+    map: &mut HashMap<Index, Action>,
+    identifier: Index,
+    action: Action,
+) {
     // The map should have the rule with the following priority:
     //  1) higher priority number
     //  2) if the priorities are equal, the associativity should also be equal
@@ -231,7 +256,9 @@ pub fn panic_insert(rev_indices: &HashMap<Index, String>, map: &mut HashMap<Inde
                     let (new_prio, new_left_assoc) = new_prio.unwrap_or((0, false));
                     match (map_prio.cmp(&new_prio), map_left_assoc, new_left_assoc) {
                         (Ordering::Less, _, _) => {}
-                        (Ordering::Greater, _, _) => { return; }
+                        (Ordering::Greater, _, _) => {
+                            return;
+                        }
                         (Ordering::Equal, false, false) => {
                             if map_prio == 0 {
                                 println!("Warning: conflicting actions {} and {}, shift took priority.\nToken: {}",
@@ -239,9 +266,13 @@ pub fn panic_insert(rev_indices: &HashMap<Index, String>, map: &mut HashMap<Inde
                             }
                             // map contains reduce, so replaced it with shift
                         }
-                        (Ordering::Equal, true, true) => { return; }
-                        (Ordering::Equal, _, _) => panic!("Conflicting priority rules at {} and {}\nToken: {}",
-                                                          act, action, rev_indices[&identifier])
+                        (Ordering::Equal, true, true) => {
+                            return;
+                        }
+                        (Ordering::Equal, _, _) => panic!(
+                            "Conflicting priority rules at {} and {}\nToken: {}",
+                            act, action, rev_indices[&identifier]
+                        ),
                     }
                 }
                 (Action::Shift(_, map_prio), Action::Reduce(_, _, _, new_prio)) => {
@@ -249,7 +280,9 @@ pub fn panic_insert(rev_indices: &HashMap<Index, String>, map: &mut HashMap<Inde
                     let (new_prio, new_left_assoc) = new_prio.unwrap_or((0, false));
                     match (map_prio.cmp(&new_prio), map_left_assoc, new_left_assoc) {
                         (Ordering::Less, _, _) => {}
-                        (Ordering::Greater, _, _) => { return; }
+                        (Ordering::Greater, _, _) => {
+                            return;
+                        }
                         (Ordering::Equal, false, false) => {
                             if map_prio == 0 {
                                 println!("Warning: conflicting actions {} and {}, shift took priority.\nToken: {}",
@@ -258,13 +291,19 @@ pub fn panic_insert(rev_indices: &HashMap<Index, String>, map: &mut HashMap<Inde
                             // map contains shift, so don't replace it
                             return;
                         }
-                        (Ordering::Equal, true, true) => { return; }
-                        (Ordering::Equal, _, _) => panic!("Conflicting priority rules at {} and {}\nToken: {}",
-                                                          act, action, rev_indices[&identifier])
+                        (Ordering::Equal, true, true) => {
+                            return;
+                        }
+                        (Ordering::Equal, _, _) => panic!(
+                            "Conflicting priority rules at {} and {}\nToken: {}",
+                            act, action, rev_indices[&identifier]
+                        ),
                     }
                 }
-                _ => panic!("Conflict, not LR: tried to replace {} with {}\nToken: {:?}",
-                            act, action, rev_indices[&identifier]),
+                _ => panic!(
+                    "Conflict, not LR: tried to replace {} with {}\nToken: {:?}",
+                    act, action, rev_indices[&identifier]
+                ),
             }
         }
     }
@@ -283,9 +322,13 @@ pub fn lr_parsing_table(
 
         let start = Instant::now();
 
-        let total = lr_items.iter().fold(0, |total, ref items| total + items.len());
+        let total = lr_items
+            .iter()
+            .fold(0, |total, ref items| total + items.len());
         let count = AtomicUsize::new(0);
-        lr_items.iter().for_each(|_| table.lock().unwrap().actions.push(HashMap::new()));
+        lr_items
+            .iter()
+            .for_each(|_| table.lock().unwrap().actions.push(HashMap::new()));
 
         lr_items.par_iter().enumerate().for_each(|(i, ref items)| {
             count.fetch_add(items.len(), atomic::Ordering::Relaxed);
@@ -297,12 +340,19 @@ pub fn lr_parsing_table(
             let to_go: f64 = (total - new_count) as f64;
 
             if new_count > 1000 && total > 10000 {
-                println!("{} / {} ({:.1}s to go @ {:.1} items/s)",
-                new_count, total, to_go / items_per_second, items_per_second);
+                println!(
+                    "{} / {} ({:.1}s to go @ {:.1} items/s)",
+                    new_count,
+                    total,
+                    to_go / items_per_second,
+                    items_per_second
+                );
             }
 
             for item in items.iter() {
-                let Component {rules, priority, ..} = &tm.rules[&item.index].data[item.subindex];
+                let Component {
+                    rules, priority, ..
+                } = &tm.rules[&item.index].data[item.subindex];
                 if rules.len() > item.position {
                     if !rules[item.position].terminal {
                         if rules[item.position].identifier == "Epsilon" {
@@ -310,13 +360,8 @@ pub fn lr_parsing_table(
                                 &tm.rev_indices,
                                 &mut table.lock().unwrap().actions[i],
                                 item.lookahead,
-                                Action::Reduce(
-                                    item.index,
-                                    item.subindex,
-                                    0,
-                                    *priority
-                                    ),
-                                    );
+                                Action::Reduce(item.index, item.subindex, 0, *priority),
+                            );
                         }
                         continue;
                     }
@@ -326,18 +371,26 @@ pub fn lr_parsing_table(
                         &mut goto_items,
                         items,
                         tm.indices[&rules[item.position].full_path],
-                        );
-                    if let Some(pos) = lr_items.iter().position(|x| get_cores(x) == get_cores(&goto_items)) {
+                    );
+                    if let Some(pos) = lr_items
+                        .iter()
+                        .position(|x| get_cores(x) == get_cores(&goto_items))
+                    {
                         panic_insert(
                             &tm.rev_indices,
                             &mut table.lock().unwrap().actions[i],
                             tm.indices[&rules[item.position].full_path],
                             Action::Shift(pos, *priority),
-                            );
+                        );
                     }
                 } else {
                     if item.index == tm.indices["S"] {
-                        panic_insert(&tm.rev_indices, &mut table.lock().unwrap().actions[i], tm.indices["$"], Action::Accept);
+                        panic_insert(
+                            &tm.rev_indices,
+                            &mut table.lock().unwrap().actions[i],
+                            tm.indices["$"],
+                            Action::Accept,
+                        );
                     } else {
                         panic_insert(
                             &tm.rev_indices,
@@ -347,9 +400,9 @@ pub fn lr_parsing_table(
                                 item.index,
                                 item.subindex,
                                 tm.rules[&item.index].data[item.subindex].rules.len(),
-                                *priority
-                                ),
-                                );
+                                *priority,
+                            ),
+                        );
                     }
                 }
             }
@@ -358,7 +411,10 @@ pub fn lr_parsing_table(
                 let mut goto_items = HashSet::new();
                 goto(&tm, &mut goto_items, &items, *symbol);
 
-                if let Some(pos) = lr_items.iter().position(|x| get_cores(x) == get_cores(&goto_items)) {
+                if let Some(pos) = lr_items
+                    .iter()
+                    .position(|x| get_cores(x) == get_cores(&goto_items))
+                {
                     table.lock().unwrap().actions[i].insert(*symbol, Action::Goto(pos));
                 }
             }
@@ -368,10 +424,7 @@ pub fn lr_parsing_table(
     return open_table;
 }
 
-pub fn compute_lalr(
-    tm: &RuleTranslationMap,
-    terminals: &HashSet<Terminal>,
-) -> Box<LRTable> {
+pub fn compute_lalr(tm: &RuleTranslationMap, terminals: &HashSet<Terminal>) -> Box<LRTable> {
     for arg in std::env::args() {
         if arg == "--emit=dep-info,metadata" {
             println!("Running in check mode! Skipping LALR table generation.");
@@ -383,11 +436,14 @@ pub fn compute_lalr(
     let mut rule_names: Vec<Index> = tm.rules.iter().map(|(x, _)| x.clone()).collect();
     rule_names.sort_unstable();
 
-    let mut terminal_names: Vec<Index> = terminals.iter()
-        .map(|term| tm.indices
-             .get(&term.full_path)
-             .map(|t| *t)
-             .unwrap_or_else(|| panic!("Terminal {} not found", &term.full_path)))
+    let mut terminal_names: Vec<Index> = terminals
+        .iter()
+        .map(|term| {
+            tm.indices
+                .get(&term.full_path)
+                .map(|t| *t)
+                .unwrap_or_else(|| panic!("Terminal {} not found", &term.full_path))
+        })
         .collect();
     terminal_names.sort_unstable();
 
