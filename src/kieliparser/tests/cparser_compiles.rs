@@ -1,5 +1,6 @@
 use kieliparser::parse_file;
-use kieliparser::parser::parse;
+use kieliparser::parser::Maybe::*;
+use kieliparser::parser::*;
 use kieliparser::token::Token;
 
 #[test]
@@ -28,26 +29,53 @@ fn parse_if_else() {
     parse_file("let foo = if 1 + 2 { something(); } elif 3 { something_else(); } else {};");
 }
 
+fn parse_ty(s: &str) -> S {
+    parse_file(&format!("let foo: {};", s))
+}
+
 #[test]
 fn parse_types() {
-    parse_file("let foo: int;");
-    parse_file("let foo: int -> int;");
-    parse_file("let foo: (a: int) -> int;");
-    parse_file("let foo: (a: int, b: int) -> int;");
-    parse_file("let foo: (a: int, b: int, c: int) -> int;");
-    parse_file("let foo: (int) -> int;");
-    parse_file("let foo: (int, int) -> int;");
-    parse_file("let foo: (int, int, int) -> int;");
-    parse_file("let foo: (a: int, int, c: int) -> int;");
-    parse_file("let foo: (a: (int) -> int) -> int;");
-    parse_file("let foo: ((int, int)) -> int;");
-    parse_file("let foo: struct { foo: int };");
-    parse_file("let foo: struct { foo: int } -> int;");
-    parse_file("let foo: struct { foo: int, bar: int };");
-    parse_file("let foo: struct { foo: int, bar: struct { foo: int }, baz: int };");
-    parse_file("let foo: enum { foo };");
-    parse_file("let foo: enum { foo, bar, baz };");
-    parse_file("let foo: enum { foo(int) };");
-    parse_file("let foo: enum { foo(int, int) };");
-    parse_file("let foo: enum { foo((int, int)) };");
+    parse_ty("int");
+    parse_ty("int -> int");
+    parse_ty("(a: int) -> int");
+    parse_ty("(a: int, b: int) -> int");
+    parse_ty("(a: int, b: int, c: int) -> int");
+    parse_ty("(int) -> int");
+    parse_ty("(int, int) -> int");
+    parse_ty("(int, int, int) -> int");
+    parse_ty("(a: int, int, c: int) -> int");
+    parse_ty("(a: (int) -> int) -> int");
+    parse_ty("((int, int)) -> int");
+    parse_ty("struct { foo: int }");
+    parse_ty("struct { foo: int } -> int");
+    parse_ty("struct { foo: int, bar: int }");
+    parse_ty("struct { foo: int, bar: struct { foo: int }, baz: int }");
+    parse_ty("enum { foo }");
+    parse_ty("enum { foo, bar, baz }");
+    parse_ty("enum { foo(int) }");
+    parse_ty("enum { foo(int, int) }");
+    parse_ty("enum { foo((int, int)) } -> (int, int)");
+    parse_ty("[int]");
+    parse_ty("[int] -> int");
+    parse_ty("(foo: int -> int) -> int");
+    parse_ty("(int -> int) -> int");
+    parse_ty("int -> int -> int");
+    assert_eq!(
+        Just(&parse_ty("&&int -> int"))
+            .translation_unit()
+            .leaf()
+            .declaration()
+            .ty()
+            .from_just(),
+        &TypeSignature::Function(
+            vec![Param::Anon(Box::new(TypeSignature::Pointer {
+                nullable: false,
+                ty: Box::new(TypeSignature::Pointer {
+                    nullable: false,
+                    ty: Box::new(TypeSignature::Plain(From::from("int")))
+                }
+            )}))],
+            Box::new(TypeSignature::Plain(From::from("int")))
+        )
+    );
 }

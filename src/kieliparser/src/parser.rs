@@ -1,5 +1,5 @@
-use std::convert::TryFrom;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::iter::Peekable;
 use std::rc::Rc;
 
@@ -18,12 +18,11 @@ pub enum Maybe<T> {
 
 use Maybe::*;
 
-
 impl<T> From<Option<T>> for Maybe<T> {
     fn from(that: Option<T>) -> Maybe<T> {
         match that {
             Some(t) => Just(t),
-            None => Nothing
+            None => Nothing,
         }
     }
 }
@@ -32,33 +31,33 @@ impl<T> Into<Option<T>> for Maybe<T> {
     fn into(self) -> Option<T> {
         match self {
             Just(t) => Some(t),
-            Nothing => None
+            Nothing => None,
         }
-     }
+    }
 }
 
 impl<T> Maybe<T> {
-    fn from_just(self) -> T {
+    pub fn from_just(self) -> T {
         if let Just(t) = self {
             t
         } else {
             panic!()
         }
     }
-    fn is_just(&self) -> bool {
+    pub fn is_just(&self) -> bool {
         if let Just(_) = self {
             true
         } else {
             false
         }
     }
-    fn as_ref(&self) -> Maybe<&T> {
+    pub fn as_ref(&self) -> Maybe<&T> {
         match *self {
             Just(ref x) => Just(x),
             Nothing => Nothing,
         }
     }
-    fn map<U, F: FnOnce(T) -> U>(self, f: F) -> Maybe<U> {
+    pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> Maybe<U> {
         match self {
             Just(x) => Just(f(x)),
             Nothing => Nothing,
@@ -98,6 +97,7 @@ macro_rules! read_token {
 macro_rules! impl_enter {
     (@implpat $this:ident, $var:ident, $t:ident, 1) => { $this::$var($t, ..) };
     (@implpat $this:ident, $var:ident, $t:ident, 3) => { $this::$var(_, _, $t, ..) };
+    (@implpat $this:ident, $var:ident, $t:ident, 4) => { $this::$var(_, _, _, $t, ..) };
     (@implpat $this:ident, $var:ident, $t:ident, 5) => { $this::$var(_, _, _, _, $t, ..) };
     (@implpat $this:ident, $var:ident, $t:ident, 6) => { $this::$var(_, _, _, _, _, $t, ..) };
     (@iflet $self:ident, $this:ident, $variant_name:ident, $count:tt) => {
@@ -116,14 +116,14 @@ macro_rules! impl_enter {
     };
     (fmap, $this:ident, $variant_name:ident, $that:ty, $fn_name:ident, $($pat:tt)*) => {
         impl Maybe<&$this> {
-            fn $fn_name(&self) -> Maybe<&$that> {
+            pub fn $fn_name(&self) -> Maybe<&$that> {
                 impl_enter!(@iflet @fmap self, $this, $variant_name, $($pat)*)
             }
         }
     };
     ($this:ident, $variant_name:ident, $that:ty, $fn_name:ident, $($pat:tt)*) => {
         impl Maybe<&$this> {
-            fn $fn_name(&self) -> Maybe<&$that> {
+            pub fn $fn_name(&self) -> Maybe<&$that> {
                 impl_enter!(@iflet self, $this, $variant_name, $($pat)*)
             }
         }
@@ -133,6 +133,7 @@ macro_rules! impl_enter {
 impl_enter!(S, TranslationUnit, TranslationUnit, translation_unit, 1);
 impl_enter!(TranslationUnit, Leaf, Unit, leaf, 1);
 impl_enter!(Unit, Declaration, Declaration, declaration, 1);
+impl_enter!(fmap, Declaration, Declaration, TypeSignature, ty, 4);
 impl_enter!(Declaration, Declaration, Rc<str>, identifier, 3);
 impl_enter!(Token, Identifier, Rc<str>, identifier_s, 1);
 impl_enter!(
@@ -347,7 +348,7 @@ impl TryFrom<Param> for TypeSignature {
     fn try_from(param: Param) -> Result<Self, Self::Error> {
         match param {
             Param::Anon(ty) => Ok(*ty),
-            Param::Param(..) => Err(())
+            Param::Param(..) => Err(()),
         }
     }
 }
@@ -508,12 +509,16 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_type(&mut self) -> TypeSignature {
-        match self.peek() {
+        self.parse_type_(true)
+    }
+
+    fn parse_type_(&mut self, maybe_fn: bool) -> TypeSignature {
+        let ty = match self.peek() {
             /* int */
             /* int -> int */
             Just(Token::Identifier(..)) => {
                 let t = self.next().identifier_s().from_just().clone();
-                self.maybe_parse_fn(TypeSignature::Plain(t))
+                TypeSignature::Plain(t)
             }
             /* (foo, bar: int) -> int */
             /* (int, int) */
@@ -522,13 +527,15 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let params = self.parse_param_list();
                 read_token!(self, Token::CloseParen);
                 match self.peek() {
-                    Just(Token::Operator(t)) if &**t == "->" => {
+                    Just(Token::Operator(t)) if &**t == "->" && maybe_fn => {
                         read_token!(self, Token::Operator);
                         let return_type = self.parse_type();
-                        TypeSignature::Function(params, Box::new(return_type))
+                        return TypeSignature::Function(params, Box::new(return_type));
                     }
                     t => {
-                        let ty_list: Result<Vec<Box<TypeSignature>>, ()> = params.clone().into_iter()
+                        let ty_list: Result<Vec<Box<TypeSignature>>, ()> = params
+                            .clone()
+                            .into_iter()
                             .map(TryFrom::try_from)
                             .map(|t| t.map(Box::new))
                             .collect();
@@ -547,8 +554,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::OpenBrace);
                 let fields = self.parse_struct_list();
                 read_token!(self, Token::CloseBrace);
-                let struct_ty = TypeSignature::Struct(name.identifier_s().map(|t| t.clone()), fields);
-                self.maybe_parse_fn(struct_ty)
+                TypeSignature::Struct(name.identifier_s().map(|t| t.clone()), fields)
             }
             /* enum { foo, bar(int) } */
             Just(Token::Enum(..)) => {
@@ -557,13 +563,30 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::OpenBrace);
                 let fields = self.parse_enum_list();
                 read_token!(self, Token::CloseBrace);
-                let struct_ty = TypeSignature::Enum(name.identifier_s().map(|t| t.clone()), fields);
-                self.maybe_parse_fn(struct_ty)
+                TypeSignature::Enum(name.identifier_s().map(|t| t.clone()), fields)
             }
             /* [int] */
-            /* *int, &int */
-            /* int -> int */
+            Just(Token::OpenBracket(..)) => {
+                read_token!(self, Token::OpenBracket);
+                let ty = self.parse_type();
+                read_token!(self, Token::CloseBracket);
+                TypeSignature::Array(Box::new(ty))
+            }
+            /* &int, &?int */
+            Just(Token::Reference(..)) | Just(Token::NullableReference(..)) => {
+                let nullable = maybe_read_token!(self, Token::NullableReference).is_just();
+                if !nullable {
+                    read_token!(self, Token::Reference);
+                }
+                let ty = Box::new(self.parse_type_(false));
+                TypeSignature::Pointer { nullable, ty }
+            }
             t => unexpected_token!(t, self),
+        };
+        if maybe_fn {
+            self.maybe_parse_fn(ty)
+        } else {
+            ty
         }
     }
 
@@ -574,7 +597,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let return_type = self.parse_type();
                 TypeSignature::Function(vec![Param::Anon(Box::new(arg_ty))], Box::new(return_type))
             }
-            _ => arg_ty
+            _ => arg_ty,
         }
     }
 
@@ -585,27 +608,26 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn parse_param(&mut self) -> Maybe<Param> {
         match self.peek() {
             Just(Token::Identifier(ident)) => {
-                self.next();
-                match self.peek() {
-                    Just(Token::Operator(t)) if &**t == ":" => {
-                        self.next();
-                        let ty = self.parse_type();
-                        Just(Param::Param(ident.clone(), Box::new(ty)))
+                let ty = self.parse_type();
+                if let TypeSignature::Plain(_) = &ty {
+                    match self.peek() {
+                        Just(Token::Operator(t)) if &**t == ":" => {
+                            self.next();
+                            let ty = self.parse_type();
+                            Just(Param::Param(ident.clone(), Box::new(ty)))
+                        }
+                        _ => Just(Param::Anon(Box::new(TypeSignature::Plain(ident.clone())))),
                     }
-                    /* This is an ambiguous parse (could be either variable identifier (a -> a) or
-                     * a type (int -> int)), but prefer parsing a type over identifier here, as
-                     * this is in type signatures rather than lambda parameter lists */
-                    _ => Just(Param::Anon(Box::new(TypeSignature::Plain(ident.clone()))))
+                } else {
+                    Just(Param::Anon(Box::new(ty)))
                 }
             }
-            Just(_) => {
-                match_first!(
+            Just(_) => match_first!(
                     self.peek() => _t,
                     default Nothing,
 
-                    TypeSignature => Just(Param::Anon(Box::new(self.parse_type()))),)
-            }
-            Nothing => Nothing
+                    TypeSignature => Just(Param::Anon(Box::new(self.parse_type()))),),
+            Nothing => Nothing,
         }
     }
 
@@ -625,7 +647,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let ty = Box::new(self.parse_type());
                 Just(StructField::Field { name, ty })
             }
-            _ => Nothing
+            _ => Nothing,
         }
     }
 
@@ -637,17 +659,15 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     Just(Token::Operator(t)) if &**t == "=" => {
                         panic!("Not implemented");
                     }
-                    _ => Nothing
+                    _ => Nothing,
                 };
                 let ty = match self.peek() {
-                    Just(Token::OpenParen(..)) => {
-                        Just(self.parse_type())
-                    }
-                    _ => Nothing
+                    Just(Token::OpenParen(..)) => Just(self.parse_type()),
+                    _ => Nothing,
                 };
                 Just(EnumField::Field { name, value, ty })
             }
-            _ => Nothing
+            _ => Nothing,
         }
     }
 
@@ -656,7 +676,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         if let Just(p) = cb(self) {
             things.push(p);
         } else {
-            return things
+            return things;
         }
         while let Just(Token::Comma()) = self.peek() {
             read_token!(self, Token::Comma);
@@ -667,7 +687,6 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         }
         things
     }
-
 
     fn parse_include(&mut self) -> IncludeFile {
         unexpected_token!(self.peek(), self)
@@ -729,9 +748,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     _ => PrimaryExpression::Identifier(t.clone()),
                 }
             }
-            Just(Token::Integer(..)) => {
-                PrimaryExpression::Integer(self.next().from_just().clone())
-            }
+            Just(Token::Integer(..)) => PrimaryExpression::Integer(self.next().from_just().clone()),
             Just(Token::Float(..)) => PrimaryExpression::Float(self.next().from_just().clone()),
             Just(Token::If(..)) => PrimaryExpression::ConditionalExpression(self.parse_if_expr()),
             t => unexpected_token!(t, self),
