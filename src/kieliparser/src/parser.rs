@@ -227,26 +227,50 @@ type PrecedenceMap = HashMap<Rc<str>, Precedence>;
 
 fn default_bin_ops() -> PrecedenceMap {
     let mut precedence = HashMap::new();
-    precedence.insert(From::from("*"), Precedence::binop(1));
-    precedence.insert(From::from("**"), Precedence::binop(1));
-    precedence.insert(From::from("+"), Precedence::binop(2));
-    precedence.insert(From::from("-"), Precedence::binop(2));
-    precedence.insert(From::from("-"), Precedence::binop(2));
 
-    precedence.insert(
-        From::from("?"),
-        Precedence { precedence: 5, param_count: 2, left_associative: false });
-    precedence.insert(
-        From::from(":"),
-        Precedence { precedence: 5, param_count: 2, left_associative: false });
+    // Ternary
+    precedence.insert(From::from("?"), Precedence::binop_right(1));
+    precedence.insert(From::from(":"), Precedence::binop_right(1));
+
+    // Logical operations: or, and, eq, neq, leq, meq, less, more
+    precedence.insert(From::from("||"), Precedence::binop(2));
+    precedence.insert(From::from("&&"), Precedence::binop(3));
+    precedence.insert(From::from("=="), Precedence::binop(4));
+    precedence.insert(From::from("!="), Precedence::binop(4));
+    precedence.insert(From::from("<="), Precedence::binop(5));
+    precedence.insert(From::from(">="), Precedence::binop(5));
+    precedence.insert(From::from("<"), Precedence::binop(5));
+    precedence.insert(From::from(">"), Precedence::binop(5));
+
+    // Bitwise operations: or, xor, and, shl, shr, rotating bitshifts
+    precedence.insert(From::from("|"), Precedence::binop(6));
+    precedence.insert(From::from("^"), Precedence::binop(7));
+    precedence.insert(From::from("&"), Precedence::binop(8));
+    precedence.insert(From::from("<<"), Precedence::binop(9));
+    precedence.insert(From::from(">>"), Precedence::binop(9));
+    precedence.insert(From::from("<<<"), Precedence::binop(9));
+    precedence.insert(From::from(">>>"), Precedence::binop(9));
+
+    // Standard arithmetic: plus, minus, mod, times, div, pow
+    precedence.insert(From::from("+"), Precedence::binop(10));
+    precedence.insert(From::from("-"), Precedence::binop(10));
+    precedence.insert(From::from("%"), Precedence::binop(11));
+    precedence.insert(From::from("*"), Precedence::binop(11));
+    precedence.insert(From::from("/"), Precedence::binop(11));
+    precedence.insert(From::from("**"), Precedence::binop_right(12));
 
     precedence
 }
 
 fn default_unary_ops() -> PrecedenceMap {
     let mut precedence = HashMap::new();
-    precedence.insert(From::from("~"), Precedence::unary());
+
+    // Unary plus (nop), unary minus (negation), unary not (!= 0), bitwise not
+    precedence.insert(From::from("+"), Precedence::unary());
     precedence.insert(From::from("-"), Precedence::unary());
+    precedence.insert(From::from("!"), Precedence::unary());
+    precedence.insert(From::from("~"), Precedence::unary());
+
     precedence
 }
 
@@ -269,6 +293,9 @@ struct Precedence {
 impl Precedence {
     fn binop(precedence: usize) -> Precedence {
         Precedence { precedence, param_count: 2, left_associative: true }
+    }
+    fn binop_right(precedence: usize) -> Precedence {
+        Precedence { precedence, param_count: 2, left_associative: false }
     }
     fn unary() -> Precedence {
         Precedence { precedence: 1, param_count: 1, left_associative: true }
@@ -343,7 +370,7 @@ impl ParseContext<'_, '_> {
     }
 
     fn parse_expression(&mut self) -> Expression {
-        self.parse_expression_(12)
+        self.parse_expression_(1)
     }
 
     fn parse_expression_(&mut self, precedence: usize) -> Expression {
@@ -363,7 +390,7 @@ impl ParseContext<'_, '_> {
         loop {
             match self.iter.peek() {
                 Some(Token::Operator(p)) => match self.precedence.get(p).map(|t| *t) {
-                    Some(n) if precedence >= n.precedence => {
+                    Some(n) if precedence <= n.precedence => {
                         let mut left = vec![Box::new(expr)];
                         let op = self.iter.next().unwrap().clone();
                         let mut tail = (1..n.param_count).into_iter()
@@ -433,7 +460,7 @@ impl ParseContext<'_, '_> {
                 Some(Token::CloseBrace(..)) => {
                     break;
                 }
-                Some(t) => {
+                Some(_) => {
                     stmts.push(Box::new(self.parse_stmt()));
                 }
                 t => unexpected_token!(t, self.iter)
@@ -497,6 +524,12 @@ mod tests {
             .unwrap_or_else(|| Token::Integer(s.parse().unwrap()))
     }
 
+    macro_rules! eval_bin {
+        ($list:ident, $op:tt) => {
+            eval_tree(&*$list[0]) $op eval_tree(&*$list[1])
+        }
+    }
+
     fn eval_tree(expr: &Expression) -> i128 {
         match expr {
             Expression::PrimaryExpression(PrimaryExpression::Integer(Token::Integer(e))) => *e,
@@ -504,9 +537,13 @@ mod tests {
             Expression::Op(op, ExprList::List(list)) => {
                 let op_s: &str = if let Token::Operator(s) = op { &*s } else { unreachable!() };
                 match op_s {
-                    "+" => eval_tree(&*list[0]) + eval_tree(&*list[1]),
-                    "-" => eval_tree(&*list[0]) - eval_tree(&*list[1]),
-                    "*" => eval_tree(&*list[0]) * eval_tree(&*list[1]),
+                    "+" => eval_bin!(list, +),
+                    "-" => eval_bin!(list, -),
+                    "*" => eval_bin!(list, *),
+                    "/" => eval_bin!(list, /),
+                    "&" => eval_bin!(list, &),
+                    "|" => eval_bin!(list, |),
+                    "^" => eval_bin!(list, ^),
                     "**" => eval_tree(&*list[0]).pow(eval_tree(&*list[1]) as u32),
                     "?" => {
                         if let Expression::Op(Token::Operator(op), ExprList::List(res_list)) = &*list[1] {
@@ -571,6 +608,10 @@ mod tests {
         check("0 ? 2 : 1 ? 3 : 4", 3);
         check("1 ? 2 : 1 ? 3 : 4", 2);
         check("0 ? 2 : 0 ? 3 : 4", 4);
+
+        check("1 & 2", 0);
+        check("1 & 3 | 4", 5);
+        check("1 | 3 & 4", 1);
     }
 
     #[test]
