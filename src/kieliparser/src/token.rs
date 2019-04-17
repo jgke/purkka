@@ -9,9 +9,11 @@ pub enum Token {
     Char(char),
     Operator(Rc<str>),
 
-    OpenParen(),
     Comma(),
+    OpenParen(),
     CloseParen(),
+    OpenBrace(),
+    CloseBrace(),
 
     Colon(),
     SemiColon(),
@@ -21,6 +23,9 @@ pub enum Token {
     Static(),
     Fun(),
     Let(),
+    If(),
+    Elif(),
+    Else(),
 
     Include(),
     IncludeC(),
@@ -32,6 +37,8 @@ pub static TOKEN_TYPES: &[(&str, fn() -> Token)] = &[
     (";", SemiColon),
     ("(", OpenParen),
     (")", CloseParen),
+    ("{", OpenBrace),
+    ("}", CloseBrace),
 ];
 
 pub static KEYWORDS: &[(&str, fn() -> Token)] = &[
@@ -40,4 +47,7 @@ pub static KEYWORDS: &[(&str, fn() -> Token)] = &[
     ("static", Static),
     ("fun", Fun),
     ("let", Let),
+    ("if", If),
+    ("elif", Elif),
+    ("else", Else),
 ];

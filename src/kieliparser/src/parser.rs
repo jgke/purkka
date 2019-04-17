@@ -179,6 +179,21 @@ grammar! {
         | Call. #Token::Identifier ArgList
         | #Token::Integer
         | #Token::Float
+        | ConditionalExpression
+        ;
+
+    ConditionalExpression
+       -> #Token::If Expression Block IfTail
+       @ #[derive(Clone, Debug, PartialEq)]
+       pub enum ConditionalExpression {
+           Exprs(Vec<(Box<Expression>, Box<Block>)>, Option<Box<Block>>)
+       }
+       ;
+
+    IfTail
+       -> Epsilon
+        | #Token::Elif Expression Block IfTail
+        | #Token::Else Expression Block
         ;
 
     Expression
@@ -196,6 +211,13 @@ grammar! {
     AssignmentExpression
        -> Expression
        ;
+
+    Block -> #Token::OpenBrace Statements #Token::CloseBrace
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum Block { Statements(Vec<Box<Statement>>) }
+        ;
+    Statements -> Epsilon | Statement #Token::SemiColon Statements;
+    Statement -> Declaration | Expression;
 
     Path -> #Token::Identifier;
 }
@@ -308,16 +330,20 @@ impl ParseContext<'_, '_> {
     }
 
     fn parse_assignment_expr(&mut self) -> AssignmentExpression {
-        AssignmentExpression::Expression(self.parse_expression(12))
+        AssignmentExpression::Expression(self.parse_expression())
     }
 
-    fn parse_expression(&mut self, precedence: usize) -> Expression {
+    fn parse_expression(&mut self) -> Expression {
+        self.parse_expression_(12)
+    }
+
+    fn parse_expression_(&mut self, precedence: usize) -> Expression {
         match self.iter.peek() {
             Some(Token::Operator(p)) => match self.unary_precedence.get(p) {
                 Some(n) if n.left_associative && n.param_count == 1 => {
                     assert_eq!(n.left_associative, true);
                     let op = self.iter.next().unwrap().clone();
-                    let expr = self.parse_expression(n.precedence);
+                    let expr = self.parse_expression_(n.precedence);
                     return Expression::Unary(op, ExprList::List(vec![Box::new(expr)]));
                 }
                 _ => panic!("Unexpected operator: {:?}", p)
@@ -332,7 +358,7 @@ impl ParseContext<'_, '_> {
                         let mut left = vec![Box::new(expr)];
                         let op = self.iter.next().unwrap().clone();
                         let mut tail = (1..n.param_count).into_iter()
-                            .map(|_| self.parse_expression(n.precedence))
+                            .map(|_| self.parse_expression_(n.precedence))
                             .map(Box::new)
                             .collect();
                         left.append(&mut tail);
@@ -347,17 +373,77 @@ impl ParseContext<'_, '_> {
         expr
     }
     fn parse_primary_expression(&mut self) -> PrimaryExpression {
-        match self.iter.next() {
-            Some(t@Token::Identifier(..)) => {
+        match self.iter.peek() {
+            Some(Token::Identifier(..)) => {
+                let t = self.iter.next().unwrap().clone();
                 match self.iter.peek() {
                     Some(Token::OpenParen()) => PrimaryExpression::Call(t.clone(), self.parse_args()),
                     _ => PrimaryExpression::Identifier(t.clone())
                 }
             }
-            Some(t@Token::Integer(..)) => PrimaryExpression::Integer(t.clone()),
-            Some(t@Token::Float(..)) => PrimaryExpression::Float(t.clone()),
+            Some(Token::Integer(..)) => PrimaryExpression::Integer(self.iter.next().unwrap().clone()),
+            Some(Token::Float(..)) => PrimaryExpression::Float(self.iter.next().unwrap().clone()),
+            Some(Token::If(..)) => PrimaryExpression::ConditionalExpression(self.parse_if_expr()),
             t => unexpected_token!(t, self.iter)
         }
+    }
+
+    fn parse_if_expr(&mut self) -> ConditionalExpression {
+        // if expr block [elif expr block ]* [else block]
+        read_token!(self.iter, Token::If);
+        let mut choices = Vec::new();
+        let expr = self.parse_expression();
+        let block = self.parse_block();
+        let mut or_else = None;
+        choices.push((Box::new(expr), Box::new(block)));
+        loop {
+            match self.iter.peek() {
+                Some(Token::Elif(..)) => {
+                    read_token!(self.iter, Token::Elif);
+                    let expr = self.parse_expression();
+                    let block = self.parse_block();
+                    choices.push((Box::new(expr), Box::new(block)));
+                }
+                Some(Token::Else(..)) => {
+                    read_token!(self.iter, Token::Else);
+                    let block = self.parse_block();
+                    or_else = Some(Box::new(block));
+                    break;
+                }
+                _ => break
+            }
+        }
+        ConditionalExpression::Exprs(choices, or_else)
+    }
+
+    fn parse_block(&mut self) -> Block {
+        read_token!(self.iter, Token::OpenBrace);
+        let mut stmts = Vec::new();
+        loop {
+            match self.iter.peek() {
+                Some(Token::CloseBrace(..)) => {
+                    break;
+                }
+                Some(t) => {
+                    stmts.push(Box::new(self.parse_stmt()));
+                }
+                t => unexpected_token!(t, self.iter)
+            }
+        }
+        read_token!(self.iter, Token::CloseBrace);
+        Block::Statements(stmts)
+    }
+
+    fn parse_stmt(&mut self) -> Statement {
+        let res = match_first!(
+            self.iter.peek() => _t,
+            default unexpected_token!(_t, self.iter),
+
+            Declaration => Statement::Declaration(self.parse_declaration()),
+            Expression => Statement::Expression(self.parse_expression()),
+        );
+        read_token!(self.iter, Token::SemiColon);
+        res
     }
 
     fn parse_args(&mut self) -> ArgList {
@@ -371,7 +457,7 @@ impl ParseContext<'_, '_> {
                     break;
                 }
                 Some(_) => {
-                    args.push(self.parse_expression(12));
+                    args.push(self.parse_expression());
                     match self.iter.peek() {
                         Some(Token::CloseParen()) => {
                             self.iter.next();
@@ -440,7 +526,7 @@ mod tests {
         let both = unary_precedence.clone().into_iter().chain(precedence.clone().into_iter()).collect();
         let vec: Vec<Token> = expr.split(' ').map(|t| to_token(&both, t)).collect();
         let mut context = ParseContext { precedence, unary_precedence, iter: &mut vec.iter().peekable() };
-        let result = eval_tree(&context.parse_expression(12));
+        let result = eval_tree(&context.parse_expression());
         println!("{} = {} (expected: {})", expr, result, expected);
         assert_eq!(result, expected);
     }

@@ -13,7 +13,12 @@ fn parse_simple() {
 #[test]
 fn parse_simple_str() {
     parse_file("let foo = 1;");
-    dbg!(parse_file("let foo = 1 + 2;"));
-    dbg!(parse_file("let foo = 1 + 2 * 3;"));
-    dbg!(parse_file("let foo = 1 * 2 + 3;"));
+    parse_file("let foo = 1 + 2;");
+    parse_file("let foo = 1 + 2 * 3;");
+    parse_file("let foo = 1 * 2 + 3;");
+}
+
+#[test]
+fn parse_if_else() {
+    parse_file("let foo = if 1 + 2 { something(); } elif 3 { something_else(); } else {};");
 }
