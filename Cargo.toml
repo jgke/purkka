@@ -6,6 +6,7 @@ members = [
     "src/fragment",
     "src/kieli",
     "src/kieliparser",
+    "src/kieliparser_procmacros",
     "src/lalr",
     "src/parser",
     "src/preprocessor",

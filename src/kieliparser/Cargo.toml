@@ -7,4 +7,5 @@ edition = "2018"
 [dependencies]
 fragment = { path="../fragment" }
 lalr = { path="../lalr" }
+kieliparser_procmacros = { path="../kieliparser_procmacros" }
 shared = { path="../shared" }

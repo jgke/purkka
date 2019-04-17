@@ -901,7 +901,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             let mut first_terms = HashSet::new();
             let _has_e = first(self.tm, &mut first_terms, &mut HashSet::new(), self.tm.indices[&rule.identifier]);
             single_match += &first_terms.iter()
-                .map(|t| format!("Just($bind @ {}(..))", self.tm.rev_indices[t]))
+                .map(|t| format!("Some($bind @ {}(..))", self.tm.rev_indices[t]))
                 .collect::<Vec<String>>()
                 .join("|");
             single_match += " => { $e }";

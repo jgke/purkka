@@ -161,9 +161,14 @@ name = "kieliparser"
 version = "0.1.0"
 dependencies = [
  "fragment 0.1.0",
+ "kieliparser_procmacros 0.1.0",
  "lalr 0.1.0",
  "shared 0.1.0",
 ]
+
+[[package]]
+name = "kieliparser_procmacros"
+version = "0.1.0"
 
 [[package]]
 name = "lalr"

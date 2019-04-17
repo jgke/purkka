@@ -1,5 +1,4 @@
 use kieliparser::parse_file;
-use kieliparser::parser::Maybe::*;
 use kieliparser::parser::*;
 use kieliparser::token::Token;
 
@@ -33,6 +32,14 @@ fn parse_ty(s: &str) -> S {
     parse_file(&format!("let foo: {};", s))
 }
 
+fn get_ty(s: &S) -> Option<&TypeSignature> {
+    Some(s)
+        .translation_unit()
+        .leaf()
+        .declaration()
+        .ty()
+}
+
 #[test]
 fn parse_types() {
     parse_ty("int");
@@ -61,12 +68,7 @@ fn parse_types() {
     parse_ty("(int -> int) -> int");
     parse_ty("int -> int -> int");
     assert_eq!(
-        Just(&parse_ty("&&int -> int"))
-            .translation_unit()
-            .leaf()
-            .declaration()
-            .ty()
-            .from_just(),
+        get_ty(&parse_ty("&&int -> int")).unwrap(),
         &TypeSignature::Function(
             vec![Param::Anon(Box::new(TypeSignature::Pointer {
                 nullable: false,

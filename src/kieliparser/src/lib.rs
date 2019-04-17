@@ -1,6 +1,7 @@
 #![recursion_limit = "100"]
 #![feature(plugin, box_patterns)]
 #![plugin(lalr)]
+#![plugin(kieliparser_procmacros)]
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
