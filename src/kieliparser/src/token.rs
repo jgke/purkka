@@ -9,6 +9,10 @@ pub enum Token {
     Char(char),
     Operator(Rc<str>),
 
+    OpenParen(),
+    Comma(),
+    CloseParen(),
+
     Colon(),
     SemiColon(),
 
@@ -26,6 +30,8 @@ use Token::*;
 
 pub static TOKEN_TYPES: &[(&str, fn() -> Token)] = &[
     (";", SemiColon),
+    ("(", OpenParen),
+    (")", CloseParen),
 ];
 
 pub static KEYWORDS: &[(&str, fn() -> Token)] = &[

@@ -4,6 +4,42 @@ use std::rc::Rc;
 
 use crate::token::Token;
 
+// 'Re-implement' Option<> because
+//  a) error[E0116]: cannot define inherent `impl` for a type outside of the crate where the type is defined
+//  b) I don't want to create a new trait for every single AST node (although this might be a good
+//      idea in the future)
+//  c) This gives some way for future
+enum Maybe<T> {
+    Just(T),
+    Nothing
+}
+
+use Maybe::*;
+
+impl<T> Maybe<T> {
+    fn from_just(self) -> T {
+        if let Just(t) = self { t } else { panic!() }
+    }
+}
+
+impl<T> From<Option<T>> for Maybe<T> {
+    fn from(that: Option<T>) -> Maybe<T> {
+        match that {
+            Some(t) => Just(t),
+            None => Nothing
+        }
+    }
+}
+
+impl<T> Into<Option<T>> for Maybe<T> {
+    fn into(self) -> Option<T> {
+        match self {
+            Just(t) => Some(t),
+            Nothing => None
+        }
+    }
+}
+
 macro_rules! maybe_read_token {
     ($iter:expr, $tok:path) => {
         if let Some($tok(..)) = $iter.peek() {
@@ -34,6 +70,48 @@ macro_rules! read_token {
     }
 }
 
+macro_rules! impl_enter {
+    (@implpat $this:ident, $var:ident, $t:ident, 1) => { $this::$var($t, ..) };
+    (@implpat $this:ident, $var:ident, $t:ident, 3) => { $this::$var(_, _, $t, ..) };
+    (@implpat $this:ident, $var:ident, $t:ident, 5) => { $this::$var(_, _, _, _, $t, ..) };
+    (@implpat $this:ident, $var:ident, $t:ident, 6) => { $this::$var(_, _, _, _, _, $t, ..) };
+    (@iflet $self:ident, $this:ident, $variant_name:ident, $count:tt) => {
+        if let Just(impl_enter!(@implpat $this, $variant_name, t, $count)) = $self {
+            Just(t)
+        } else {
+            Nothing
+        }
+    };
+    (@iflet @fmap $self:ident, $this:ident, $variant_name:ident, $count:tt) => {
+        if let Just(impl_enter!(@implpat $this, $variant_name, t, $count)) = $self {
+            From::from(t.as_ref())
+        } else {
+            Nothing
+        }
+    };
+    (fmap, $this:ident, $variant_name:ident, $that:ty, $fn_name:ident, $($pat:tt)*) => {
+        impl Maybe<&$this> {
+            fn $fn_name(&self) -> Maybe<&$that> {
+                impl_enter!(@iflet @fmap self, $this, $variant_name, $($pat)*)
+            }
+        }
+    };
+    ($this:ident, $variant_name:ident, $that:ty, $fn_name:ident, $($pat:tt)*) => {
+        impl Maybe<&$this> {
+            fn $fn_name(&self) -> Maybe<&$that> {
+                impl_enter!(@iflet self, $this, $variant_name, $($pat)*)
+            }
+        }
+    };
+}
+
+impl_enter!(S, TranslationUnit, TranslationUnit, translation_unit, 1);
+impl_enter!(TranslationUnit, Leaf, Unit, leaf, 1);
+impl_enter!(Unit, Declaration, Declaration, declaration, 1);
+impl_enter!(Declaration, Declaration, Rc<str>, identifier, 3);
+impl_enter!(fmap, Declaration, Declaration, AssignmentExpression, expr, 5);
+impl_enter!(AssignmentExpression, Expression, Expression, expr, 1);
+
 grammar! {
     S -> TranslationUnit;
 
@@ -49,7 +127,7 @@ grammar! {
 
     Declaration
        -> Declaration. Visibility #Token::Let Mutability #Token::Identifier MaybeType
-        | Definition. Visibility #Token::Let Mutability #Token::Identifier MaybeType #Token::Assign AssignmentExpression
+        | Definition. Visibility #Token::Let Mutability #Token::Identifier MaybeType #Token::Operator AssignmentExpression
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Declaration { Declaration(bool, bool, Rc<str>, Option<Type>, Option<AssignmentExpression>) }
         ;
@@ -61,11 +139,6 @@ grammar! {
 
     Type
        -> #Token::Identifier
-        ;
-
-    MaybeAssign
-       -> #Token::Assign AssignmentExpression
-        | Epsilon
         ;
 
     Mutability
@@ -83,8 +156,27 @@ grammar! {
         | C. #Token::IncludeC Path
         ;
 
+    ArgList
+       -> Empty. #Token::OpenParen #Token::CloseParen
+        | Args. #Token::OpenParen Arg MoreArgs #Token::CloseParen
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum ArgList {
+            Args(Vec<Expression>)
+        }
+        ;
+
+    MoreArgs
+       -> Epsilon
+        | #Token::Comma Arg
+        ;
+
+    Arg
+       -> &Expression
+        ;
+
     PrimaryExpression
        -> #Token::Identifier
+        | Call. #Token::Identifier ArgList
         | #Token::Integer
         | #Token::Float
         ;
@@ -92,6 +184,7 @@ grammar! {
     Expression
        -> PrimaryExpression
         | Op. #Token::Operator ExprList
+        | Unary. #Token::Operator ExprList
         | Prefix. #Token::Operator Expression
         ;
 
@@ -113,6 +206,7 @@ type PrecedenceMap = HashMap<Rc<str>, Precedence>;
 fn default_bin_ops() -> PrecedenceMap {
     let mut precedence = HashMap::new();
     precedence.insert(From::from("*"), Precedence::binop(1));
+    precedence.insert(From::from("**"), Precedence::binop(1));
     precedence.insert(From::from("+"), Precedence::binop(2));
     precedence.insert(From::from("-"), Precedence::binop(2));
     precedence
@@ -146,7 +240,7 @@ impl Precedence {
         Precedence { precedence, param_count: 2, left_associative: true }
     }
     fn unary() -> Precedence {
-        Precedence { precedence: 1, param_count: 2, left_associative: true }
+        Precedence { precedence: 1, param_count: 1, left_associative: true }
     }
 }
 
@@ -174,7 +268,7 @@ impl ParseContext<'_, '_> {
 
             Declaration => Unit::Declaration(self.parse_declaration()),
             IncludeFile => Unit::IncludeFile(self.parse_include()),
-            )
+        )
     }
 
     fn parse_declaration(&mut self) -> Declaration {
@@ -224,7 +318,7 @@ impl ParseContext<'_, '_> {
                     assert_eq!(n.left_associative, true);
                     let op = self.iter.next().unwrap().clone();
                     let expr = self.parse_expression(n.precedence);
-                    return Expression::Op(op, ExprList::List(vec![Box::new(expr)]));
+                    return Expression::Unary(op, ExprList::List(vec![Box::new(expr)]));
                 }
                 _ => panic!("Unexpected operator: {:?}", p)
             }
@@ -254,17 +348,54 @@ impl ParseContext<'_, '_> {
     }
     fn parse_primary_expression(&mut self) -> PrimaryExpression {
         match self.iter.next() {
-            Some(t@Token::Identifier(..)) => PrimaryExpression::Identifier(t.clone()),
+            Some(t@Token::Identifier(..)) => {
+                match self.iter.peek() {
+                    Some(Token::OpenParen()) => PrimaryExpression::Call(t.clone(), self.parse_args()),
+                    _ => PrimaryExpression::Identifier(t.clone())
+                }
+            }
             Some(t@Token::Integer(..)) => PrimaryExpression::Integer(t.clone()),
             Some(t@Token::Float(..)) => PrimaryExpression::Float(t.clone()),
             t => unexpected_token!(t, self.iter)
         }
+    }
+
+    fn parse_args(&mut self) -> ArgList {
+        let mut args = Vec::new();
+
+        read_token!(self.iter, Token::OpenParen);
+        loop {
+            match self.iter.peek() {
+                Some(Token::CloseParen()) => {
+                    self.iter.next();
+                    break;
+                }
+                Some(_) => {
+                    args.push(self.parse_expression(12));
+                    match self.iter.peek() {
+                        Some(Token::CloseParen()) => {
+                            self.iter.next();
+                            break;
+                        }
+                        Some(Token::Comma()) => {
+                            self.iter.next();
+                        }
+                        t => unexpected_token!(t, self.iter)
+                    }
+                }
+                t => unexpected_token!(t, self.iter)
+            }
+        }
+
+        ArgList::Args(args)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::token::Token;
+
     fn to_token(prec: &PrecedenceMap, s: &str) -> Token {
         prec.get(s)
             .map(|_| Token::Operator(From::from(s)))
@@ -281,6 +412,15 @@ mod tests {
                     "+" => eval_tree(&*list[0]) + eval_tree(&*list[1]),
                     "-" => eval_tree(&*list[0]) - eval_tree(&*list[1]),
                     "*" => eval_tree(&*list[0]) * eval_tree(&*list[1]),
+                    "**" => eval_tree(&*list[0]).pow(eval_tree(&*list[1]) as u32),
+                    _ => unreachable!()
+                }
+            }
+            Expression::Unary(op, ExprList::List(list)) => {
+                let op_s: &str = if let Token::Operator(s) = op { &*s } else { unreachable!() };
+                match op_s {
+                    "-" => -eval_tree(&*list[0]),
+                    "~" => !eval_tree(&*list[0]),
                     _ => unreachable!()
                 }
             }
@@ -305,18 +445,110 @@ mod tests {
         assert_eq!(result, expected);
     }
 
-    macro_rules! check {
-        ($expr:expr) => {
-            check(stringify!($expr), $expr)
-        }
+    #[test]
+    fn parse_expr_and_eval() {
+        check("0", 0);
+        check("-1", -1);
+        check("1 + 1", 2);
+        check("1 + -1", 0);
+        check("1 * -1", -1);
+        check("1 + 2 * 2", 5);
+        check("1 - 2 * 2", -3);
+        check("2 ** 3", 8);
+        check("- 2 ** 4", -16);
     }
 
     #[test]
-    fn parse_expr_and_eval() {
-        check!(1 + 1);
-        check!(1 + -1);
-        check!(1 * -1);
-        check!(1 + 2 * 2);
-        check!(1 - 2 * 2);
+    fn parse_fn_empty() {
+        let s = parse(&mut vec![
+                      Token::Let(),
+                      Token::Identifier(From::from("bar")),
+                      Token::Operator(From::from("=")),
+                      Token::Identifier(From::from("foo")),
+                      Token::OpenParen(),
+                      Token::CloseParen(),
+                      Token::SemiColon()].iter().peekable());
+        assert_eq!(
+            Just(&s).translation_unit().leaf().declaration().identifier().from_just(),
+            &From::from("bar"));
+        assert_eq!(
+            Just(&s).translation_unit().leaf().declaration().expr().expr().from_just(),
+            &Expression::PrimaryExpression(PrimaryExpression::Call(
+                    Token::Identifier(From::from("foo")), ArgList::Args(vec![]))));
+    }
+
+    #[test]
+    fn parse_fn_one_arg() {
+        let s = parse(&mut vec![
+                      Token::Let(),
+                      Token::Identifier(From::from("bar")),
+                      Token::Operator(From::from("=")),
+                      Token::Identifier(From::from("foo")),
+                      Token::OpenParen(),
+                      Token::Identifier(From::from("asd")),
+                      Token::CloseParen(),
+                      Token::SemiColon()].iter().peekable());
+        assert_eq!(
+            Just(&s).translation_unit().leaf().declaration().identifier().from_just(),
+            &From::from("bar"));
+        assert_eq!(
+            Just(&s).translation_unit().leaf().declaration().expr().expr().from_just(),
+            &Expression::PrimaryExpression(PrimaryExpression::Call(
+                    Token::Identifier(From::from("foo")), ArgList::Args(
+                        vec![Expression::PrimaryExpression(PrimaryExpression::Identifier(Token::Identifier(From::from("asd"))))]
+                        ))));
+    }
+
+    #[test]
+    fn parse_fn_two_args() {
+        let s = parse(&mut vec![
+                      Token::Let(),
+                      Token::Identifier(From::from("bar")),
+                      Token::Operator(From::from("=")),
+                      Token::Identifier(From::from("foo")),
+                      Token::OpenParen(),
+                      Token::Identifier(From::from("asd")),
+                      Token::Comma(),
+                      Token::Identifier(From::from("qwe")),
+                      Token::CloseParen(),
+                      Token::SemiColon()].iter().peekable());
+        assert_eq!(
+            Just(&s).translation_unit().leaf().declaration().identifier().from_just(),
+            &From::from("bar"));
+        assert_eq!(
+            Just(&s).translation_unit().leaf().declaration().expr().expr().from_just(),
+            &Expression::PrimaryExpression(PrimaryExpression::Call(
+                    Token::Identifier(From::from("foo")), ArgList::Args(
+                        vec![Expression::PrimaryExpression(PrimaryExpression::Identifier(Token::Identifier(From::from("asd")))),
+                       Expression::PrimaryExpression(PrimaryExpression::Identifier(Token::Identifier(From::from("qwe")))) ]
+                        ))));
+    }
+
+    #[test]
+    fn parse_fn_three_args() {
+        let s = parse(&mut vec![
+                      Token::Let(),
+                      Token::Identifier(From::from("bar")),
+                      Token::Operator(From::from("=")),
+                      Token::Identifier(From::from("foo")),
+                      Token::OpenParen(),
+                      Token::Identifier(From::from("asd")),
+                      Token::Comma(),
+                      Token::Identifier(From::from("qwe")),
+                      Token::Comma(),
+                      Token::Identifier(From::from("aoeu")),
+                      Token::CloseParen(),
+                      Token::SemiColon()].iter().peekable());
+        assert_eq!(
+            Just(&s).translation_unit().leaf().declaration().identifier().from_just(),
+            &From::from("bar"));
+        assert_eq!(
+            Just(&s).translation_unit().leaf().declaration().expr().expr().from_just(),
+            &Expression::PrimaryExpression(PrimaryExpression::Call(
+                    Token::Identifier(From::from("foo")), ArgList::Args(
+                        vec![Expression::PrimaryExpression(PrimaryExpression::Identifier(Token::Identifier(From::from("asd")))),
+                       Expression::PrimaryExpression(PrimaryExpression::Identifier(Token::Identifier(From::from("qwe")))),
+                       Expression::PrimaryExpression(PrimaryExpression::Identifier(Token::Identifier(From::from("aoeu")))) ]
+                        ))));
     }
 }
