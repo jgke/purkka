@@ -4,11 +4,11 @@ extern crate test;
 
 use test::Bencher;
 
-use fragment::fragment::{FragmentIterator, Source, Span};
-use debug::debug::DEBUG_VALS;
+use fragment::fragment::{FragmentIterator};
 
-use preprocessor::macrotoken::{MacroToken, MacroTokenType};
-use preprocessor::tokenizer::{ParseResult};
+
+use preprocessor::macrotoken::{MacroToken};
+
 
 pub fn process_files(files: Vec<(&str, &str)>, start: &str) -> Result<(Vec<MacroToken>, FragmentIterator), &'static str> {
     let processed = preprocessor::preprocess(

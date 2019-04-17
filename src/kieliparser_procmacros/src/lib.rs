@@ -9,17 +9,17 @@ extern crate syntax;
 extern crate syntax_pos;
 
 use rustc_plugin::Registry;
-use syntax::ast;
+
 use syntax::ext::base::{DummyResult, ExtCtxt, MacEager, MacResult};
 use syntax::parse;
 use syntax::parse::token;
-use syntax::ptr::P;
+
 use syntax::tokenstream::TokenTree;
 use syntax_pos::{FileName, Span};
 
-use std::collections::HashSet;
-use std::iter::Peekable;
-use std::slice::Iter;
+
+
+
 
 pub fn format_blocks(
     cx: &mut ExtCtxt,
