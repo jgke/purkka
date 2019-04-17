@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 edition = "2018"
 
+[lib]
+doctest = false
+
 [dependencies]
 ctoken = { path="../ctoken" }
 lalr = { path="../lalr" }
