@@ -87,8 +87,9 @@ grammar! {
         | #Token::Struct MaybeIdentifier #Token::OpenBrace StructFieldList #Token::CloseBrace
           /* enum { foo, bar(int) } */
         | #Token::Enum MaybeIdentifier #Token::OpenBrace EnumFieldList #Token::CloseBrace
-          /* [int] */
+          /* [int], [int;5] */
         | Array. #Token::OpenBracket TypeSignature #Token::CloseBracket
+        | SizedArray. #Token::OpenBracket TypeSignature #Token::SemiColon Literal #Token::CloseBracket
           /* *int, &int */
         | Pointer. #Token::Operator TypeSignature
           /* (foo, bar: int) -> int */
@@ -105,7 +106,7 @@ grammar! {
             Struct(Option<Rc<str>>, Vec<StructField>),
             Enum(Option<Rc<str>>, Vec<EnumField>),
             Tuple(Vec<Box<TypeSignature>>),
-            Array(Box<TypeSignature>),
+            Array(Box<TypeSignature>, Option<Literal>),
 
             Function(Vec<Param>, Box<TypeSignature>),
         }
@@ -195,11 +196,15 @@ grammar! {
        -> &Expression
         ;
 
+    Literal
+       -> #Token::Integer
+        | #Token::Float
+        ;
+
     PrimaryExpression
        -> #Token::Identifier
         | Call. #Token::Identifier ArgList
-        | #Token::Integer
-        | #Token::Float
+        | Literal
         | ConditionalExpression
         ;
 
@@ -473,8 +478,15 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::OpenBracket(..)) => {
                 read_token!(self, Token::OpenBracket);
                 let ty = self.parse_type();
+                let expr = match self.peek() {
+                    Some(Token::SemiColon()) => {
+                        read_token!(self, Token::SemiColon);
+                        Some(self.parse_literal())
+                    }
+                    _ => None
+                };
                 read_token!(self, Token::CloseBracket);
-                TypeSignature::Array(Box::new(ty))
+                TypeSignature::Array(Box::new(ty), expr)
             }
             /* &int, &?int */
             Some(Token::Reference(..)) | Some(Token::NullableReference(..)) => {
@@ -641,6 +653,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         }
         expr
     }
+
     fn parse_primary_expression(&mut self) -> PrimaryExpression {
         match self.peek() {
             Some(Token::Identifier(..)) => {
@@ -652,9 +665,17 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     _ => PrimaryExpression::Identifier(t.clone()),
                 }
             }
-            Some(Token::Integer(..)) => PrimaryExpression::Integer(self.next().unwrap().clone()),
-            Some(Token::Float(..)) => PrimaryExpression::Float(self.next().unwrap().clone()),
+            Some(Token::Integer(..)) | Some(Token::Float(..)) =>
+                PrimaryExpression::Literal(self.parse_literal()),
             Some(Token::If(..)) => PrimaryExpression::ConditionalExpression(self.parse_if_expr()),
+            t => unexpected_token!(t, self),
+        }
+    }
+
+    fn parse_literal(&mut self) -> Literal {
+        match self.peek() {
+            Some(Token::Integer(..)) => Literal::Integer(self.next().unwrap().clone()),
+            Some(Token::Float(..)) => Literal::Float(self.next().unwrap().clone()),
             t => unexpected_token!(t, self),
         }
     }
@@ -767,7 +788,7 @@ mod tests {
 
     fn eval_tree(expr: &Expression) -> i128 {
         match expr {
-            Expression::PrimaryExpression(PrimaryExpression::Integer(Token::Integer(e))) => *e,
+            Expression::PrimaryExpression(PrimaryExpression::Literal(Literal::Integer(Token::Integer(e)))) => *e,
             Expression::PrimaryExpression(_) => unreachable!(),
             Expression::Op(op, ExprList::List(list)) => {
                 let op_s: &str = if let Token::Operator(s) = op {
