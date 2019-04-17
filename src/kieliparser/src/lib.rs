@@ -1,5 +1,4 @@
-#![recursion_limit="100"]
-
+#![recursion_limit = "100"]
 #![feature(plugin, box_patterns)]
 #![plugin(lalr)]
 #![allow(dead_code)]

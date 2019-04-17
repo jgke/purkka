@@ -10,7 +10,10 @@ pub fn tokenize(content: &str) -> (Vec<Token>, StringInterner) {
     let mut res = Vec::new();
     while iter.peek().is_some() {
         let (token, _source) = match iter.peek().unwrap() {
-            ' ' | '\t' | '\n' => { iter.next(); continue; }
+            ' ' | '\t' | '\n' => {
+                iter.next();
+                continue;
+            }
             '"' => read_string(&mut iter, &mut intern),
             '\'' => read_char(&mut iter),
             'a'...'z' | 'A'...'Z' | '_' => read_identifier(&mut iter, &mut intern),
@@ -23,11 +26,10 @@ pub fn tokenize(content: &str) -> (Vec<Token>, StringInterner) {
 }
 
 fn read_number(iter: &mut FragmentIterator, intern: &mut StringInterner) -> (Token, Source) {
-    let (content, source) = iter.collect_while(|c| {
-        match c {
-            '0'...'9' | '_' | '.' => true,
-            _ => false,
-        }});
+    let (content, source) = iter.collect_while(|c| match c {
+        '0'...'9' | '_' | '.' => true,
+        _ => false,
+    });
     if !content.contains('.') {
         (Token::Integer(content.parse().unwrap()), source)
     } else {
@@ -58,7 +60,12 @@ fn read_string(iter: &mut FragmentIterator, intern: &mut StringInterner) -> (Tok
         }
         c => Some(vec![c]),
     });
-    (Token::StringLiteral(intern.get_ref(&content.into_iter().map(|(_, c)| c).collect::<String>())), source)
+    (
+        Token::StringLiteral(
+            intern.get_ref(&content.into_iter().map(|(_, c)| c).collect::<String>()),
+        ),
+        source,
+    )
 }
 
 fn read_char(iter: &mut FragmentIterator) -> (Token, Source) {
@@ -176,14 +183,16 @@ fn read_other(iter: &mut FragmentIterator, intern: &mut StringInterner) -> (Toke
         }
     }
 
-    let (content, source) = iter.collect_while(|c| {
-        match c {
-            '!'|'#'|'$'|'%'|'&'|'*'|'+'|'.'|'/'|'<'|'='|'>'|'?'|'@'|'\\'|'^'|'|'|'-'|'~' => true,
-            _ => false,
-        }});
+    let peeked = iter.peek();
+
+    let (content, source) = iter.collect_while(|c| match c {
+        '!' | '#' | '$' | '%' | '&' | '*' | '+' | '.' | '/' | '<' | '=' | '>' | '?' | '@'
+        | '\\' | '^' | '|' | '-' | '~' | ':' => true,
+        _ => false,
+    });
     if content.len() > 0 {
         (Token::Operator(intern.get_ref(&content)), source)
     } else {
-        panic!("Unexpected character: {}", iter.next().unwrap());
+        panic!("Unexpected character: '{}'", peeked.unwrap());
     }
 }

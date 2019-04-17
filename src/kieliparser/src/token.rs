@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token {
+    // Literals
     Identifier(Rc<str>),
     Integer(i128),
     Float(Rc<str>),
@@ -9,15 +10,17 @@ pub enum Token {
     Char(char),
     Operator(Rc<str>),
 
-    Comma(),
+    // Delimiters: ( ) { } [ ] , ;
     OpenParen(),
     CloseParen(),
     OpenBrace(),
     CloseBrace(),
-
-    Colon(),
+    OpenBracket(),
+    CloseBracket(),
+    Comma(),
     SemiColon(),
 
+    // Keywords
     Pub(),
     Const(),
     Static(),
@@ -26,6 +29,9 @@ pub enum Token {
     If(),
     Elif(),
     Else(),
+    Type(),
+    Struct(),
+    Enum(),
 
     Include(),
     IncludeC(),
@@ -35,10 +41,13 @@ use Token::*;
 
 pub static TOKEN_TYPES: &[(&str, fn() -> Token)] = &[
     (";", SemiColon),
+    (",", Comma),
     ("(", OpenParen),
     (")", CloseParen),
     ("{", OpenBrace),
     ("}", CloseBrace),
+    ("[", OpenBracket),
+    ("]", CloseBracket),
 ];
 
 pub static KEYWORDS: &[(&str, fn() -> Token)] = &[
@@ -50,4 +59,7 @@ pub static KEYWORDS: &[(&str, fn() -> Token)] = &[
     ("if", If),
     ("elif", Elif),
     ("else", Else),
+    ("type", Type),
+    ("struct", Struct),
+    ("enum", Enum),
 ];
