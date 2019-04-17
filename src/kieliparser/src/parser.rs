@@ -231,6 +231,15 @@ fn default_bin_ops() -> PrecedenceMap {
     precedence.insert(From::from("**"), Precedence::binop(1));
     precedence.insert(From::from("+"), Precedence::binop(2));
     precedence.insert(From::from("-"), Precedence::binop(2));
+    precedence.insert(From::from("-"), Precedence::binop(2));
+
+    precedence.insert(
+        From::from("?"),
+        Precedence { precedence: 5, param_count: 2, left_associative: false });
+    precedence.insert(
+        From::from(":"),
+        Precedence { precedence: 5, param_count: 2, left_associative: false });
+
     precedence
 }
 
@@ -499,6 +508,20 @@ mod tests {
                     "-" => eval_tree(&*list[0]) - eval_tree(&*list[1]),
                     "*" => eval_tree(&*list[0]) * eval_tree(&*list[1]),
                     "**" => eval_tree(&*list[0]).pow(eval_tree(&*list[1]) as u32),
+                    "?" => {
+                        if let Expression::Op(Token::Operator(op), ExprList::List(res_list)) = &*list[1] {
+                            if &**op != ":" {
+                                unreachable!();
+                            }
+                            if eval_tree(&*list[0]) != 0 {
+                                eval_tree(&*res_list[0])
+                            } else {
+                                eval_tree(&*res_list[1])
+                            }
+                        } else {
+                            unreachable!()
+                        }
+                    }
                     _ => unreachable!()
                 }
             }
@@ -542,6 +565,12 @@ mod tests {
         check("1 - 2 * 2", -3);
         check("2 ** 3", 8);
         check("- 2 ** 4", -16);
+        check("1 ? 2 : 3", 2);
+        check("0 ? 2 : 3", 3);
+        check("1 ? 2 : 0 ? 3 : 4", 2); // no horses here
+        check("0 ? 2 : 1 ? 3 : 4", 3);
+        check("1 ? 2 : 1 ? 3 : 4", 2);
+        check("0 ? 2 : 0 ? 3 : 4", 4);
     }
 
     #[test]
