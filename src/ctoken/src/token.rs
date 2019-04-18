@@ -1,9 +1,3 @@
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SizeofExpression {
-    Static(usize),
-    Dynamic(String),
-}
-
 #[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token {
@@ -94,7 +88,7 @@ pub enum Token {
     Varargs(usize),
 
     // Special forms
-    Sizeof(usize, SizeofExpression),
+    Sizeof(usize, Vec<Token>),
     Asm(usize, String),
 
     // Literals

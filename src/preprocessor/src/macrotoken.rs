@@ -21,7 +21,7 @@ pub enum MacroTokenType {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SpecialType {
     Asm(Vec<MacroToken>),
-    Sizeof(SizeofExpression),
+    Sizeof(Vec<MacroToken>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,8 +30,8 @@ pub struct MacroToken {
     pub ty: MacroTokenType,
 }
 
+use ctoken::token::Token;
 use ctoken::token::Token::*;
-use ctoken::token::{SizeofExpression, Token};
 
 pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index: usize) -> Token {
     match &t.ty {
@@ -130,7 +130,12 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
 
         MacroTokenType::StringLiteral(s) => StringLiteral(index, s.to_string()),
         MacroTokenType::Number(s) => Number(index, s.to_string()),
-        MacroTokenType::Special(SpecialType::Sizeof(expr)) => Sizeof(index, expr.clone()),
+        MacroTokenType::Special(SpecialType::Sizeof(expr)) => Sizeof(
+            index,
+            expr.iter()
+                .map(|t| preprocessor_to_parser(context, t, index))
+                .collect(),
+        ),
         MacroTokenType::Special(SpecialType::Asm(exprs)) => Asm(
             index,
             exprs

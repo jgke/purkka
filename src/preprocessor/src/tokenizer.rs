@@ -6,8 +6,6 @@ use fragment::fragment::{FragmentIterator, Source};
 use shared::intern::StringInterner;
 use shared::utils::*;
 
-use ctoken::token::SizeofExpression;
-
 use crate::calculator::eval_expression;
 use crate::macrotoken::{MacroToken, MacroTokenType, SpecialType};
 use crate::tokentype::{Operator, Punctuation, OPERATORS, PUNCTUATION};
@@ -1224,14 +1222,9 @@ where
 
     fn get_sizeof_type(&self, token: &MacroToken) -> MacroTokenType {
         match &token.ty {
-            MacroTokenType::Identifier(ident) => match ident.as_ref() {
-                "int" | "void" | "size_t" | "long" => {
-                    MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(8)))
-                }
-                _ => MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Dynamic(
-                    ident.to_string(),
-                ))),
-            },
+            MacroTokenType::Identifier(_) => {
+                MacroTokenType::Special(SpecialType::Sizeof(vec![token.clone()]))
+            }
             _ => panic!(),
         }
     }
@@ -1256,9 +1249,7 @@ where
                 iter.1,
                 (
                     MacroToken {
-                        ty: MacroTokenType::Special(SpecialType::Sizeof(SizeofExpression::Static(
-                            8,
-                        ))),
+                        ty: MacroTokenType::Special(SpecialType::Sizeof(tokens)),
                         source: start_span,
                     },
                     HashSet::new(),
