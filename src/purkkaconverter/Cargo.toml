@@ -1,5 +1,5 @@
 [package]
-name = "kieliconverter"
+name = "purkkaconverter"
 version = "0.1.0"
 authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 edition = "2018"
@@ -7,4 +7,4 @@ edition = "2018"
 [dependencies]
 cparser = { path="../cparser" }
 ctoken = { path="../ctoken" }
-kieliparser = { path="../kieliparser" }
+purkkaparser = { path="../purkkaparser" }

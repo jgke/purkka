@@ -36,9 +36,10 @@ macro_rules! read_token {
 
 /* These macros create traits and functions for Option<T> -> Option<U> eg. the first one creates
  * translation_unit :: Option<S> -> Option<TranslationUnit> by matching on the first field in
- * S::TranslationUnit. The macro is defined in kieliparser_procmacros. The essential benefit is the
- * safe chaining of methods like Some(s).translation_unit().units().map(|t| t[0]).declaration()...
- * These are a bit hard to create in the grammar, since half of these types are handwritten. */
+ * S::TranslationUnit. The macro is defined in purkkaparser_procmacros. The essential benefit is
+ * the safe chaining of methods like
+ * Some(s).translation_unit().units().map(|t|t[0]).declaration()... These are a bit hard to create
+ * in the grammar, since half of these types are handwritten. */
 impl_enter!(S, TranslationUnit, TranslationUnit, translation_unit, 1);
 impl_enter!(TranslationUnit, Units, "Vec<Unit>", units, 1);
 impl_enter!(Unit, Declaration, Declaration, declaration, 1);

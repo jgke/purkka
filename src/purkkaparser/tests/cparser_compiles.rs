@@ -1,6 +1,6 @@
-use kieliparser::parse_file;
-use kieliparser::parser::*;
-use kieliparser::token::Token;
+use purkkaparser::parse_file;
+use purkkaparser::parser::*;
+use purkkaparser::token::Token;
 
 fn test_parse_file(s: &str) -> S {
     parse_file(s, "file.prk")

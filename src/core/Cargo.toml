@@ -9,8 +9,8 @@ cformat = { path="../cformat" }
 cparser = { path="../cparser" }
 ctoken = { path="../ctoken" }
 parser = { path="../parser" }
-kieliparser = { path="../kieliparser" }
-kieliconverter = { path="../kieliconverter" }
+purkkaparser = { path="../purkkaparser" }
+purkkaconverter = { path="../purkkaconverter" }
 preprocessor = { path="../preprocessor" }
 debug = { path="../debug" }
 clap = "2.32.0"

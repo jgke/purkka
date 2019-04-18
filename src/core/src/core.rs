@@ -25,7 +25,7 @@ where
     for file in inputs {
         if file.to_lowercase().ends_with(".prk") {
             let (filename, content) = get_file(true, ".".to_string(), file.to_string());
-            let parsed = kieliconverter::convert(kieliparser::parse_file(&filename, &content));
+            let parsed = purkkaconverter::convert(purkkaparser::parse_file(&filename, &content));
             res.push(Ok(parsed));
         } else {
             let result = preprocessor::preprocess_file(&file, get_file, options);
@@ -43,10 +43,10 @@ where
 }
 
 pub fn real_main() {
-    let matches = App::new("kielic")
+    let matches = App::new("purkka")
         .version("0.0.1a")
         .author("Jaakko H. <jgke@jgke.fi>")
-        .about("Compile kieli files (in theory)")
+        .about("Compile purkka (.prk) files (in theory)")
         .arg(
             Arg::with_name("include")
                 .short("I")

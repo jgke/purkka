@@ -88,10 +88,10 @@ dependencies = [
  "cparser 0.1.0",
  "ctoken 0.1.0",
  "debug 0.1.0",
- "kieliconverter 0.1.0",
- "kieliparser 0.1.0",
  "parser 0.1.0",
  "preprocessor 0.1.0",
+ "purkkaconverter 0.1.0",
+ "purkkaparser 0.1.0",
 ]
 
 [[package]]
@@ -161,36 +161,6 @@ version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
-name = "kieli"
-version = "0.1.0"
-dependencies = [
- "core 0.1.0",
-]
-
-[[package]]
-name = "kieliconverter"
-version = "0.1.0"
-dependencies = [
- "cparser 0.1.0",
- "ctoken 0.1.0",
- "kieliparser 0.1.0",
-]
-
-[[package]]
-name = "kieliparser"
-version = "0.1.0"
-dependencies = [
- "fragment 0.1.0",
- "kieliparser_procmacros 0.1.0",
- "lalr 0.1.0",
- "shared 0.1.0",
-]
-
-[[package]]
-name = "kieliparser_procmacros"
-version = "0.1.0"
-
-[[package]]
 name = "lalr"
 version = "0.1.0"
 dependencies = [
@@ -251,6 +221,36 @@ dependencies = [
  "regex 1.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "shared 0.1.0",
 ]
+
+[[package]]
+name = "purkka"
+version = "0.1.0"
+dependencies = [
+ "core 0.1.0",
+]
+
+[[package]]
+name = "purkkaconverter"
+version = "0.1.0"
+dependencies = [
+ "cparser 0.1.0",
+ "ctoken 0.1.0",
+ "purkkaparser 0.1.0",
+]
+
+[[package]]
+name = "purkkaparser"
+version = "0.1.0"
+dependencies = [
+ "fragment 0.1.0",
+ "lalr 0.1.0",
+ "purkkaparser_procmacros 0.1.0",
+ "shared 0.1.0",
+]
+
+[[package]]
+name = "purkkaparser_procmacros"
+version = "0.1.0"
 
 [[package]]
 name = "rand"

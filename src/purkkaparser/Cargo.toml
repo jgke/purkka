@@ -1,5 +1,5 @@
 [package]
-name = "kieliparser"
+name = "purkkaparser"
 version = "0.1.0"
 authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 edition = "2018"
@@ -7,5 +7,5 @@ edition = "2018"
 [dependencies]
 fragment = { path="../fragment" }
 lalr = { path="../lalr" }
-kieliparser_procmacros = { path="../kieliparser_procmacros" }
+purkkaparser_procmacros = { path="../purkkaparser_procmacros" }
 shared = { path="../shared" }
