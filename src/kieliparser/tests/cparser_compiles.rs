@@ -60,6 +60,7 @@ fn parse_types() {
     parse_ty("enum { foo((int, int)) } -> (int, int)");
     parse_ty("[int]");
     parse_ty("[int] -> int");
+    parse_ty("[int;5]");
     parse_ty("(foo: int -> int) -> int");
     parse_ty("(int -> int) -> int");
     parse_ty("int -> int -> int");
@@ -76,4 +77,15 @@ fn parse_types() {
             Box::new(TypeSignature::Plain(From::from("int")))
         )
     );
+}
+
+#[test]
+fn parse_nested_if_else() {
+    parse_file("let foo = if 1 + 2 {
+        if 1 {
+            something();
+        }
+    } elif 3 {
+        something_else();
+    } else {};");
 }

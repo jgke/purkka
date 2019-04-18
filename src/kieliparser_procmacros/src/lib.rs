@@ -124,16 +124,11 @@ fn impl_enter_res(
     cx: &mut ExtCtxt,
     sp: Span,
     args: &[TokenTree],
+    fmap: bool
 ) -> Result<Box<MacResult + 'static>, Box<MacResult + 'static>> {
-    let mut fmap = false;
     let mut iter = args.iter();
-    let mut this = read_ident(cx, &sp, &mut iter)?;
+    let this = read_ident(cx, &sp, &mut iter)?;
     read_comma(cx, &sp, &mut iter)?;
-    if this == "fmap" {
-        fmap = true;
-        this = read_ident(cx, &sp, &mut iter)?;
-        read_comma(cx, &sp, &mut iter)?;
-    }
     let variant = read_ident(cx, &sp, &mut iter)?;
     read_comma(cx, &sp, &mut iter)?;
     let result_type: String = match iter.next() {
@@ -160,7 +155,14 @@ fn impl_enter_res(
 }
 
 fn impl_enter(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult + 'static> {
-    match impl_enter_res(cx, sp, args) {
+    match impl_enter_res(cx, sp, args, false) {
+        Ok(t) => t,
+        Err(t) => t,
+    }
+}
+
+fn impl_enter_fmap(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult + 'static> {
+    match impl_enter_res(cx, sp, args, true) {
         Ok(t) => t,
         Err(t) => t,
     }
@@ -169,4 +171,5 @@ fn impl_enter(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult +
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
     reg.register_macro("impl_enter", impl_enter);
+    reg.register_macro("impl_enter_fmap", impl_enter_fmap);
 }

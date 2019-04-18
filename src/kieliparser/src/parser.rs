@@ -34,21 +34,20 @@ macro_rules! read_token {
     };
 }
 
+/* These macros create traits and functions for Option<T> -> Option<U>
+ * eg. the first one creates translation_unit :: Option<S> -> Option<TranslationUnit> by matching
+ * on the first field in S::TranslationUnit. The macro is defined in kieliparser_procmacros. The
+ * essential benefit is the safe chaining of methods like
+ * Some(s).translation_unit().leaf().declaration()... These are a bit hard to create in the
+ * grammar, since half of these types are handwritten. */
 impl_enter!(S, TranslationUnit, TranslationUnit, translation_unit, 1);
 impl_enter!(TranslationUnit, Leaf, Unit, leaf, 1);
 impl_enter!(Unit, Declaration, Declaration, declaration, 1);
-impl_enter!(fmap, Declaration, Declaration, TypeSignature, ty, 4);
+impl_enter_fmap!(Declaration, Declaration, TypeSignature, ty, 4);
 impl_enter!(Declaration, Declaration, "Rc<str>", identifier, 3);
 impl_enter!(Token, Identifier, "Rc<str>", identifier_s, 1);
-impl_enter!(
-    fmap,
-    Declaration,
-    Declaration,
-    AssignmentExpression,
-    expr,
-    5
-);
-impl_enter!(AssignmentExpression, Expression, Expression, expr, 1);
+impl_enter_fmap!(Declaration, Declaration, Assignment, expr, 5);
+impl_enter!(Assignment, Expression, Expression, expr, 1);
 
 grammar! {
     S -> TranslationUnit;
@@ -66,9 +65,9 @@ grammar! {
 
     Declaration
        -> Declaration. Visibility #Token::Let Mutability #Token::Identifier MaybeType
-        | Definition. Visibility #Token::Let Mutability #Token::Identifier MaybeType #Token::Operator AssignmentExpression
+        | Definition. Visibility #Token::Let Mutability #Token::Identifier MaybeType #Token::Operator Assignment
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum Declaration { Declaration(bool, bool, Rc<str>, Option<TypeSignature>, Option<AssignmentExpression>) }
+        pub enum Declaration { Declaration(bool, bool, Rc<str>, Option<TypeSignature>, Option<Assignment>) }
         ;
 
     Typedef
@@ -205,7 +204,11 @@ grammar! {
        -> #Token::Identifier
         | Call. #Token::Identifier ArgList
         | Literal
-        | ConditionalExpression
+        | BlockExpression
+        ;
+
+    BlockExpression
+       -> ConditionalExpression
         ;
 
     ConditionalExpression
@@ -234,7 +237,7 @@ grammar! {
         pub enum ExprList { List(Vec<Box<Expression>>) }
         ;
 
-    AssignmentExpression
+    Assignment
        -> Expression
        ;
 
@@ -243,7 +246,17 @@ grammar! {
         pub enum Block { Statements(Vec<Box<Statement>>) }
         ;
     Statements -> Epsilon | Statement #Token::SemiColon Statements;
-    Statement -> Declaration | Expression;
+    Statement
+       -> Declaration #Token::SemiColon
+        | BlockExpression
+        | Expression #Token::SemiColon
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum Statement {
+            Declaration(Declaration),
+            BlockExpression(BlockExpression),
+            Expression(Expression),
+        }
+        ;
 
     Path -> #Token::Identifier;
 
@@ -401,7 +414,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         };
         let ty = match self.peek() {
             Some(Token::Operator(t)) if &**t == ":" => {
-                self.next();
+                read_token!(self, Token::Operator);
                 Some(self.parse_type())
             }
             _ => None,
@@ -409,7 +422,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
         match self.peek() {
             Some(Token::Operator(t)) if &**t == "=" => {
-                self.next();
+                read_token!(self, Token::Operator);
                 let expr = self.parse_assignment_expr();
                 Declaration::Declaration(visible, mutable, ident, ty, Some(expr))
             }
@@ -608,8 +621,8 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         unexpected_token!(self.peek(), self)
     }
 
-    fn parse_assignment_expr(&mut self) -> AssignmentExpression {
-        AssignmentExpression::Expression(self.parse_expression())
+    fn parse_assignment_expr(&mut self) -> Assignment {
+        Assignment::Expression(self.parse_expression())
     }
 
     fn parse_expression(&mut self) -> Expression {
@@ -667,7 +680,15 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
             Some(Token::Integer(..)) | Some(Token::Float(..)) =>
                 PrimaryExpression::Literal(self.parse_literal()),
-            Some(Token::If(..)) => PrimaryExpression::ConditionalExpression(self.parse_if_expr()),
+            Some(Token::If(..)) => PrimaryExpression::BlockExpression(self.parse_block_expression()),
+            t => unexpected_token!(t, self),
+        }
+    }
+
+    fn parse_block_expression(&mut self) -> BlockExpression {
+        match self.peek() {
+            Some(Token::If(..)) =>
+                BlockExpression::ConditionalExpression(self.parse_if_expr()),
             t => unexpected_token!(t, self),
         }
     }
@@ -716,6 +737,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 Some(Token::CloseBrace(..)) => {
                     break;
                 }
+                Some(Token::SemiColon(..)) => {
+                    read_token!(self, Token::SemiColon);
+                }
                 Some(_) => {
                     stmts.push(Box::new(self.parse_stmt()));
                 }
@@ -726,12 +750,17 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         Block::Statements(stmts)
     }
 
+    #[allow(unreachable_patterns)]
     fn parse_stmt(&mut self) -> Statement {
         let res = match_first!(
             self.peek() => _t,
             default unexpected_token!(_t, self),
 
+            // directly return the block_expr since it doesn't need a semicolon
+            BlockExpression => return Statement::BlockExpression(self.parse_block_expression()),
             Declaration => Statement::Declaration(self.parse_declaration()),
+            // Expressions can contain BlockExpressions, so this is
+            // partially unreachable
             Expression => Statement::Expression(self.parse_expression()),
         );
         read_token!(self, Token::SemiColon);
@@ -745,18 +774,18 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         loop {
             match self.peek() {
                 Some(Token::CloseParen()) => {
-                    self.next();
+                    read_token!(self, Token::CloseParen);
                     break;
                 }
                 Some(_) => {
                     args.push(self.parse_expression());
                     match self.peek() {
                         Some(Token::CloseParen()) => {
-                            self.next();
+                            read_token!(self, Token::CloseParen);
                             break;
                         }
                         Some(Token::Comma()) => {
-                            self.next();
+                            read_token!(self, Token::Comma);
                         }
                         t => unexpected_token!(t, self),
                     }
