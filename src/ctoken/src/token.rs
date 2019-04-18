@@ -89,7 +89,7 @@ pub enum Token {
 
     // Special forms
     Sizeof(usize, Vec<Token>),
-    Asm(usize, String),
+    Asm(usize, Vec<Token>),
 
     // Literals
     Identifier(usize, String),

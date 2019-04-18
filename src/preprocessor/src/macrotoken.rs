@@ -138,11 +138,9 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
         ),
         MacroTokenType::Special(SpecialType::Asm(exprs)) => Asm(
             index,
-            exprs
-                .iter()
-                .map(|t| t.to_src())
-                .collect::<Vec<_>>()
-                .join(" "),
+            exprs.iter()
+                .map(|t| preprocessor_to_parser(context, t, index))
+                .collect(),
         ),
         MacroTokenType::Char(c) => CharLiteral(index, *c),
         MacroTokenType::Other(c) => panic!(
