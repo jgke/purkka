@@ -1,16 +1,10 @@
 [package]
-name = "core"
+name = "kieliconverter"
 version = "0.1.0"
 authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 edition = "2018"
 
 [dependencies]
-cformat = { path="../cformat" }
 cparser = { path="../cparser" }
 ctoken = { path="../ctoken" }
-parser = { path="../parser" }
 kieliparser = { path="../kieliparser" }
-kieliconverter = { path="../kieliconverter" }
-preprocessor = { path="../preprocessor" }
-debug = { path="../debug" }
-clap = "2.32.0"

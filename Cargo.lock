@@ -50,6 +50,14 @@ version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "cformat"
+version = "0.1.0"
+dependencies = [
+ "cparser 0.1.0",
+ "ctoken 0.1.0",
+]
+
+[[package]]
 name = "clap"
 version = "2.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -75,10 +83,13 @@ dependencies = [
 name = "core"
 version = "0.1.0"
 dependencies = [
+ "cformat 0.1.0",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cparser 0.1.0",
  "ctoken 0.1.0",
  "debug 0.1.0",
+ "kieliconverter 0.1.0",
+ "kieliparser 0.1.0",
  "parser 0.1.0",
  "preprocessor 0.1.0",
 ]
@@ -154,6 +165,15 @@ name = "kieli"
 version = "0.1.0"
 dependencies = [
  "core 0.1.0",
+]
+
+[[package]]
+name = "kieliconverter"
+version = "0.1.0"
+dependencies = [
+ "cparser 0.1.0",
+ "ctoken 0.1.0",
+ "kieliparser 0.1.0",
 ]
 
 [[package]]

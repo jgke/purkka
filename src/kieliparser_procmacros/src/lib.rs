@@ -124,7 +124,7 @@ fn impl_enter_res(
     cx: &mut ExtCtxt,
     sp: Span,
     args: &[TokenTree],
-    fmap: bool
+    fmap: bool,
 ) -> Result<Box<MacResult + 'static>, Box<MacResult + 'static>> {
     let mut iter = args.iter();
     let this = read_ident(cx, &sp, &mut iter)?;

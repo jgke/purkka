@@ -23,14 +23,20 @@ where
 {
     let mut res = Vec::new();
     for file in inputs {
-        let result = preprocessor::preprocess_file(&file, get_file, options);
-        match result {
-            Ok((output, context)) => {
-                let parsed = parser::parse(output, &context);
-                println!("{:?}", parsed);
-                res.push(parsed);
+        if file.to_lowercase().ends_with(".prk") {
+            let (filename, content) = get_file(true, ".".to_string(), file.to_string());
+            let parsed = kieliconverter::convert(kieliparser::parse_file(&filename, &content));
+            res.push(Ok(parsed));
+        } else {
+            let result = preprocessor::preprocess_file(&file, get_file, options);
+            match result {
+                Ok((output, context)) => {
+                    let parsed = parser::parse(output, &context);
+                    println!("{:?}", parsed);
+                    res.push(parsed);
+                }
+                Err(e) => panic!(e),
             }
-            Err(e) => panic!(e),
         }
     }
     res

@@ -34,14 +34,13 @@ macro_rules! read_token {
     };
 }
 
-/* These macros create traits and functions for Option<T> -> Option<U>
- * eg. the first one creates translation_unit :: Option<S> -> Option<TranslationUnit> by matching
- * on the first field in S::TranslationUnit. The macro is defined in kieliparser_procmacros. The
- * essential benefit is the safe chaining of methods like
- * Some(s).translation_unit().leaf().declaration()... These are a bit hard to create in the
- * grammar, since half of these types are handwritten. */
+/* These macros create traits and functions for Option<T> -> Option<U> eg. the first one creates
+ * translation_unit :: Option<S> -> Option<TranslationUnit> by matching on the first field in
+ * S::TranslationUnit. The macro is defined in kieliparser_procmacros. The essential benefit is the
+ * safe chaining of methods like Some(s).translation_unit().units().map(|t| t[0]).declaration()...
+ * These are a bit hard to create in the grammar, since half of these types are handwritten. */
 impl_enter!(S, TranslationUnit, TranslationUnit, translation_unit, 1);
-impl_enter!(TranslationUnit, Leaf, Unit, leaf, 1);
+impl_enter!(TranslationUnit, Units, "Vec<Unit>", units, 1);
 impl_enter!(Unit, Declaration, Declaration, declaration, 1);
 impl_enter_fmap!(Declaration, Declaration, TypeSignature, ty, 4);
 impl_enter!(Declaration, Declaration, "Rc<str>", identifier, 3);
@@ -55,6 +54,9 @@ grammar! {
     TranslationUnit
        -> Leaf. Unit #Token::SemiColon
         | List. Unit #Token::SemiColon TranslationUnit
+        | Epsilon
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum TranslationUnit { Units(Vec<Unit>) }
         ;
 
     Unit
@@ -382,13 +384,12 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         From::from(self.iter.peek())
     }
     fn parse_translation_unit(&mut self) -> TranslationUnit {
-        let unit = self.parse_unit();
-        let sc = read_token!(self, Token::SemiColon);
-        let has_more = self.peek().is_some();
-        match has_more {
-            true => TranslationUnit::List(unit, sc, Box::new(self.parse_translation_unit())),
-            false => TranslationUnit::Leaf(unit, sc),
+        let mut units = Vec::new();
+        while self.peek().is_some() {
+            units.push(self.parse_unit());
+            read_token!(self, Token::SemiColon);
         }
+        TranslationUnit::Units(units)
     }
 
     fn parse_unit(&mut self) -> Unit {
@@ -496,7 +497,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                         read_token!(self, Token::SemiColon);
                         Some(self.parse_literal())
                     }
-                    _ => None
+                    _ => None,
                 };
                 read_token!(self, Token::CloseBracket);
                 TypeSignature::Array(Box::new(ty), expr)
@@ -678,17 +679,19 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     _ => PrimaryExpression::Identifier(t.clone()),
                 }
             }
-            Some(Token::Integer(..)) | Some(Token::Float(..)) =>
-                PrimaryExpression::Literal(self.parse_literal()),
-            Some(Token::If(..)) => PrimaryExpression::BlockExpression(self.parse_block_expression()),
+            Some(Token::Integer(..)) | Some(Token::Float(..)) => {
+                PrimaryExpression::Literal(self.parse_literal())
+            }
+            Some(Token::If(..)) => {
+                PrimaryExpression::BlockExpression(self.parse_block_expression())
+            }
             t => unexpected_token!(t, self),
         }
     }
 
     fn parse_block_expression(&mut self) -> BlockExpression {
         match self.peek() {
-            Some(Token::If(..)) =>
-                BlockExpression::ConditionalExpression(self.parse_if_expr()),
+            Some(Token::If(..)) => BlockExpression::ConditionalExpression(self.parse_if_expr()),
             t => unexpected_token!(t, self),
         }
     }
@@ -817,7 +820,9 @@ mod tests {
 
     fn eval_tree(expr: &Expression) -> i128 {
         match expr {
-            Expression::PrimaryExpression(PrimaryExpression::Literal(Literal::Integer(Token::Integer(e)))) => *e,
+            Expression::PrimaryExpression(PrimaryExpression::Literal(Literal::Integer(
+                Token::Integer(e),
+            ))) => *e,
             Expression::PrimaryExpression(_) => unreachable!(),
             Expression::Op(op, ExprList::List(list)) => {
                 let op_s: &str = if let Token::Operator(s) = op {
@@ -939,7 +944,8 @@ mod tests {
         assert_eq!(
             Some(&s)
                 .translation_unit()
-                .leaf()
+                .units()
+                .and_then(|t| t.get(0))
                 .declaration()
                 .identifier()
                 .unwrap(),
@@ -948,7 +954,8 @@ mod tests {
         assert_eq!(
             Some(&s)
                 .translation_unit()
-                .leaf()
+                .units()
+                .and_then(|t| t.get(0))
                 .declaration()
                 .expr()
                 .expr()
@@ -979,7 +986,8 @@ mod tests {
         assert_eq!(
             Some(&s)
                 .translation_unit()
-                .leaf()
+                .units()
+                .and_then(|t| t.get(0))
                 .declaration()
                 .identifier()
                 .unwrap(),
@@ -988,7 +996,8 @@ mod tests {
         assert_eq!(
             Some(&s)
                 .translation_unit()
-                .leaf()
+                .units()
+                .and_then(|t| t.get(0))
                 .declaration()
                 .expr()
                 .expr()
@@ -1023,7 +1032,8 @@ mod tests {
         assert_eq!(
             Some(&s)
                 .translation_unit()
-                .leaf()
+                .units()
+                .and_then(|t| t.get(0))
                 .declaration()
                 .identifier()
                 .unwrap(),
@@ -1032,7 +1042,8 @@ mod tests {
         assert_eq!(
             Some(&s)
                 .translation_unit()
-                .leaf()
+                .units()
+                .and_then(|t| t.get(0))
                 .declaration()
                 .expr()
                 .expr()
@@ -1074,7 +1085,8 @@ mod tests {
         assert_eq!(
             Some(&s)
                 .translation_unit()
-                .leaf()
+                .units()
+                .and_then(|t| t.get(0))
                 .declaration()
                 .identifier()
                 .unwrap(),
@@ -1083,7 +1095,8 @@ mod tests {
         assert_eq!(
             Some(&s)
                 .translation_unit()
-                .leaf()
+                .units()
+                .and_then(|t| t.get(0))
                 .declaration()
                 .expr()
                 .expr()

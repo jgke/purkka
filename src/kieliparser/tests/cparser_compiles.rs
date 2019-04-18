@@ -2,6 +2,10 @@ use kieliparser::parse_file;
 use kieliparser::parser::*;
 use kieliparser::token::Token;
 
+fn test_parse_file(s: &str) -> S {
+    parse_file(s, "file.prk")
+}
+
 #[test]
 fn parse_simple() {
     parse(
@@ -17,23 +21,28 @@ fn parse_simple() {
 
 #[test]
 fn parse_simple_str() {
-    parse_file("let foo = 1;");
-    parse_file("let foo = 1 + 2;");
-    parse_file("let foo = 1 + 2 * 3;");
-    parse_file("let foo = 1 * 2 + 3;");
+    test_parse_file("let foo = 1;");
+    test_parse_file("let foo = 1 + 2;");
+    test_parse_file("let foo = 1 + 2 * 3;");
+    test_parse_file("let foo = 1 * 2 + 3;");
 }
 
 #[test]
 fn parse_if_else() {
-    parse_file("let foo = if 1 + 2 { something(); } elif 3 { something_else(); } else {};");
+    test_parse_file("let foo = if 1 + 2 { something(); } elif 3 { something_else(); } else {};");
 }
 
 fn parse_ty(s: &str) -> S {
-    parse_file(&format!("let foo: {};", s))
+    test_parse_file(&format!("let foo: {};", s))
 }
 
 fn get_ty(s: &S) -> Option<&TypeSignature> {
-    Some(s).translation_unit().leaf().declaration().ty()
+    Some(s)
+        .translation_unit()
+        .units()
+        .and_then(|t| t.get(0))
+        .declaration()
+        .ty()
 }
 
 #[test]
@@ -81,11 +90,13 @@ fn parse_types() {
 
 #[test]
 fn parse_nested_if_else() {
-    parse_file("let foo = if 1 + 2 {
+    test_parse_file(
+        "let foo = if 1 + 2 {
         if 1 {
             something();
         }
     } elif 3 {
         something_else();
-    } else {};");
+    } else {};",
+    );
 }

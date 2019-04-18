@@ -748,70 +748,68 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             data,
             ..
         } = rule;
-        let bodies =
-            data.iter().enumerate().map(
-                |(
-                    subindex,
-                    Component {
-                        real_name,
-                        rules,
-                        action,
-                        priority: _priority,
-                    },
-                )| {
-                    if rules.len() == 1 && rules[0].identifier == "Epsilon" && false {
-                        self.cx.arm(
-                            *span,
-                            vec![self.cx.pat_wild(*span)],
-                            self.box_expr(self.cx.expr_call(
-                                *span,
-                                self.cx.expr_path(self.cx.path(
-                                    *span,
-                                    vec![self.cx.ident_of("_Data"), self.cx.ident_of("Epsilon")],
-                                )),
-                                vec![self.cx.expr_path(self.cx.path(
-                                    *span,
-                                    vec![self.cx.ident_of("Epsilon"), self.cx.ident_of("Epsilon")],
-                                ))],
-                            )),
-                        )
-                    } else {
-                        let args: Vec<P<ast::Expr>> = rules
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, data)| data.identifier != "Epsilon")
-                            .map(|(i, data)| {
-                                self.box_or_star(
-                                    data.indirect,
-                                    self.cx
-                                        .expr_ident(*span, self.cx.ident_of(&format!("pat_{}", i))),
-                                )
-                            })
-                            .collect();
-                        let result = self.box_expr(self.cx.expr_call(
+        let bodies = data.iter().enumerate().map(
+            |(
+                subindex,
+                Component {
+                    real_name,
+                    rules,
+                    action,
+                    priority: _priority,
+                },
+            )| {
+                if rules.len() == 1 && rules[0].identifier == "Epsilon" && false {
+                    self.cx.arm(
+                        *span,
+                        vec![self.cx.pat_wild(*span)],
+                        self.box_expr(self.cx.expr_call(
                             *span,
                             self.cx.expr_path(self.cx.path(
                                 *span,
-                                vec![self.cx.ident_of("_Data"), self.cx.ident_of(identifier)],
+                                vec![self.cx.ident_of("_Data"), self.cx.ident_of("Epsilon")],
                             )),
-                            vec![self.cx.expr_call(
+                            vec![self.cx.expr_path(self.cx.path(
                                 *span,
-                                self.cx.expr_path(self.cx.path(
-                                    *span,
-                                    vec![self.cx.ident_of(identifier), self.cx.ident_of(real_name)],
-                                )),
-                                args.clone(),
-                            )],
-                        ));
+                                vec![self.cx.ident_of("Epsilon"), self.cx.ident_of("Epsilon")],
+                            ))],
+                        )),
+                    )
+                } else {
+                    let args: Vec<P<ast::Expr>> = rules
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, data)| data.identifier != "Epsilon")
+                        .map(|(i, data)| {
+                            self.box_or_star(
+                                data.indirect,
+                                self.cx
+                                    .expr_ident(*span, self.cx.ident_of(&format!("pat_{}", i))),
+                            )
+                        })
+                        .collect();
+                    let result = self.box_expr(self.cx.expr_call(
+                        *span,
+                        self.cx.expr_path(self.cx.path(
+                            *span,
+                            vec![self.cx.ident_of("_Data"), self.cx.ident_of(identifier)],
+                        )),
+                        vec![self.cx.expr_call(
+                            *span,
+                            self.cx.expr_path(self.cx.path(
+                                *span,
+                                vec![self.cx.ident_of(identifier), self.cx.ident_of(real_name)],
+                            )),
+                            args.clone(),
+                        )],
+                    ));
 
-                        match action {
-                            Some(callback) => self.cx.arm(
+                    match action {
+                        Some(callback) => self.cx.arm(
+                            *span,
+                            vec![self.reduction_match_data(subindex, rules)],
+                            self.cx.expr_block(self.cx.block(
                                 *span,
-                                vec![self.reduction_match_data(subindex, rules)],
-                                self.cx.expr_block(
-                                    self.cx.block(
-                                        *span,
-                                        vec![
+                                vec![
                                             self.cx.stmt_expr(
                                                 self.cx.expr_call_ident(
                                                     *span,
@@ -826,18 +824,17 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                                             ),
                                             self.cx.stmt_expr(result),
                                         ],
-                                    ),
-                                ),
-                            ),
-                            None => self.cx.arm(
-                                *span,
-                                vec![self.reduction_match_data(subindex, rules)],
-                                result,
-                            ),
-                        }
+                            )),
+                        ),
+                        None => self.cx.arm(
+                            *span,
+                            vec![self.reduction_match_data(subindex, rules)],
+                            result,
+                        ),
                     }
-                },
-            );
+                }
+            },
+        );
 
         self.cx.expr_match(
             *span,

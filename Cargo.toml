@@ -1,10 +1,12 @@
 [workspace]
 members = [
+    "src/cformat",
     "src/core",
     "src/cparser",
     "src/ctoken",
     "src/fragment",
     "src/kieli",
+    "src/kieliconverter",
     "src/kieliparser",
     "src/kieliparser_procmacros",
     "src/lalr",

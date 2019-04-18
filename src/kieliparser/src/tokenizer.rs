@@ -4,8 +4,8 @@ use fragment::fragment::{FragmentIterator, Source};
 use shared::intern::StringInterner;
 use shared::utils::*;
 
-pub fn tokenize(content: &str) -> (Vec<Token>, StringInterner) {
-    let mut iter = FragmentIterator::new("file", content);
+pub fn tokenize(content: &str, filename: &str) -> (Vec<Token>, StringInterner) {
+    let mut iter = FragmentIterator::new(filename, content);
     let mut intern = StringInterner::new();
     let mut res = Vec::new();
     while iter.peek().is_some() {
