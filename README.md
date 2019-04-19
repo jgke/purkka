@@ -1,18 +1,16 @@
 Purkka
 ======
 
+Purkka is a low-level language, which compiles down to C. The aim is to provide
+a refresh of C's syntax, macros and data structures without providing
+additional bloat with run-time overhead.
+
+From the Wiktionary English article for 'purkka':
+
 **purkka**
 - _(colloquial) chewing gum, bubble gum (type of candy)_
 - _(music) bubblegum (pop music style)_
 - _(slang) kludge, hack (temporary and/or unelegant solution)_
-
-   (Wiktionary English article for 'purkka')
-
-A 'modern' 'alternative' to C.
-
-Purkka is a low-level language, which compiles down to C. The aim is to provide
-a refresh of C's syntax, macros and data structures without providing
-additional bloat with run-time overhead.
 
 Usage
 -----
