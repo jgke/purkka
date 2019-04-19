@@ -300,10 +300,20 @@ pub fn panic_insert(
                         ),
                     }
                 }
-                _ => panic!(
-                    "Conflict, not LR: tried to replace {} with {}\nToken: {:?}",
-                    act, action, rev_indices[&identifier]
-                ),
+                _ => {
+                    if let Action::Reduce(orig_index, orig_subindex, ..) = act {
+                        if let Action::Reduce(new_index, new_subindex, ..) = action {
+                            panic!(
+                                "Conflict, not LR: tried to replace {}:{} with {}:{}\nToken: {:?}",
+                                rev_indices[orig_index], orig_subindex,
+                                rev_indices[&new_index], new_subindex,
+                                rev_indices[&identifier]);
+                        }
+                    }
+                    panic!(
+                        "Conflict, not LR: tried to replace {} with {}\nToken: {:?}",
+                        act, action, rev_indices[&identifier]);
+                }
             }
         }
     }

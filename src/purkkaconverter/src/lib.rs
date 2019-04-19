@@ -35,13 +35,12 @@ impl Context {
     pub fn unit_to_decl(&self, k: pp::Unit) -> cp::ExternalDeclaration {
         match k {
             pp::Unit::Declaration(decl) => {
-                if let pp::Declaration::Declaration(public, mutable, name, Some(ty), Some(expr)) =
+                if let pp::Declaration::Declaration(_public, _mutable, name, Some(ty), Some(expr)) =
                     decl
                 {
                     cp::ExternalDeclaration::Declaration(Box::new(cp::Declaration::List(
-                        cp::DeclarationSpecifiers::TypeSpecifier(cp::TypeSpecifier::Int(
-                            ct::Token::Int(0),
-                        )),
+                        cp::DeclarationSpecifiers::Neither(
+                            cp::TypeSpecifier::Int(ct::Token::Int(0))),
                         cp::InitDeclaratorList::InitDeclarator(cp::InitDeclarator::Assign(
                             self.format_decl(name, ty),
                             ct::Token::Assign(0),
@@ -51,13 +50,12 @@ impl Context {
                         )),
                         ct::Token::Semicolon(0),
                     )))
-                } else if let pp::Declaration::Declaration(public, mutable, name, Some(ty), None) =
+                } else if let pp::Declaration::Declaration(_public, _mutable, name, Some(ty), None) =
                     decl
                 {
                     cp::ExternalDeclaration::Declaration(Box::new(cp::Declaration::List(
-                        cp::DeclarationSpecifiers::TypeSpecifier(cp::TypeSpecifier::Int(
-                            ct::Token::Int(0),
-                        )),
+                        cp::DeclarationSpecifiers::Neither(
+                            cp::TypeSpecifier::Int(ct::Token::Int(0))),
                         cp::InitDeclaratorList::InitDeclarator(cp::InitDeclarator::Declarator(
                             self.format_decl(name, ty),
                         )),

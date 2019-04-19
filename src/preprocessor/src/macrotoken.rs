@@ -133,6 +133,7 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
         MacroTokenType::Special(SpecialType::Sizeof(expr)) => Sizeof(
             index,
             expr.iter()
+                .filter(|t| t.ty != MacroTokenType::Empty)
                 .map(|t| preprocessor_to_parser(context, t, index))
                 .collect(),
         ),
@@ -140,6 +141,7 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
             index,
             exprs
                 .iter()
+                .filter(|t| t.ty != MacroTokenType::Empty)
                 .map(|t| preprocessor_to_parser(context, t, index))
                 .collect(),
         ),

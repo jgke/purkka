@@ -176,7 +176,7 @@ impl Context {
     fn external_declaration(&mut self, tree: &ExternalDeclaration) {
         match tree {
             ExternalDeclaration::Declaration(decl) => self.declaration(decl),
-            f => panic!("Not supported: {:?}", f),
+            f => panic!("Not implemented.: {:?}", f),
         }
     }
 
@@ -214,59 +214,75 @@ impl Context {
                     self.push_token(ident);
                     self.direct_declarator(direct_decl);
                 }
-                f => panic!("Not supported: {:?}", f),
+                f => panic!("Not implemented.: {:?}", f),
             },
-            f => panic!("Not supported: {:?}", f),
+            f => panic!("Not implemented.: {:?}", f),
         }
     }
 
     fn direct_declarator(&mut self, tree: &DirectDeclarator) {
         match tree {
             DirectDeclarator::Epsilon() => {}
-            f => panic!("Not supported: {:?}", f),
+            f => panic!("Not implemented.: {:?}", f),
         }
     }
 
     fn declaration_specifiers(&mut self, tree: &DeclarationSpecifiers) {
         match tree {
-            DeclarationSpecifiers::StorageList(spec, more) => {
-                self.push_token(self.token_from_storage(spec));
-                self.declaration_specifiers(more);
+            DeclarationSpecifiers::Neither(ty) => {
+                self.type_specifier(ty);
             }
-            DeclarationSpecifiers::StorageClassSpecifier(spec) => {
-                self.push_token(self.token_from_storage(spec));
+            DeclarationSpecifiers::Left(spec, ty) => {
+                self.specifiers(spec);
+                self.type_specifier(ty);
             }
-            DeclarationSpecifiers::SpecifierList(spec, more) => {
-                self.type_specifier(spec);
-                self.declaration_specifiers(more);
+            DeclarationSpecifiers::Right(ty, spec) => {
+                self.type_specifier(ty);
+                self.specifiers(spec);
             }
-            DeclarationSpecifiers::TypeSpecifier(spec) => {
-                self.type_specifier(spec);
-            }
-            DeclarationSpecifiers::QualifierList(spec, more) => {
-                self.push_token(self.token_from_qualifier(spec));
-                self.declaration_specifiers(more);
-            }
-            DeclarationSpecifiers::TypeQualifier(spec) => {
-                self.push_token(self.token_from_qualifier(spec));
+            DeclarationSpecifiers::Both(spec_1, ty, spec_2) => {
+                self.specifiers(spec_1);
+                self.type_specifier(ty);
+                self.specifiers(spec_2);
             }
         }
     }
 
+    fn specifiers(&mut self, tree: &Specifiers) {
+        match tree {
+            Specifiers::TypeQualifier(t) => self.push_token(self.token_from_qualifier(t)),
+            Specifiers::StorageClassSpecifier(t) => self.push_token(self.token_from_storage(t)),
+            Specifiers::TypeQualifierList(t, more) => {
+                self.push_token(self.token_from_qualifier(t));
+                self.specifiers(more);
+            }
+            Specifiers::StorageClassSpecifierList(t, more) => {
+                self.push_token(self.token_from_storage(t));
+                self.specifiers(more);
+            }
+        }
+    }
+
+    fn sign_to_token<'a>(&self, sign: &'a Sign) -> &'a Token {
+        match sign {
+            Sign::Signed(t) => t,
+            Sign::Unsigned(t) => t,
+        }
+    }
+
     fn type_specifier(&mut self, spec: &TypeSpecifier) {
-        let token = match spec {
-            TypeSpecifier::Void(t) => t,
-            TypeSpecifier::Char(t) => t,
-            TypeSpecifier::Short(t) => t,
-            TypeSpecifier::Int(t) => t,
-            TypeSpecifier::Long(t) => t,
-            TypeSpecifier::Float(t) => t,
-            TypeSpecifier::Double(t) => t,
-            TypeSpecifier::Signed(t) => t,
-            TypeSpecifier::Unsigned(t) => t,
-            TypeSpecifier::TypeNameStr(t) => t,
-            f => panic!("Not supported: {:?}", f),
+        let (sign, token) = match spec {
+            TypeSpecifier::Void(t) => (None, t),
+            TypeSpecifier::Char(t) => (None, t),
+            TypeSpecifier::SignedChar(sign, t) => (Some(self.sign_to_token(sign)), t),
+            TypeSpecifier::Short(t, MaybeInt::Epsilon()) => (None, t),
+            TypeSpecifier::SignedShort(sign, t, MaybeInt::Epsilon()) => (Some(self.sign_to_token(sign)), t),
+            TypeSpecifier::Int(t) => (None, t),
+            TypeSpecifier::SignedInt(sign, t) => (Some(self.sign_to_token(sign)), t),
+            TypeSpecifier::Signed(sign) => (None, self.sign_to_token(sign)),
+            f => panic!("Not implemented: {:?}", f),
         };
+        sign.map(|token| self.push_token(token));
         self.push_token(token);
     }
 

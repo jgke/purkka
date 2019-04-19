@@ -131,7 +131,11 @@ fn maybe_add_label(
     _semicolon: Token,
 ) {
     match decl_spec {
-        DeclarationSpecifiers::TypeSpecifier(TypeSpecifier::TypeNameStr(t)) => {
+        DeclarationSpecifiers::Left(_, TypeSpecifier::TypeNameStr(t))
+        | DeclarationSpecifiers::Right(TypeSpecifier::TypeNameStr(t), _)
+        | DeclarationSpecifiers::Both(_, TypeSpecifier::TypeNameStr(t), _)
+        | DeclarationSpecifiers::Neither(TypeSpecifier::TypeNameStr(t))
+            => {
             let ty = ident_to_name(t);
             if ty == "__label__" {
                 let labels = &mut state.scope.last_mut().unwrap().labels;
@@ -287,17 +291,22 @@ lalr! {
         ;
 
     TypeDeclaration
-      -> #Token::Typedef DeclarationSpecifiers #Token::Semicolon
+       -> #Token::Typedef DeclarationSpecifiers #Token::Semicolon
         | List. #Token::Typedef DeclarationSpecifiers InitDeclaratorList #Token::Semicolon
         ;
 
     DeclarationSpecifiers
-       -> StorageClassSpecifier
-        | StorageList. StorageClassSpecifier DeclarationSpecifiers
-        | TypeSpecifier
-        | SpecifierList. TypeSpecifier DeclarationSpecifiers
-        | TypeQualifier
-        | QualifierList. TypeQualifier DeclarationSpecifiers
+       -> Left. Specifiers TypeSpecifier
+        | Right. TypeSpecifier Specifiers
+        | Both. Specifiers TypeSpecifier Specifiers
+        | Neither. TypeSpecifier
+        ;
+
+    Specifiers
+       -> TypeQualifier
+        | StorageClassSpecifier
+        | StorageClassSpecifierList. StorageClassSpecifier Specifiers
+        | TypeQualifierList. TypeQualifier Specifiers
         ;
 
     InitDeclaratorList
@@ -319,16 +328,29 @@ lalr! {
         | #Token::Register
         ;
 
+    TypeQualifier
+       -> #Token::Const
+        | #Token::Volatile
+        ;
+
+    Sign -> #Token::Signed | #Token::Unsigned;
+    MaybeInt -> Epsilon | #Token::Int;
+
     TypeSpecifier
        -> #Token::Void
-        | #Token::Char
-        | #Token::Short
-        | #Token::Int
-        | #Token::Long
+        | Char. #Token::Char
+        | SignedChar. Sign #Token::Char
+        | Short. #Token::Short MaybeInt
+        | SignedShort. Sign #Token::Short MaybeInt
+        | Int. #Token::Int
+        | SignedInt. Sign #Token::Int
+        | Long. #Token::Long MaybeInt
+        | SignedLong. Sign #Token::Long MaybeInt
+        | LongLong. #Token::Long #Token::Long MaybeInt
+        | SignedLongLong. Sign #Token::Long #Token::Long MaybeInt
+        | Signed. Sign
         | #Token::Float
         | #Token::Double
-        | #Token::Signed
-        | #Token::Unsigned
         | &StructOrUnionSpecifier
         | &EnumSpecifier
         | #TypeNameStr
@@ -365,10 +387,10 @@ lalr! {
         ;
 
     SpecifierQualifierList
-       -> TypeSpecifierList. TypeSpecifier SpecifierQualifierList
-        | TypeSpecifier
-        | TypeQualifierList. TypeQualifier SpecifierQualifierList
-        | TypeQualifier
+       -> Left. Qualifiers TypeSpecifier
+        | Both. Qualifiers TypeSpecifier Qualifiers
+        | Right. TypeSpecifier Qualifiers
+        | Neither. TypeSpecifier
         ;
 
     StructDeclaratorList
@@ -406,11 +428,6 @@ lalr! {
         | Assign. #Token::Identifier #Token::Assign TernaryExpression
         ;
 
-    TypeQualifier
-       -> #Token::Const
-        | #Token::Volatile
-        ;
-
     Declarator
        -> Pointer IdentifierOrType DirectDeclarator
         | #Token::Identifier DirectDeclarator
@@ -445,6 +462,11 @@ lalr! {
     TypeQualifierList
        -> TypeQualifier
         | TypeQualifierList TypeQualifier
+        ;
+
+    Qualifiers
+       -> TypeQualifier
+        | TypeQualifierList. TypeQualifier Qualifiers
         ;
 
 
