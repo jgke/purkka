@@ -92,12 +92,21 @@ fn add_struct_type(state: &mut State, declaration: Box<StructOrUnionSpecifier>) 
     };
 }
 
+fn maybe_ident_to_option(ident: MaybeIdentifier) -> Option<String> {
+    match ident {
+        MaybeIdentifier::Epsilon() => None,
+        MaybeIdentifier::Identifier(ident) => Some(ident_to_name(ident))
+    }
+}
+
 fn add_enum_type(state: &mut State, declaration: Box<EnumSpecifier>) {
     match *declaration {
-        EnumSpecifier::List(_, _, ..) => {}
-        EnumSpecifier::Empty(_, token, ..) => add_type(state, ident_to_name(token)),
-        EnumSpecifier::NameOnly(_, token, ..) => add_type(state, ident_to_name(token)),
-        EnumSpecifier::ExistingType(..) => {}
+        EnumSpecifier::Enum(_, maybe_ident, ..) => {
+            maybe_ident_to_option(maybe_ident)
+                .map(|ident| add_type(state, ident));
+        }
+        EnumSpecifier::ExistingType(_, ty_or_name) =>
+            add_type(state, identifier_or_type_to_str(ty_or_name)),
     };
 }
 
@@ -175,24 +184,35 @@ lalr! {
     PostfixExpression
         -> PrimaryExpression
         | Index. PostfixExpression #Token::OpenBracket Expression #Token::CloseBracket
-        | Call. PostfixExpression #Token::OpenParen #Token::CloseParen
-        | CallWithArguments.PostfixExpression #Token::OpenParen ArgumentExpressionList #Token::CloseParen
-        | Member. PostfixExpression #Token::Dot #Token::Identifier
-        | Dereference. PostfixExpression #Token::Arrow #Token::Identifier
-        | Increment. PostfixExpression #Token::Increment
-        | Decrement. PostfixExpression #Token::Decrement
+        | Call.PostfixExpression #Token::OpenParen ArgumentExpressionList #Token::CloseParen
+        | Member. PostfixExpression MemberAccess #Token::Identifier
+        | Increment. PostfixExpression IncrementOrDecrement
         | StructValue. #Token::OpenParen TypeName #Token::CloseParen #Token::OpenBrace InitializerList #Token::CloseBrace
         ;
 
+    MemberAccess
+       -> #Token::Dot
+        | #Token::Arrow
+        ;
+
+    IncrementOrDecrement
+       -> #Token::Increment
+        | #Token::Decrement
+        ;
+
     ArgumentExpressionList
+       -> Epsilon
+        | NonemptyArgumentExpressionList
+        ;
+
+    NonemptyArgumentExpressionList
        -> AssignmentExpression
-        | ArgumentExpressionList #Token::Comma AssignmentExpression
+        | NonemptyArgumentExpressionList #Token::Comma AssignmentExpression
         ;
 
     UnaryExpression
        -> PostfixExpression
-        | #Token::Increment UnaryExpression
-        | #Token::Decrement UnaryExpression
+        | IncrementOrDecrement UnaryExpression
         | UnaryOperator &CastExpression
         ;
 
@@ -315,17 +335,18 @@ lalr! {
         ;
 
     IdentifierOrType
-        -> #Token::Identifier
-         | #TypeNameStr;
+       -> #Token::Identifier
+        | #TypeNameStr;
 
     IdentifierOrLabel
-        -> #Token::Identifier
-         | #Label;
+       -> #Token::Identifier
+        | #Label;
 
     StructOrUnionSpecifier
        -> NewType. StructOrUnion IdentifierOrType #Token::OpenBrace StructDeclarationList #Token::CloseBrace
         | Anonymous. StructOrUnion #Token::OpenBrace StructDeclarationList #Token::CloseBrace
-        | NameOnly. StructOrUnion IdentifierOrType        ;
+        | NameOnly. StructOrUnion IdentifierOrType
+        ;
 
     StructOrUnion
        -> #Token::Struct
@@ -362,10 +383,13 @@ lalr! {
         ;
 
     EnumSpecifier
-       -> List. #Token::Enum #Token::OpenBrace EnumeratorList #Token::CloseBrace
-        | Empty. #Token::Enum #Token::Identifier #Token::OpenBrace EnumeratorList #Token::CloseBrace
-        | ExistingType. #Token::Enum #TypeNameStr
-        | NameOnly. #Token::Enum #Token::Identifier
+       -> #Token::Enum MaybeIdentifier #Token::OpenBrace EnumeratorList #Token::CloseBrace
+        | ExistingType. #Token::Enum IdentifierOrType
+        ;
+
+    MaybeIdentifier
+       -> Epsilon
+        | #Token::Identifier
         ;
 
     EnumeratorListContent
@@ -396,10 +420,14 @@ lalr! {
 
     DirectDeclarator
        -> Epsilon
-        | SizedArray. DirectDeclarator #Token::OpenBracket GeneralExpression #Token::CloseBracket
-        | Array. DirectDeclarator #Token::OpenBracket #Token::CloseBracket
+        | Array. DirectDeclarator #Token::OpenBracket MaybeGeneralExpression #Token::CloseBracket
         | Function. DirectDeclarator #Token::OpenParen #Token::CloseParen
         | FunctionParams. DirectDeclarator #Token::OpenParen FunctionParams #Token::CloseParen
+        ;
+
+    MaybeGeneralExpression
+       -> Epsilon
+        | GeneralExpression
         ;
 
     FunctionParams
@@ -454,14 +482,15 @@ lalr! {
 
     DirectAbstractDeclarator
        -> #Token::OpenParen &AbstractDeclarator #Token::CloseParen
-        | Array. #Token::OpenBracket #Token::CloseBracket
-        | SizedArray. #Token::OpenBracket GeneralExpression #Token::CloseBracket
-        | AbstractArray. DirectAbstractDeclarator #Token::OpenBracket #Token::CloseBracket
-        | AbstractSizedArray. DirectAbstractDeclarator #Token::OpenBracket GeneralExpression #Token::CloseBracket
-        | Function. #Token::OpenParen #Token::CloseParen
-        | FunctionParams. #Token::OpenParen &ParameterTypeList #Token::CloseParen
-        | AbstractFunction. DirectAbstractDeclarator #Token::OpenParen #Token::CloseParen
-        | AbstractFunctionParams. DirectAbstractDeclarator #Token::OpenParen &ParameterTypeList #Token::CloseParen
+        | Array. #Token::OpenBracket MaybeGeneralExpression #Token::CloseBracket
+        | AbstractArray. DirectAbstractDeclarator #Token::OpenBracket MaybeGeneralExpression #Token::CloseBracket
+        | Function. #Token::OpenParen &MaybeParameterTypeList #Token::CloseParen
+        | AbstractFunction. DirectAbstractDeclarator #Token::OpenParen &MaybeParameterTypeList #Token::CloseParen
+        ;
+
+    MaybeParameterTypeList
+       -> Epsilon
+        | ParameterTypeList
         ;
 
     AssignmentOrInitializerList
@@ -533,16 +562,24 @@ lalr! {
         ;
 
     SelectionStatement
-       -> #Token::If #Token::OpenParen Expression #Token::CloseParen Statement
-        | IfElse. #Token::If #Token::OpenParen Expression #Token::CloseParen Statement #Token::Else Statement
+       -> #Token::If #Token::OpenParen Expression #Token::CloseParen Statement MaybeElse
         | #Token::Switch #Token::OpenParen Expression #Token::CloseParen Statement
+        ;
+
+    MaybeElse
+       -> Epsilon
+        | #Token::Else Statement
         ;
 
     IterationStatement
        -> #Token::While #Token::OpenParen Expression #Token::CloseParen Statement
         | #Token::Do Statement #Token::While #Token::OpenParen Expression #Token::CloseParen #Token::Semicolon
-        | ForEmptyLast. #Token::For #Token::OpenParen ExpressionStatement ExpressionStatement #Token::CloseParen Statement
-        | #Token::For #Token::OpenParen ExpressionStatement ExpressionStatement Expression #Token::CloseParen Statement
+        | #Token::For #Token::OpenParen ForExpr #Token::CloseParen Statement
+        ;
+
+    ForExpr
+       -> EmptyLast. ExpressionStatement ExpressionStatement
+        | ExpressionStatement ExpressionStatement Expression
         ;
 
     JumpStatement
