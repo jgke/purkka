@@ -29,6 +29,7 @@ fn parse(content: &str) -> Result<cparser::parser::S, Option<ctoken::token::Toke
 }
 
 fn run_test(prefix: &str) {
+    println!("Running testcase '{}'", prefix.split("/").last().unwrap());
     let mut prk_contents = String::new();
     let mut prk = File::open(format!("{}.prk", prefix)).expect("");
     prk.read_to_string(&mut prk_contents).expect("");
@@ -48,7 +49,6 @@ fn testcase_runner() {
 
     for path in paths {
         let readable_path = path.unwrap().path().display().to_string();
-        dbg!(&readable_path);
         if readable_path.ends_with(".prk") {
             let mut parts = readable_path.split(".prk");
             run_test(parts.next().unwrap());

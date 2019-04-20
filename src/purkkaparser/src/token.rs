@@ -36,6 +36,7 @@ pub enum Token {
     Type(),
     Struct(),
     Enum(),
+    Return(),
 
     Include(),
     IncludeC(),
@@ -68,4 +69,5 @@ pub static KEYWORDS: &[(&str, fn() -> Token)] = &[
     ("type", Type),
     ("struct", Struct),
     ("enum", Enum),
+    ("return", Return),
 ];

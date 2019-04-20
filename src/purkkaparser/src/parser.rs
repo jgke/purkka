@@ -62,8 +62,8 @@ grammar! {
     S -> TranslationUnit;
 
     TranslationUnit
-       -> Leaf. Unit #Token::SemiColon
-        | List. Unit #Token::SemiColon TranslationUnit
+       -> Leaf. Unit
+        | List. Unit TranslationUnit
         | Epsilon
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum TranslationUnit { Units(Vec<Unit>) }
@@ -76,8 +76,8 @@ grammar! {
         ;
 
     Declaration
-       -> Declaration. Visibility Mutability #Token::Identifier MaybeType
-        | Definition. Visibility Mutability #Token::Identifier MaybeType #Token::Operator Assignment
+       -> Declaration. Visibility Mutability #Token::Identifier MaybeType #Token::SemiColon
+        | Definition. Visibility Mutability #Token::Identifier MaybeType #Token::Operator Assignment #Token::SemiColon
         | Function. Visibility #Token::Fun #Token::Identifier ParamList #Token::Operator Block
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Declaration { Declaration(bool, bool, Rc<str>, Option<TypeSignature>, Option<Assignment>) }
@@ -220,7 +220,7 @@ grammar! {
         | Literal
         | BlockExpression
         | Expression. #Token::OpenParen Expression #Token::CloseParen
-        | Lambda. #Token::Fun ParamList #Token::Operator Block
+        | Lambda
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum PrimaryExpression {
             Identifier(Token),
@@ -228,6 +228,14 @@ grammar! {
             Literal(Literal),
             BlockExpression(Box<BlockExpression>),
             Expression(Box<Expression>),
+            Lambda(Lambda),
+        }
+        ;
+
+    Lambda
+        -> #Token::Fun ParamList #Token::Operator Block
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum Lambda {
             Lambda(Vec<Param>, TypeSignature, BlockExpression),
         }
         ;
@@ -271,23 +279,31 @@ grammar! {
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Block { Statements(Vec<Box<Statement>>) }
         ;
+
     Statements -> Epsilon | Statement #Token::SemiColon Statements;
     Statement
        -> Declaration #Token::SemiColon
         | BlockExpression
         | Expression #Token::SemiColon
+        | ReturnStatement #Token::SemiColon
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Statement {
             Declaration(Declaration),
             BlockExpression(BlockExpression),
             Expression(Expression),
+            Return(Option<Expression>),
         }
+        ;
+
+    ReturnStatement
+       -> #Token::Return MaybeExpression
         ;
 
     Path -> #Token::Identifier;
 
     TrailingComma -> #Token::Comma | Epsilon;
     MaybeIdentifier -> #Token::Identifier | Epsilon;
+    MaybeExpression -> Expression | Epsilon;
 }
 
 impl TryFrom<Param> for TypeSignature {
@@ -409,9 +425,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
     fn parse_translation_unit(&mut self) -> TranslationUnit {
         let mut units = Vec::new();
+        while maybe_read_token!(self, Token::SemiColon).is_some() {}
         while self.peek().is_some() {
             units.push(self.parse_unit());
-            read_token!(self, Token::SemiColon);
+            while maybe_read_token!(self, Token::SemiColon).is_some() {}
         }
         TranslationUnit::Units(units)
     }
@@ -452,14 +469,16 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             _ => None,
         };
 
-        match self.peek() {
+        let res = match self.peek() {
             Some(Token::Operator(t)) if &**t == "=" => {
                 read_token!(self, Token::Operator);
                 let expr = self.parse_assignment_expr();
                 Declaration::Declaration(visible, mutable, ident, ty, Some(expr))
             }
             _ => Declaration::Declaration(visible, mutable, ident, ty, None),
-        }
+        };
+        read_token!(self, Token::SemiColon);
+        res
     }
 
     fn parse_type(&mut self) -> TypeSignature {
@@ -723,7 +742,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Fun(..)) => {
                 read_token!(self, Token::Fun);
                 let (params, return_type, block) = self.parse_fun();
-                PrimaryExpression::Lambda(params, return_type, block)
+                PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block))
             }
             t => unexpected_token!(t, self),
         }
@@ -743,7 +762,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn fun_to_expr(&self, params: Vec<Param>, return_type: TypeSignature, block: BlockExpression) -> Expression {
-        Expression::PrimaryExpression(PrimaryExpression::Lambda(params, return_type, block))
+        Expression::PrimaryExpression(PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block)))
     }
 
     fn parse_block_expression(&mut self) -> BlockExpression {
@@ -823,6 +842,14 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             // Expressions can contain BlockExpressions, so this is
             // partially unreachable
             Expression => Statement::Expression(self.parse_expression()),
+            ReturnStatement => {
+                read_token!(self, Token::Return);
+                let expr = match self.peek() {
+                    Some(Token::SemiColon()) => None,
+                    _ => Some(self.parse_expression())
+                };
+                Statement::Return(expr)
+            },
         );
         read_token!(self, Token::SemiColon);
         res
