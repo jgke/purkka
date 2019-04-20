@@ -24,12 +24,21 @@ macro_rules! unexpected_token {
     };
 }
 
+macro_rules! unexpected_token_expected_one {
+    ($token:expr, $iter:expr, $expected:path) => {
+        match $token {
+            None => panic!("Unexpected end of file, expected {}", stringify!($expected)),
+            Some(t) => panic!("Unexpected token: {:?}, expected {}", t, stringify!($expected)),
+        }
+    };
+}
+
 macro_rules! read_token {
     ($iter:expr, $tok:path) => {
         if let Some($tok(..)) = $iter.peek() {
             $iter.next().unwrap().clone()
         } else {
-            unexpected_token!(&$iter.next(), $iter)
+            unexpected_token_expected_one!(&$iter.next(), $iter, $tok)
         }
     };
 }
@@ -67,8 +76,9 @@ grammar! {
         ;
 
     Declaration
-       -> Declaration. Visibility #Token::Let Mutability #Token::Identifier MaybeType
-        | Definition. Visibility #Token::Let Mutability #Token::Identifier MaybeType #Token::Operator Assignment
+       -> Declaration. Visibility Mutability #Token::Identifier MaybeType
+        | Definition. Visibility Mutability #Token::Identifier MaybeType #Token::Operator Assignment
+        | Function. Visibility #Token::Fun #Token::Identifier ParamList #Token::Operator Block
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Declaration { Declaration(bool, bool, Rc<str>, Option<TypeSignature>, Option<Assignment>) }
         ;
@@ -111,6 +121,7 @@ grammar! {
             Array(Box<TypeSignature>, Option<Literal>),
 
             Function(Vec<Param>, Box<TypeSignature>),
+            Infer
         }
         ;
 
@@ -208,19 +219,31 @@ grammar! {
         | Call. #Token::Identifier ArgList
         | Literal
         | BlockExpression
+        | Expression. #Token::OpenParen Expression #Token::CloseParen
+        | Lambda. #Token::Fun ParamList #Token::Operator Block
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum PrimaryExpression {
+            Identifier(Token),
+            Call(Token, ArgList),
+            Literal(Literal),
+            BlockExpression(Box<BlockExpression>),
+            Expression(Box<Expression>),
+            Lambda(Vec<Param>, TypeSignature, BlockExpression),
+        }
         ;
 
     BlockExpression
-       -> ConditionalExpression
+       -> Block
+        | ConditionalExpression
         ;
 
     ConditionalExpression
-       -> #Token::If Expression Block IfTail
-       @ #[derive(Clone, Debug, PartialEq)]
-       pub enum ConditionalExpression {
-           Exprs(Vec<(Box<Expression>, Box<Block>)>, Option<Box<Block>>)
-       }
-       ;
+        -> #Token::If Expression Block IfTail
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum ConditionalExpression {
+            Exprs(Vec<(Box<Expression>, Box<Block>)>, Option<Box<Block>>)
+        }
+        ;
 
     IfTail
        -> Epsilon
@@ -408,6 +431,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         let mutable = match self.next() {
             Some(Token::Let()) => true,
             Some(Token::Const()) => false,
+            Some(Token::Fun()) => {
+                let ident = Some(read_token!(self, Token::Identifier)).as_ref()
+                    .identifier_s().unwrap().clone();
+                let (params, return_type, block) = self.parse_fun();
+                return Declaration::Declaration(visible, false, ident, None,
+                                                Some(Assignment::Expression(self.fun_to_expr(params, return_type, block))));
+            },
             t => unexpected_token!(t, self),
         };
         let ident = match self.next() {
@@ -447,9 +477,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             /* (foo, bar: int) -> int */
             /* (int, int) */
             Some(Token::OpenParen(..)) => {
-                read_token!(self, Token::OpenParen);
                 let params = self.parse_param_list();
-                read_token!(self, Token::CloseParen);
                 match self.peek() {
                     Some(Token::Operator(t)) if &**t == "->" && maybe_fn => {
                         read_token!(self, Token::Operator);
@@ -533,7 +561,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_param_list(&mut self) -> Vec<Param> {
-        self.parse_comma_delimited_to_vec(Self::parse_param)
+        read_token!(self, Token::OpenParen);
+        let res = self.parse_comma_delimited_to_vec(Self::parse_param);
+        read_token!(self, Token::CloseParen);
+        res
     }
 
     fn parse_param(&mut self) -> Option<Param> {
@@ -675,24 +706,50 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let t = self.next().unwrap().clone();
                 match self.peek() {
                     Some(Token::OpenParen()) => {
-                        PrimaryExpression::Call(t.clone(), self.parse_args())
+                        PrimaryExpression::Call(t, self.parse_args())
                     }
-                    _ => PrimaryExpression::Identifier(t.clone()),
+                    _ => PrimaryExpression::Identifier(t),
                 }
             }
             Some(Token::Integer(..)) | Some(Token::Float(..)) => {
                 PrimaryExpression::Literal(self.parse_literal())
             }
             Some(Token::If(..)) => {
-                PrimaryExpression::BlockExpression(self.parse_block_expression())
+                PrimaryExpression::BlockExpression(Box::new(self.parse_block_expression()))
+            }
+            Some(Token::OpenParen(..)) => {
+                PrimaryExpression::Expression(Box::new(self.parse_expression()))
+            }
+            Some(Token::Fun(..)) => {
+                read_token!(self, Token::Fun);
+                let (params, return_type, block) = self.parse_fun();
+                PrimaryExpression::Lambda(params, return_type, block)
             }
             t => unexpected_token!(t, self),
         }
     }
 
+    fn parse_fun(&mut self) -> (Vec<Param>, TypeSignature, BlockExpression) {
+        let params = self.parse_param_list();
+        let return_type = match self.peek() {
+            Some(Token::Operator(t)) if &**t == "->" => {
+                read_token!(self, Token::Operator);
+                self.parse_type()
+            }
+            _ => TypeSignature::Infer
+        };
+        let block = self.parse_block_expression();
+        (params, return_type, block)
+    }
+
+    fn fun_to_expr(&self, params: Vec<Param>, return_type: TypeSignature, block: BlockExpression) -> Expression {
+        Expression::PrimaryExpression(PrimaryExpression::Lambda(params, return_type, block))
+    }
+
     fn parse_block_expression(&mut self) -> BlockExpression {
         match self.peek() {
             Some(Token::If(..)) => BlockExpression::ConditionalExpression(self.parse_if_expr()),
+            Some(Token::OpenBrace(..)) => BlockExpression::Block(self.parse_block()),
             t => unexpected_token!(t, self),
         }
     }

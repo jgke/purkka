@@ -100,3 +100,16 @@ fn parse_nested_if_else() {
     } else {};",
     );
 }
+
+#[test]
+fn parse_main() {
+    let fun = test_parse_file(
+        "fun main(argc: int, argv: [[char]]) -> int {
+};",
+    );
+    let lambda = test_parse_file(
+        "const main = fun (argc: int, argv: [[char]]) -> int {
+};",
+    );
+    assert_eq!(fun, lambda);
+}

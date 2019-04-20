@@ -32,7 +32,8 @@ pub fn first(
     let mut has_e = false;
     // E -> A | B
     for (i, _) in rule.data.iter().enumerate() {
-        has_e |= first_loop(tm, set, cache, (rule_index, i, 0));
+        let mut sub_cache = cache.clone();
+        has_e |= first_loop(tm, set, &mut sub_cache, (rule_index, i, 0));
     }
     has_e
 }
@@ -55,7 +56,6 @@ fn first_loop(
         // A
         if ruledata.identifier == "Epsilon" {
             has_e = true;
-            break;
         } else if ruledata.terminal {
             set.insert(tm.indices[&ruledata.full_path]);
             has_e = false;
@@ -520,3 +520,163 @@ pub fn compute_lalr(tm: &RuleTranslationMap, terminals: &HashSet<Terminal>) -> B
 
     return table;
 }
+
+#[test]
+fn test_first() {
+    use super::*;
+    use syntax::source_map::DUMMY_SP;
+
+    let mut tm = RuleTranslationMap {
+        ..Default::default()
+    };
+    tm.push_rule(
+        "Epsilon".to_string(),
+        Rule {
+            identifier: "Epsilon".to_string(),
+            span: DUMMY_SP,
+            data: vec![],
+            enumdef: None,
+        });
+    tm.push_rule(
+        "A".to_string(),
+        Rule {
+            identifier: "A".to_string(),
+            span: DUMMY_SP,
+            data: vec![Component {
+                real_name: "A_a".to_string(),
+                action: None,
+                priority: None,
+                rules: vec![
+                    RuleData {
+                        identifier: "B".to_string(),
+                        full_path: "B".to_string(),
+                        span: DUMMY_SP,
+                        terminal: false,
+                        indirect: false,
+                        conversion_fn: None,
+                    },
+                    RuleData {
+                        identifier: "C".to_string(),
+                        full_path: "C".to_string(),
+                        span: DUMMY_SP,
+                        terminal: false,
+                        indirect: false,
+                        conversion_fn: None,
+                    },
+                ]
+            }, Component {
+                real_name: "A_b".to_string(),
+                action: None,
+                priority: None,
+                rules: vec![
+                    RuleData {
+                        identifier: "B".to_string(),
+                        full_path: "B".to_string(),
+                        span: DUMMY_SP,
+                        terminal: false,
+                        indirect: false,
+                        conversion_fn: None,
+                    },
+                    RuleData {
+                        identifier: "D".to_string(),
+                        full_path: "D".to_string(),
+                        span: DUMMY_SP,
+                        terminal: false,
+                        indirect: false,
+                        conversion_fn: None,
+                    },
+                ]
+            }
+            ],
+            enumdef: None,
+        });
+    tm.push_rule(
+        "B".to_string(),
+        Rule {
+            identifier: "B".to_string(),
+            span: DUMMY_SP,
+            data: vec![Component {
+                real_name: "B_e".to_string(),
+                action: None,
+                priority: None,
+                rules: vec![
+                    RuleData {
+                        identifier: "Epsilon".to_string(),
+                        full_path: "Epsilon".to_string(),
+                        span: DUMMY_SP,
+                        terminal: false,
+                        indirect: false,
+                        conversion_fn: None,
+                    },
+                ]
+            }, Component {
+                real_name: "B_t".to_string(),
+                action: None,
+                priority: None,
+                rules: vec![
+                    RuleData {
+                        identifier: "T_b".to_string(),
+                        full_path: "T_b".to_string(),
+                        span: DUMMY_SP,
+                        terminal: true,
+                        indirect: false,
+                        conversion_fn: None,
+                    },
+                ]
+            }
+            ],
+            enumdef: None,
+        });
+    tm.push_rule(
+        "C".to_string(),
+        Rule {
+            identifier: "C".to_string(),
+            span: DUMMY_SP,
+            data: vec![Component {
+                real_name: "C_t".to_string(),
+                action: None,
+                priority: None,
+                rules: vec![
+                    RuleData {
+                        identifier: "T_c".to_string(),
+                        full_path: "T_c".to_string(),
+                        span: DUMMY_SP,
+                        terminal: true,
+                        indirect: false,
+                        conversion_fn: None,
+                    },
+                ]
+            }
+            ],
+            enumdef: None,
+        });
+    tm.push_rule(
+        "D".to_string(),
+        Rule {
+            identifier: "D".to_string(),
+            span: DUMMY_SP,
+            data: vec![Component {
+                real_name: "D_t".to_string(),
+                action: None,
+                priority: None,
+                rules: vec![
+                    RuleData {
+                        identifier: "T_d".to_string(),
+                        full_path: "T_d".to_string(),
+                        span: DUMMY_SP,
+                        terminal: true,
+                        indirect: false,
+                        conversion_fn: None,
+                    },
+                ]
+            }
+            ],
+            enumdef: None,
+        });
+    let mut res = HashSet::new(); 
+    let mut cache = HashSet::new();
+    let index = tm.indices["A"];
+    first(&tm, &mut res, &mut cache, index);
+    assert_eq!(res.len(), 3);
+}
+
