@@ -8,6 +8,7 @@
 pub mod parser;
 pub mod token;
 pub mod tokenizer;
+pub mod visitor;
 
 use parser::{parse, S};
 use tokenizer::tokenize;
