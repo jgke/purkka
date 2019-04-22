@@ -67,7 +67,7 @@ fn check_result_files() {
     for path in paths {
         let readable_path = path.unwrap().path().display().to_string();
         if readable_path.ends_with(".c") {
-            let output = Command::new("gcc")
+            let output = match Command::new("gcc")
                 .arg("-Wall")
                 .arg("-Wextra")
                 .arg("-Werror")
@@ -77,8 +77,15 @@ fn check_result_files() {
                 .arg("/dev/null")
                 .arg("-c")
                 .arg(readable_path)
-                .output()
-                .expect("");
+                .output() {
+                    Ok(ok) => ok,
+                    Err(e) => {
+                        if let io::ErrorKind::NotFound = e.kind() {
+                            return;
+                        }
+                        panic!("Failed to compile a C test case: {:?}", e);
+                    }
+                };
             io::stdout().write_all(&output.stdout).unwrap();
             io::stdout().write_all(&output.stderr).unwrap();
             assert!(output.status.success());
