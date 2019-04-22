@@ -8,10 +8,14 @@ use ctoken::token as ct;
 use purkkaparser::{parser as pp, token as pt};
 
 mod traits;
+
 mod lambda;
+mod array;
+
+use traits::TreeTransformer;
 
 use lambda::StripLambda;
-use traits::TreeTransformer;
+use array::ArrayToPointer;
 
 #[derive(Debug)]
 pub struct Context {
@@ -22,6 +26,7 @@ pub fn convert(mut purkka_tree: pp::S) -> cp::S {
     let mut context = Context {
         functions: HashMap::new(),
     };
+    ArrayToPointer::new(&mut context).transform(&mut purkka_tree);
     StripLambda::new(&mut context).transform(&mut purkka_tree);
     dbg!(&purkka_tree);
     for (func, tree) in &context.functions {
@@ -250,7 +255,16 @@ impl Context {
             pp::TypeSignature::Infer => cp::DeclarationSpecifiers::Neither(
                 cp::TypeSpecifier::Int(ct::Token::Int(0))),
             pp::TypeSignature::Array(ty, _) => self.type_to_declaration_specifiers(*ty),
+            pp::TypeSignature::Pointer { ty,  ..} => self.type_to_declaration_specifiers(*ty),
             other => panic!("Not implemented: {:?}", other),
+        }
+    }
+
+    pub fn ty_to_pointer(&mut self, ty: pp::TypeSignature) -> cp::Pointer {
+        match ty {
+            pp::TypeSignature::Pointer { ty, .. }
+                => cp::Pointer::Pointer(ct::Token::Times(0), Box::new(self.ty_to_pointer(*ty))),
+            _ => cp::Pointer::Times(ct::Token::Times(0))
         }
     }
 
@@ -297,19 +311,21 @@ impl Context {
 
     pub fn format_decl(&mut self, name: Rc<str>, ty: pp::TypeSignature) -> cp::Declarator {
         let ident = ct::Token::Identifier(0, name.to_string());
-        cp::Declarator::Identifier(ident, self.format_direct_decl(ty))
+        match ty {
+            pp::TypeSignature::Plain(_) => cp::Declarator::Identifier(ident, self.format_direct_decl(ty)),
+            pp::TypeSignature::Pointer { ty, .. }
+                => cp::Declarator::Pointer(
+                    self.ty_to_pointer(*ty.clone()),
+                    cp::IdentifierOrType::Identifier(ident),
+                    self.format_direct_decl(*ty)),
+            other => panic!("Not implemented: {:?}", other),
+        }
     }
 
     pub fn format_direct_decl(&mut self, ty: pp::TypeSignature) -> cp::DirectDeclarator {
         match ty {
             pp::TypeSignature::Plain(_) => cp::DirectDeclarator::Epsilon(),
-            pp::TypeSignature::Array(ty, None) => 
-                cp::DirectDeclarator::Array(
-                    Box::new(self.format_direct_decl(*ty)),
-                    ct::Token::OpenBracket(0),
-                    cp::MaybeGeneralExpression::Epsilon(),
-                    ct::Token::CloseBracket(0),
-                ),
+            pp::TypeSignature::Pointer { ty, .. } => self.format_direct_decl(*ty),
             other => panic!("Not implemented: {:?}", other),
         }
     }

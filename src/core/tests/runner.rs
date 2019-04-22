@@ -1,8 +1,10 @@
-use cformat::format_c;
 use std::fs::{read_dir, File};
 use std::path::PathBuf;
+use std::process::Command;
 use std::io::prelude::*;
+use std::io::{self, Write};
 
+use cformat::format_c;
 use core::core::parse_files;
 use preprocessor::PreprocessorOptions;
 
@@ -52,6 +54,34 @@ fn testcase_runner() {
         if readable_path.ends_with(".prk") {
             let mut parts = readable_path.split(".prk");
             run_test(parts.next().unwrap());
+        }
+    }
+}
+
+#[test]
+fn check_result_files() {
+    let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    d.push("tests/testcases");
+    let paths = read_dir(d).unwrap();
+
+    for path in paths {
+        let readable_path = path.unwrap().path().display().to_string();
+        if readable_path.ends_with(".c") {
+            let output = Command::new("gcc")
+                .arg("-Wall")
+                .arg("-Wextra")
+                .arg("-Werror")
+                .arg("-Wno-unused-parameter")
+                .arg("-O2")
+                .arg("-o")
+                .arg("/dev/null")
+                .arg("-c")
+                .arg(readable_path)
+                .output()
+                .expect("");
+            io::stdout().write_all(&output.stdout).unwrap();
+            io::stdout().write_all(&output.stderr).unwrap();
+            assert!(output.status.success());
         }
     }
 }

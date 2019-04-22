@@ -7,7 +7,9 @@ pub trait ASTVisitor {
     fn visit_translation_unit(&mut self, s: &mut TranslationUnit) { walk_translation_unit(self, s); }
     fn visit_unit(&mut self, s: &mut Unit) { walk_unit(self, s); }
     fn visit_declaration(&mut self, s: &mut Declaration) { walk_declaration(self, s); }
-    fn visit_ty(&mut self, s: &mut TypeSignature) {}
+    fn visit_ty(&mut self, s: &mut TypeSignature) { walk_ty(self, s); }
+    fn visit_struct_field(&mut self, s: &mut StructField) { walk_struct_field(self, s); }
+    fn visit_enum_field(&mut self, s: &mut EnumField) { walk_enum_field(self, s); }
     fn visit_assignment(&mut self, s: &mut Assignment) { walk_assignment(self, s); }
     fn visit_expression(&mut self, s: &mut Expression) { walk_expression(self, s); }
     fn visit_primary_expression(&mut self, s: &mut PrimaryExpression) { walk_primary_expression(self, s); }
@@ -51,6 +53,44 @@ pub fn walk_declaration<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Declara
             if let Some(assignment) = assignment {
                 visitor.visit_assignment(assignment);
             }
+        }
+    }
+}
+
+pub fn walk_ty<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut TypeSignature) {
+    match s {
+        TypeSignature::Plain(..) => {}
+        TypeSignature::Pointer { nullable, ty } => { visitor.visit_ty(ty.deref_mut()) }
+        TypeSignature::Struct(_, ref mut fields)  => {
+            fields.iter_mut().for_each(|ref mut f| visitor.visit_struct_field(f.deref_mut()))
+        }
+        TypeSignature::Enum(_, ref mut fields)  => {
+            fields.iter_mut().for_each(|ref mut f| visitor.visit_enum_field(f.deref_mut()))
+        }
+        TypeSignature::Tuple(ref mut fields)  => {  fields.iter_mut().for_each(|f| visitor.visit_ty(f)) }
+        TypeSignature::Array(ref mut ty, ref mut lit)  => {
+            visitor.visit_ty(ty.deref_mut());
+            lit.iter_mut().for_each(|ref mut lit| visitor.visit_literal(lit));
+        }
+        TypeSignature::Function(ref mut params, ref mut return_type)  => {
+            params.iter_mut().for_each(|ref mut p| visitor.visit_param(p));
+            visitor.visit_ty(return_type.deref_mut());
+        }
+        TypeSignature::Infer  => {}
+    }
+}
+
+pub fn walk_struct_field<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut StructField) {
+    match s {
+        StructField::Field { name, ty } => visitor.visit_ty(ty.deref_mut())
+    }
+}
+
+pub fn walk_enum_field<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut EnumField) {
+    match s {
+        EnumField::Field { name, value, ty } => {
+            value.iter_mut().for_each(|expr| visitor.visit_expression(expr));
+            ty.iter_mut().for_each(|ty| visitor.visit_ty(ty));
         }
     }
 }

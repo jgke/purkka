@@ -51,7 +51,6 @@ impl Context {
             Token::Increment(_) => "++",
             Token::Decrement(_) => "--",
             Token::BitAnd(_) => "&",
-            Token::Times(_) => "*",
             Token::Plus(_) => "+",
             Token::Minus(_) => "-",
             Token::BitNot(_) => "~",
@@ -82,8 +81,6 @@ impl Context {
             Token::BitAndAssign(_) => "&=",
             Token::BitXorAssign(_) => "^=",
             Token::BitOrAssign(_) => "|=",
-
-            Token::Identifier(_, t) => t,
 
             // Special forms
             Token::Sizeof(_, _) => panic!(),
@@ -125,6 +122,7 @@ impl Context {
                     Token::Void(_) => "void",
                     Token::Volatile(_) => "volatile",
                     Token::While(_) => "while",
+                    Token::Identifier(_, t) => t,
 
                     // Third set: No whitespace before or after
                     t => {
@@ -165,6 +163,10 @@ impl Context {
                                     self.whitespace = false;
                                     self.push(",");
                                     self.whitespace = true;
+                                    return;
+                                }
+                                Token::Times(_) => {
+                                    self.push("*");
                                     return;
                                 }
                                 t => panic!("Unhandled case: {:?}", t),
@@ -433,6 +435,25 @@ impl Context {
             Declarator::Identifier(ident, direct_decl) => {
                 self.push_token(ident);
                 self.direct_declarator(direct_decl);
+            }
+            Declarator::Pointer(p, IdentifierOrType::Identifier(ident), direct_decl) => {
+                self.pointer(p);
+                self.push_token(ident);
+                self.direct_declarator(direct_decl);
+            }
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn pointer(&mut self, tree: &Pointer) {
+        match tree {
+            Pointer::Times(t) => {
+                self.whitespace = false;
+                self.push_token(t);
+            }
+            Pointer::Pointer(t, p) => {
+                self.push_token(t);
+                self.pointer(p);
             }
             f => panic!("Not implemented.: {:?}", f),
         }
