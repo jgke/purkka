@@ -105,8 +105,8 @@ grammar! {
           /* *int, &int */
         | Pointer. #Token::Operator TypeSignature
           /* (foo, bar: int) -> int */
-        | Function. #Token::OpenParen ParamList #Token::CloseParen #Token::Operator TypeSignature
           /* int -> int */
+        | Function. #Token::OpenParen ParamList #Token::CloseParen #Token::Operator TypeSignature
         | SingleParameterFunction. #Token::Identifier #Token::Operator TypeSignature
           /* (int, int) */
         | #Token::OpenParen TupleList #Token::CloseParen
@@ -304,6 +304,21 @@ grammar! {
     TrailingComma -> #Token::Comma | Epsilon;
     MaybeIdentifier -> #Token::Identifier | Epsilon;
     MaybeExpression -> Expression | Epsilon;
+}
+
+impl Declaration {
+    pub fn is_fn(&self) -> bool {
+        if let Declaration::Declaration(
+            _, false, _, _,
+            Some(Assignment::Expression(
+                    Expression::PrimaryExpression(
+                        PrimaryExpression::Lambda(..))))) = self {
+
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl TryFrom<Param> for TypeSignature {

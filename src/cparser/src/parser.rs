@@ -571,11 +571,14 @@ lalr! {
         ;
 
     StatementList
-       -> Statement. Statement
-        | Declaration. Declaration
-        | StatementMore. StatementList Statement
-        | DeclarationMore. StatementList Declaration
+       -> StatementOrDeclaration
+        | More. StatementList StatementOrDeclaration
         | Epsilon
+        ;
+
+    StatementOrDeclaration
+       -> Statement
+        | Declaration
         ;
 
     ExpressionStatement

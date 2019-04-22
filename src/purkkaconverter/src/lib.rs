@@ -1,3 +1,5 @@
+#![feature(drain_filter)]
+
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -5,14 +7,27 @@ use cparser::parser as cp;
 use ctoken::token as ct;
 use purkkaparser::{parser as pp, token as pt};
 
-struct Context {
+mod traits;
+mod lambda;
+
+use lambda::StripLambda;
+use traits::TreeTransformer;
+
+#[derive(Debug)]
+pub struct Context {
     functions: HashMap<Rc<str>, pp::Lambda>,
 }
 
-pub fn convert(purkka_tree: pp::S) -> cp::S {
+pub fn convert(mut purkka_tree: pp::S) -> cp::S {
     let mut context = Context {
         functions: HashMap::new(),
     };
+    StripLambda::new(&mut context).transform(&mut purkka_tree);
+    dbg!(&purkka_tree);
+    for (func, tree) in &context.functions {
+        dbg!(func);
+        dbg!(tree);
+    }
     context.s(purkka_tree)
 }
 
@@ -24,7 +39,7 @@ impl Context {
         self.functions.insert(name, lambda);
     }
 
-    fn push_anonymous_function(&mut self, name: Rc<str>, lambda: pp::Lambda) -> Rc<str> {
+    fn push_anonymous_function(&mut self, lambda: pp::Lambda) -> Rc<str> {
         let name: Rc<str> = From::from(format!("_lambda_{}", self.functions.len()));
         self.functions.insert(name.clone(), lambda);
         return name;
@@ -41,13 +56,146 @@ impl Context {
     pub fn translation_unit(&mut self, k: pp::TranslationUnit) -> cp::TranslationUnit {
         match k {
             pp::TranslationUnit::Units(u) => {
+                let drain = self.functions.drain().collect::<Vec<_>>();
+                let funcs = drain.into_iter()
+                           .map(|(n, u)| self.format_lambda_as_external_decl(n.clone(), u.clone()))
+                           .collect::<Vec<_>>();
                 u.into_iter()
+                    .map(|u| self.unit_to_external_decl(u))
+                    .chain(funcs.into_iter())
                     .fold(cp::TranslationUnit::Epsilon(), |tree, next| {
                         cp::TranslationUnit::TranslationUnit(
                             Box::new(tree),
-                            self.unit_to_external_decl(next),
+                            next
                         )
                     })
+            }
+        }
+    }
+
+    fn format_lambda_as_external_decl(
+        &mut self, name: Rc<str>,
+        pp::Lambda::Lambda(params, ty, block): pp::Lambda)
+                                               -> cp::ExternalDeclaration {
+        cp::ExternalDeclaration::FunctionDefinition(Box::new(
+                cp::FunctionDefinition::Specifiers(
+                    self.type_to_declaration_specifiers(ty.clone()),
+                    cp::Declarator::Identifier(ct::Token::Identifier(0, name.to_string()),
+                    self.function_params_from_params(params)),
+                self.block_expression_to_compound_statement(block),
+            )))
+    }
+
+    pub fn block_expression_to_compound_statement(&mut self, block: pp::BlockExpression) -> cp::CompoundStatement {
+        match block {
+            pp::BlockExpression::ConditionalExpression(cond) => cp::CompoundStatement::PushScope(
+                cp::PushScope::OpenBrace(ct::Token::OpenBrace(0)),
+                Box::new(cp::StatementList::StatementOrDeclaration(
+                        cp::StatementOrDeclaration::Statement(
+                            self.conditional_expression_to_statement(cond))
+                )),
+                ct::Token::CloseBrace(0),
+            ),
+            pp::BlockExpression::Block(block) => cp::CompoundStatement::PushScope(
+                cp::PushScope::OpenBrace(ct::Token::OpenBrace(0)),
+                Box::new(self.block_to_statement_list(block)),
+                ct::Token::CloseBrace(0),
+            )
+        }
+    }
+
+    pub fn block_to_statement_list(&mut self, block: pp::Block) -> cp::StatementList {
+        match block {
+            pp::Block::Statements(statements) => {
+                statements.into_iter()
+                    .fold(cp::StatementList::Epsilon(),
+                    |tree, next| cp::StatementList::More(
+                        Box::new(tree),
+                        self.statement_to_statement_or_declaration(*next)
+                    ))
+            }
+        }
+    }
+
+    pub fn conditional_expression_to_statement(&mut self, block: pp::ConditionalExpression) -> cp::Statement {
+        unimplemented!()
+    }
+
+    pub fn statement_to_statement_or_declaration(&mut self, statement: pp::Statement)
+    -> cp::StatementOrDeclaration {
+        match statement {
+            pp::Statement::Declaration(decl) =>
+                cp::StatementOrDeclaration::Declaration(self.convert_declaration(decl)),
+            pp::Statement::BlockExpression(block) =>
+                cp::StatementOrDeclaration::Statement(
+                    cp::Statement::CompoundStatement(
+                        Box::new(
+                            self.block_expression_to_compound_statement(block)))),
+            pp::Statement::Expression(expr) =>
+                cp::StatementOrDeclaration::Statement(
+                    cp::Statement::ExpressionStatement(
+                        Box::new(
+                            cp::ExpressionStatement::Expression(
+                                self.expression(expr),
+                                ct::Token::Semicolon(0))))),
+            pp::Statement::Return(Some(e)) =>
+                cp::StatementOrDeclaration::Statement(
+                    cp::Statement::JumpStatement(Box::new(
+                            cp::JumpStatement::Return(
+                                ct::Token::Return(0),
+                                self.expression(e),
+                                ct::Token::Semicolon(0))))),
+            pp::Statement::Return(None) =>
+                cp::StatementOrDeclaration::Statement(
+                    cp::Statement::JumpStatement(Box::new(
+                            cp::JumpStatement::ReturnVoid(
+                                ct::Token::Return(0),
+                                ct::Token::Semicolon(0))))),
+            other => panic!("Not implemented: {:?}", other),
+        }
+    }
+    
+    pub fn function_params_from_params(&mut self, params: Vec<pp::Param>) -> cp::DirectDeclarator {
+        let e = Box::new(cp::DirectDeclarator::Epsilon());
+        let op = ct::Token::OpenParen(0);
+        let cp = ct::Token::CloseParen(0);
+        if params.is_empty() {
+            cp::DirectDeclarator::Function(e, op, cp)
+        } else {
+            cp::DirectDeclarator::FunctionParams(
+                e, op,
+                cp::FunctionParams::ParameterTypeList(
+                    Box::new(self.parameter_list_from_params(params))
+                ),
+                cp)
+        }
+    }
+
+    pub fn parameter_list_from_params(&mut self, params: Vec<pp::Param>) -> cp::ParameterTypeList {
+        let mut iter = params.into_iter();
+        let first = iter.next().unwrap();
+        cp::ParameterTypeList::ParameterList(
+            iter
+                .fold(cp::ParameterList::ParameterDeclaration(self.param_to_declaration(first)),
+                |tree, next| {
+                    cp::ParameterList::ParameterList(
+                        Box::new(tree),
+                        ct::Token::Comma(0),
+                        self.param_to_declaration(next)
+                    )
+                })
+        )
+    }
+
+    pub fn param_to_declaration(&mut self, param: pp::Param) -> cp::ParameterDeclaration {
+        match param {
+            pp::Param::Param(name, ty) => {
+                let decl_spec = self.type_to_declaration_specifiers(*ty.clone());
+                let decl = self.format_decl(name, *ty);
+                cp::ParameterDeclaration::Declarator(Box::new(decl_spec), Box::new(decl))
+            }
+            pp::Param::Anon(ty) => {
+                unimplemented!()
             }
         }
     }
@@ -94,10 +242,14 @@ impl Context {
             pp::TypeSignature::Plain(ty) => {
                 let c_ty = match ty.as_ref() {
                     "int" => cp::TypeSpecifier::Int(ct::Token::Int(0)),
+                    "char" => cp::TypeSpecifier::Char(ct::Token::Char(0)),
                     other => panic!("Not implemented: {:?}", other),
                 };
                 cp::DeclarationSpecifiers::Neither(c_ty)
             }
+            pp::TypeSignature::Infer => cp::DeclarationSpecifiers::Neither(
+                cp::TypeSpecifier::Int(ct::Token::Int(0))),
+            pp::TypeSignature::Array(ty, _) => self.type_to_declaration_specifiers(*ty),
             other => panic!("Not implemented: {:?}", other),
         }
     }
@@ -105,12 +257,19 @@ impl Context {
     pub fn assignment_expression(&mut self, k: pp::Assignment) -> cp::AssignmentExpression {
         match k {
             pp::Assignment::Expression(expr) => {
-                cp::AssignmentExpression::TernaryExpression(self.expression(expr))
+                cp::AssignmentExpression::TernaryExpression(self.expression_as_ternary(expr))
             }
         }
     }
 
-    pub fn expression(&mut self, k: pp::Expression) -> cp::TernaryExpression {
+    pub fn expression(&mut self, k: pp::Expression) -> cp::Expression {
+        cp::Expression::AssignmentExpression(
+            Box::new(
+                cp::AssignmentExpression::TernaryExpression(
+                    self.expression_as_ternary(k))))
+    }
+
+    pub fn expression_as_ternary(&mut self, k: pp::Expression) -> cp::TernaryExpression {
         match k {
             pp::Expression::PrimaryExpression(primary_expr) => {
                 cp::TernaryExpression::GeneralExpression(cp::GeneralExpression::CastExpression(
@@ -137,13 +296,21 @@ impl Context {
     }
 
     pub fn format_decl(&mut self, name: Rc<str>, ty: pp::TypeSignature) -> cp::Declarator {
-        if let pp::TypeSignature::Plain(_) = ty {
-            cp::Declarator::Identifier(
-                ct::Token::Identifier(0, name.to_string()),
-                cp::DirectDeclarator::Epsilon(),
-            )
-        } else {
-            panic!("Not implemented: {:?}", ty);
+        let ident = ct::Token::Identifier(0, name.to_string());
+        cp::Declarator::Identifier(ident, self.format_direct_decl(ty))
+    }
+
+    pub fn format_direct_decl(&mut self, ty: pp::TypeSignature) -> cp::DirectDeclarator {
+        match ty {
+            pp::TypeSignature::Plain(_) => cp::DirectDeclarator::Epsilon(),
+            pp::TypeSignature::Array(ty, None) => 
+                cp::DirectDeclarator::Array(
+                    Box::new(self.format_direct_decl(*ty)),
+                    ct::Token::OpenBracket(0),
+                    cp::MaybeGeneralExpression::Epsilon(),
+                    ct::Token::CloseBracket(0),
+                ),
+            other => panic!("Not implemented: {:?}", other),
         }
     }
 }

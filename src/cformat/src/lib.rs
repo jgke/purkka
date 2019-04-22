@@ -1,3 +1,5 @@
+#![feature(box_patterns)]
+
 use cparser::parser::*;
 use ctoken::token::Token;
 
@@ -15,6 +17,7 @@ pub fn format_c(tree: &S) -> String {
         whitespace: false,
         buf: "".to_string(),
     };
+    dbg!(tree);
     context.s(tree);
     context.buf
 }
@@ -86,7 +89,7 @@ impl Context {
             Token::Sizeof(_, _) => panic!(),
             Token::Asm(_, _) => panic!(),
 
-            // Second set: Whitespace after, but not before
+            // Second set: Whitespace after
             t => {
                 let s = match t {
                     // Keyword
@@ -128,11 +131,8 @@ impl Context {
                         let s = match t {
                             Token::Macro(_) => "#",
                             Token::MacroPaste(_) => "##",
-                            Token::Comma(_) => ",",
                             Token::Dot(_) => ".",
                             Token::Arrow(_) => "->",
-                            Token::OpenBrace(_) => "{",
-                            Token::CloseBrace(_) => "}",
 
                             // Punctuation
                             Token::OpenBracket(_) => "[",
@@ -143,7 +143,33 @@ impl Context {
                             Token::Semicolon(_) => ";",
                             Token::Varargs(_) => "...",
 
-                            t => panic!("Unhandled case: {:?}", t),
+                            // Special cases
+                            t => match t {
+                                Token::OpenBrace(_) => {
+                                    self.newline = false;
+                                    self.whitespace = true;
+                                    self.push("{");
+                                    self.newline = true;
+                                    self.indent += 1;
+                                    return;
+                                }
+                                Token::CloseBrace(_) => {
+                                    self.newline = true;
+                                    self.indent -= 1;
+                                    self.push("}");
+                                    self.newline = true;
+                                    return;
+                                }
+                                Token::Comma(_) => {
+                                    self.newline = false;
+                                    self.whitespace = false;
+                                    self.push(",");
+                                    self.whitespace = true;
+                                    return;
+                                }
+                                t => panic!("Unhandled case: {:?}", t),
+                            }
+
                         };
                         self.whitespace = false;
                         self.newline = false;
@@ -151,7 +177,6 @@ impl Context {
                         return;
                     }
                 };
-                self.whitespace = false;
                 self.push(s);
                 self.whitespace = true;
                 return;
@@ -176,6 +201,7 @@ impl Context {
     fn external_declaration(&mut self, tree: &ExternalDeclaration) {
         match tree {
             ExternalDeclaration::Declaration(decl) => self.declaration(decl),
+            ExternalDeclaration::FunctionDefinition(def) => self.function_definition(def),
             f => panic!("Not implemented.: {:?}", f),
         }
     }
@@ -194,6 +220,127 @@ impl Context {
         }
     }
 
+    fn function_definition(&mut self, tree: &FunctionDefinition) {
+        match tree {
+            FunctionDefinition::Specifiers(decl_spec, decl, compound) => {
+                self.declaration_specifiers(decl_spec);
+                self.declarator(decl);
+                self.compound_statement(compound);
+            }
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn compound_statement(&mut self, tree: &CompoundStatement) {
+        match tree {
+            CompoundStatement::PushScope(PushScope::OpenBrace(open), statements, close) => {
+                self.push_token(open);
+                self.statement_list(&*statements);
+                self.push_token(close);
+            }
+        }
+    }
+
+    fn statement_list(&mut self, tree: &StatementList) {
+        match tree {
+            StatementList::Epsilon() => {},
+            StatementList::StatementOrDeclaration(StatementOrDeclaration::Statement(statement))
+                => self.statement(statement),
+            StatementList::StatementOrDeclaration(StatementOrDeclaration::Declaration(decl))
+                => self.declaration(decl),
+            StatementList::More(list, StatementOrDeclaration::Statement(statement)) => {
+                self.statement_list(list);
+                self.statement(statement);
+            }
+            StatementList::More(list, StatementOrDeclaration::Declaration(decl)) => {
+                self.statement_list(list);
+                self.declaration(decl);
+            }
+        }
+    }
+
+    fn statement(&mut self, tree: &Statement) {
+        match tree {
+            Statement::CompoundStatement(compound) => self.compound_statement(compound),
+            Statement::ExpressionStatement(box ExpressionStatement::Semicolon(t)) => self.push_token(t),
+            Statement::ExpressionStatement(box ExpressionStatement::Expression(e, t)) => {
+                self.expression(e);
+                self.push_token(t);
+            }
+            Statement::JumpStatement(box JumpStatement::ReturnVoid(r, t)) => {
+                self.push_token(r);
+                self.push_token(t);
+            }
+            Statement::JumpStatement(box JumpStatement::Return(r, e, t)) => {
+                self.push_token(r);
+                self.expression(e);
+                self.push_token(t);
+            }
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn expression(&mut self, tree: &Expression) {
+        match tree {
+            Expression::AssignmentExpression(e) => self.assignment_expression(e),
+            Expression::Comma(list, c, e) => {
+                self.expression(list);
+                self.push_token(c);
+                self.assignment_expression(e);
+            }
+        }
+    }
+
+    fn assignment_expression(&mut self, tree: &AssignmentExpression) {
+        match tree {
+            AssignmentExpression::TernaryExpression(e) => self.ternary_expression(e),
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn ternary_expression(&mut self, tree: &TernaryExpression) {
+        match tree {
+            TernaryExpression::GeneralExpression(e) => self.general_expression(e),
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn general_expression(&mut self, tree: &GeneralExpression) {
+        match tree {
+            GeneralExpression::CastExpression(e) => self.cast_expression(e),
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn cast_expression(&mut self, tree: &CastExpression) {
+        match tree {
+            CastExpression::UnaryExpression(e) => self.unary_expression(e),
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn unary_expression(&mut self, tree: &UnaryExpression) {
+        match tree {
+            UnaryExpression::PostfixExpression(e) => self.postfix_expression(e),
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn postfix_expression(&mut self, tree: &PostfixExpression) {
+        match tree {
+            PostfixExpression::PrimaryExpression(e) => self.primary_expression(e),
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn primary_expression(&mut self, tree: &PrimaryExpression) {
+        match tree {
+            PrimaryExpression::Identifier(Token::Identifier(_, e)) => self.push(e),
+            PrimaryExpression::Number(Token::Number(_, e)) => self.push(e),
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
     fn init_declarator_list(&mut self, tree: &InitDeclaratorList) {
         match tree {
             InitDeclaratorList::InitDeclarator(decl) => {
@@ -209,13 +356,7 @@ impl Context {
 
     fn init_declarator(&mut self, tree: &InitDeclarator) {
         match tree {
-            InitDeclarator::Declarator(decl) => match decl {
-                Declarator::Identifier(ident, direct_decl) => {
-                    self.push_token(ident);
-                    self.direct_declarator(direct_decl);
-                }
-                f => panic!("Not implemented.: {:?}", f),
-            },
+            InitDeclarator::Declarator(decl) => self.declarator(decl),
             f => panic!("Not implemented.: {:?}", f),
         }
     }
@@ -223,6 +364,76 @@ impl Context {
     fn direct_declarator(&mut self, tree: &DirectDeclarator) {
         match tree {
             DirectDeclarator::Epsilon() => {}
+            DirectDeclarator::Array(ty_of, op, e, cb) => {
+                self.direct_declarator(&*ty_of);
+                self.push_token(op);
+                self.maybe_general_expression(e);
+                self.push_token(cb);
+            }
+            DirectDeclarator::FunctionParams(ty_of, op, fp, cb) => {
+                self.direct_declarator(&*ty_of);
+                self.push_token(op);
+                self.function_params(fp);
+                self.push_token(cb);
+            }
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn maybe_general_expression(&mut self, tree: &MaybeGeneralExpression) {
+        match tree {
+            MaybeGeneralExpression::Epsilon() => {}
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn function_params(&mut self, tree: &FunctionParams) {
+        match tree {
+            FunctionParams::ParameterTypeList(params) => {
+                self.parameter_type_list(params);
+            }
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn parameter_type_list(&mut self, tree: &ParameterTypeList) {
+        match tree {
+            ParameterTypeList::ParameterList(params) => {
+                self.parameter_list(params);
+            }
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn parameter_list(&mut self, tree: &ParameterList) {
+        match tree {
+            ParameterList::ParameterDeclaration(param) => {
+                self.parameter_declaration(param);
+            }
+            ParameterList::ParameterList(params, t, param) => {
+                self.parameter_list(params);
+                self.push_token(t);
+                self.parameter_declaration(param);
+            }
+        }
+    }
+
+    fn parameter_declaration(&mut self, tree: &ParameterDeclaration) {
+        match tree {
+            ParameterDeclaration::Declarator(decl_spec, decl) => {
+                self.declaration_specifiers(decl_spec);
+                self.declarator(decl);
+            }
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn declarator(&mut self, tree: &Declarator) {
+        match tree {
+            Declarator::Identifier(ident, direct_decl) => {
+                self.push_token(ident);
+                self.direct_declarator(direct_decl);
+            }
             f => panic!("Not implemented.: {:?}", f),
         }
     }
