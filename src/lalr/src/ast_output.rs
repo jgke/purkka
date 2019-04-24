@@ -1023,6 +1023,7 @@ pub fn output_parser(
     let mut items: SmallVec<[P<ast::Item>; 1]> = rules
         .iter()
         .filter(|item| item.identifier != "Epsilon")
+        .filter(|item| item.identifier != "$")
         .map(|item| {
             item.enumdef
                 .clone()
@@ -1033,6 +1034,7 @@ pub fn output_parser(
     let all_structs_enum = ast::EnumDef {
         variants: rules
             .iter()
+            .filter(|item| item.identifier != "$")
             .map(|rule| builder.get_plain_variant(span, &rule.identifier))
             .chain(terminals.iter().map(|term| {
                 cx.variant(
