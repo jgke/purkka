@@ -1,0 +1,5 @@
+import "dependencies/dep";
+
+fun main() -> int {
+    return foo;
+}

@@ -1,5 +1,8 @@
 #![feature(box_patterns)]
 
+use std::collections::HashSet;
+use std::rc::Rc;
+
 use cparser::parser::*;
 use ctoken::token::Token;
 
@@ -10,14 +13,20 @@ struct Context {
     buf: String,
 }
 
-pub fn format_c(tree: &S) -> String {
+pub fn format_c(tree: &S, includes: HashSet<Rc<str>>) -> String {
+    let mut buf = includes.into_iter()
+        .map(|t| format!("#include \"{}\"\n", t))
+        .collect::<Vec<_>>()
+        .join("");
+    if buf.len() > 0 {
+        buf += "\n";
+    }
     let mut context = Context {
         indent: 0,
         newline: false,
         whitespace: false,
-        buf: "".to_string(),
+        buf
     };
-    dbg!(tree);
     context.s(tree);
     context.buf
 }
@@ -378,7 +387,11 @@ impl Context {
                 self.function_params(fp);
                 self.push_token(cb);
             }
-            f => panic!("Not implemented.: {:?}", f),
+            DirectDeclarator::Function(ty_of, op, cb) => {
+                self.direct_declarator(&*ty_of);
+                self.push_token(op);
+                self.push_token(cb);
+            }
         }
     }
 

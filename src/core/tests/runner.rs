@@ -8,7 +8,7 @@ use cformat::format_c;
 use core::core::parse_files;
 use preprocessor::PreprocessorOptions;
 
-fn parse(content: &str) -> Result<cparser::parser::S, Option<ctoken::token::Token>> {
+fn parse(content: &str) -> Result<(cparser::parser::S, purkkaconverter::Context), Option<ctoken::token::Token>> {
     let input = "main.prk";
     let get_file = |_is_local, _current_file, filename: String| {
         if filename == input {
@@ -28,6 +28,7 @@ fn parse(content: &str) -> Result<cparser::parser::S, Option<ctoken::token::Toke
         },
     )[0]
     .clone()
+    .map(|(tree, context)| (tree, context.unwrap()))
 }
 
 fn run_test(prefix: &str) {
@@ -40,7 +41,8 @@ fn run_test(prefix: &str) {
     let mut c = File::open(format!("{}.c", prefix)).expect("");
     c.read_to_string(&mut c_contents).expect("");
 
-    assert_eq!(format_c(&parse(&prk_contents).unwrap()), c_contents);
+    let (tree, context) = parse(&prk_contents).unwrap();
+    assert_eq!(format_c(&tree, context.local_includes), c_contents);
 }
 
 #[test]

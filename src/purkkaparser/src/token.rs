@@ -38,8 +38,7 @@ pub enum Token {
     Enum(),
     Return(),
 
-    Include(),
-    IncludeC(),
+    Import(),
 }
 
 use Token::*;
@@ -70,4 +69,5 @@ pub static KEYWORDS: &[(&str, fn() -> Token)] = &[
     ("struct", Struct),
     ("enum", Enum),
     ("return", Return),
+    ("import", Import),
 ];

@@ -1,6 +1,6 @@
 #![feature(drain_filter)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use cparser::parser as cp;
@@ -9,34 +9,54 @@ use purkkaparser::{parser as pp, token as pt};
 
 mod traits;
 
-mod lambda;
 mod array;
+mod declarations;
+mod lambda;
+mod imports;
 
 use traits::TreeTransformer;
 
-use lambda::StripLambda;
 use array::ArrayToPointer;
+use declarations::FetchDeclarations;
+use lambda::StripLambda;
+use imports::StripImports;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Context {
-    functions: HashMap<Rc<str>, pp::Lambda>,
+    pub functions: HashMap<Rc<str>, pp::Lambda>,
+    pub global_includes: HashSet<Rc<str>>,
+    pub local_includes: HashSet<Rc<str>>,
 }
 
-pub fn convert(mut purkka_tree: pp::S) -> cp::S {
-    let mut context = Context {
-        functions: HashMap::new(),
-    };
+pub fn convert(mut purkka_tree: pp::S) -> (cp::S, Context) {
+    let mut context = Context::new();
     ArrayToPointer::new(&mut context).transform(&mut purkka_tree);
     StripLambda::new(&mut context).transform(&mut purkka_tree);
+    StripImports::new(&mut context).transform(&mut purkka_tree);
+    dbg!(&context);
     dbg!(&purkka_tree);
-    for (func, tree) in &context.functions {
-        dbg!(func);
-        dbg!(tree);
-    }
-    context.s(purkka_tree)
+    (context.s(purkka_tree), context)
+}
+
+pub fn fetch_identifiers_from_prk(tree: &mut pp::S) -> HashMap<Rc<str>, pp::Declaration> {
+    let mut decls = FetchDeclarations::new();
+    decls.fetch_declarations(tree);
+    decls.declarations
+}
+
+pub fn fetch_identifiers_from_c(_tree: &mut cp::S) -> HashMap<Rc<str>, pp::Declaration> {
+    panic!()
 }
 
 impl Context {
+    fn new() -> Context {
+        Context { 
+            functions: HashMap::new(),
+            global_includes: HashSet::new(),
+            local_includes: HashSet::new(),
+        }
+    }
+
     fn push_function(&mut self, name: Rc<str>, lambda: pp::Lambda) {
         if self.functions.contains_key(&name) {
             panic!("Duplicate function: {}", name);
@@ -122,7 +142,7 @@ impl Context {
         }
     }
 
-    pub fn conditional_expression_to_statement(&mut self, block: pp::ConditionalExpression) -> cp::Statement {
+    pub fn conditional_expression_to_statement(&mut self, _block: pp::ConditionalExpression) -> cp::Statement {
         unimplemented!()
     }
 
@@ -156,7 +176,6 @@ impl Context {
                             cp::JumpStatement::ReturnVoid(
                                 ct::Token::Return(0),
                                 ct::Token::Semicolon(0))))),
-            other => panic!("Not implemented: {:?}", other),
         }
     }
     
@@ -199,7 +218,7 @@ impl Context {
                 let decl = self.format_decl(name, *ty);
                 cp::ParameterDeclaration::Declarator(Box::new(decl_spec), Box::new(decl))
             }
-            pp::Param::Anon(ty) => {
+            pp::Param::Anon(_ty) => {
                 unimplemented!()
             }
         }
@@ -304,6 +323,9 @@ impl Context {
         match k {
             pp::PrimaryExpression::Literal(pp::Literal::Integer(pt::Token::Integer(i))) => {
                 cp::PrimaryExpression::Number(ct::Token::Number(0, i.to_string()))
+            }
+            pp::PrimaryExpression::Identifier(i) => {
+                cp::PrimaryExpression::Identifier(ct::Token::Identifier(0, i.to_string()))
             }
             other => panic!("Not implemented: {:?}", other),
         }

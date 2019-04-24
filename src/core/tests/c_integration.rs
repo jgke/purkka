@@ -21,7 +21,8 @@ fn parse(content: &str) -> Result<cparser::parser::S, Option<ctoken::token::Toke
             definitions: vec![],
         },
     )[0]
-    .clone()
+        .clone()
+        .map(|(t, _)| t)
 }
 
 #[test]

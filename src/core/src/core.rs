@@ -17,7 +17,7 @@ pub fn parse_files<CB>(
     inputs: &Vec<String>,
     get_file: CB,
     options: &PreprocessorOptions,
-) -> Vec<Result<cparser::parser::S, Option<ctoken::token::Token>>>
+) -> Vec<Result<(cparser::parser::S, Option<purkkaconverter::Context>), Option<ctoken::token::Token>>>
 where
     CB: Copy + Fn(bool, String, String) -> (String, String),
 {
@@ -25,15 +25,15 @@ where
     for file in inputs {
         if file.to_lowercase().ends_with(".prk") {
             let (filename, content) = get_file(true, ".".to_string(), file.to_string());
-            let parsed = purkkaconverter::convert(purkkaparser::parse_file(&filename, &content));
-            res.push(Ok(parsed));
+            let (parsed, context) = purkkaconverter::convert(purkkaparser::parse_file(&filename, &content));
+            res.push(Ok((parsed, Some(context))));
         } else {
             let result = preprocessor::preprocess_file(&file, get_file, options);
             match result {
                 Ok((output, context)) => {
                     let parsed = parser::parse(output, &context);
                     println!("{:?}", parsed);
-                    res.push(parsed);
+                    res.push(parsed.map(|p| (p, None)));
                 }
                 Err(e) => panic!(e),
             }
@@ -122,7 +122,7 @@ pub fn real_main() {
             .collect(),
     };
 
-    let get_file = |is_local, current_file, filename: String| {
+    let get_file_as_c = |is_local, current_file, filename: String| {
         let mut contents = String::new();
         if_debug(IncludeName, || {
             println!(
@@ -154,7 +154,7 @@ pub fn real_main() {
         panic!("File {} not found", filename);
     };
 
-    parse_files(&input, get_file, &options)
+    parse_files(&input, get_file_as_c, &options)
         .iter()
         .for_each(|t| println!("{:?}", t));
 }

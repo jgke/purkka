@@ -1,7 +1,6 @@
 /// Convert [T] to *T
 
 use purkkaparser::parser::*;
-use purkkaparser::token::Token::Identifier;
 use purkkaparser::visitor::*;
 use crate::traits::TreeTransformer;
 use crate::Context;
@@ -22,8 +21,7 @@ impl<'a> TreeTransformer<'a> for ArrayToPointer<'a> {
 
 impl ASTVisitor for ArrayToPointer<'_> {
     fn visit_ty(&mut self, e: &mut TypeSignature) {
-        dbg!(&e);
-        if let TypeSignature::Array(ty, None) = e {
+        if let TypeSignature::Array(_, None) = e {
             let mut tmp = TypeSignature::Infer;
             std::mem::swap(&mut tmp, e);
             if let TypeSignature::Array(mut ty, None) = tmp {

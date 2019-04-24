@@ -1,4 +1,4 @@
-/// Convert lambdas to global functions, replacing them in expressions with identifiers
+/// Strip imports
 
 use purkkaparser::parser::*;
 use purkkaparser::visitor::*;
@@ -6,42 +6,38 @@ use crate::traits::TreeTransformer;
 use crate::Context;
 
 #[derive(Debug)]
-pub struct StripLambda<'a> {
+pub struct StripImports<'a> {
     context: &'a mut Context,
 }
 
-impl<'a> TreeTransformer<'a> for StripLambda<'a> {
-    fn new(context: &'a mut Context) -> StripLambda<'a> {
-        StripLambda { context }
+impl<'a> TreeTransformer<'a> for StripImports<'a> {
+    fn new(context: &'a mut Context) -> StripImports<'a> {
+        StripImports { context }
     }
     fn transform(&mut self, s: &mut S) {
         self.visit_s(s);
     }
 }
 
-impl ASTVisitor for StripLambda<'_> {
+impl ASTVisitor for StripImports<'_> {
     fn visit_translation_unit(&mut self, e: &mut TranslationUnit) {
         match e {
             TranslationUnit::Units(ref mut units) => {
                 units.drain_filter(|t| {
-                    if let Unit::Declaration(decl) = t {
-                        decl.is_fn()
+                    if let Unit::ImportFile(_) = t {
+                        true
                     } else {
                         false
                     }})
                 .for_each(|t| {
-                    if let Unit::Declaration(Declaration::Declaration(
-                            _, _, name, _,
-                            Some(Assignment::Expression(
-                                    Expression::PrimaryExpression(
-                                        PrimaryExpression::Lambda(mut lambda)))))) = t {
-                        self.visit_lambda(&mut lambda);
-                        self.context.push_function(name, lambda);
-                    } else {
-                        unreachable!()
+                    match t {
+                        Unit::ImportFile(ImportFile::Import(file, None)) => {
+                            // XXX: global imports not implemented
+                            self.context.local_includes.insert(From::from(format!("{}.h", file)));
+                        }
+                        otherwise => panic!("Not implemented: {:?}", otherwise)
                     }
                 });
-                units.iter_mut().for_each(|u| self.visit_unit(u));
             }
         }
     }

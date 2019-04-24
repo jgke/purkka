@@ -5,59 +5,6 @@ use std::rc::Rc;
 
 use crate::token::Token;
 
-macro_rules! maybe_read_token {
-    ($iter:expr, $tok:path) => {
-        if let Some($tok(..)) = $iter.peek() {
-            $iter.next()
-        } else {
-            None
-        }
-    };
-}
-
-macro_rules! unexpected_token {
-    ($token:expr, $iter:expr) => {
-        match $token {
-            None => panic!("Unexpected end of file"),
-            Some(t) => panic!("Unexpected token: {:?}", t),
-        }
-    };
-}
-
-macro_rules! unexpected_token_expected_one {
-    ($token:expr, $iter:expr, $expected:path) => {
-        match $token {
-            None => panic!("Unexpected end of file, expected {}", stringify!($expected)),
-            Some(t) => panic!("Unexpected token: {:?}, expected {}", t, stringify!($expected)),
-        }
-    };
-}
-
-macro_rules! read_token {
-    ($iter:expr, $tok:path) => {
-        if let Some($tok(..)) = $iter.peek() {
-            $iter.next().unwrap().clone()
-        } else {
-            unexpected_token_expected_one!(&$iter.next(), $iter, $tok)
-        }
-    };
-}
-
-/* These macros create traits and functions for Option<T> -> Option<U> eg. the first one creates
- * translation_unit :: Option<S> -> Option<TranslationUnit> by matching on the first field in
- * S::TranslationUnit. The macro is defined in purkkaparser_procmacros. The essential benefit is
- * the safe chaining of methods like
- * Some(s).translation_unit().units().map(|t|t[0]).declaration()... These are a bit hard to create
- * in the grammar, since half of these types are handwritten. */
-impl_enter!(S, TranslationUnit, TranslationUnit, translation_unit, 1);
-impl_enter!(TranslationUnit, Units, "Vec<Unit>", units, 1);
-impl_enter!(Unit, Declaration, Declaration, declaration, 1);
-impl_enter_fmap!(Declaration, Declaration, TypeSignature, ty, 4);
-impl_enter!(Declaration, Declaration, "Rc<str>", identifier, 3);
-impl_enter!(Token, Identifier, "Rc<str>", identifier_s, 1);
-impl_enter_fmap!(Declaration, Declaration, Assignment, expr, 5);
-impl_enter!(Assignment, Expression, Expression, expr, 1);
-
 grammar! {
     S -> TranslationUnit;
 
@@ -71,7 +18,7 @@ grammar! {
 
     Unit
        -> Declaration
-        | IncludeFile
+        | ImportFile
         | Typedef
         ;
 
@@ -186,9 +133,13 @@ grammar! {
         | Private. Epsilon
         ;
 
-    IncludeFile
-       -> Normal. #Token::Include Path
-        | C. #Token::IncludeC Path
+    ImportFile
+       -> Normal. #Token::Import Path
+        | FFI. #Token::Import #Token::OpenParen #Token::Identifier #Token::CloseParen Path
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum ImportFile {
+            Import(Rc<str>, Option<Rc<str>>)
+        }
         ;
 
     ArgList
@@ -212,6 +163,7 @@ grammar! {
     Literal
        -> #Token::Integer
         | #Token::Float
+        | #Token::StringLiteral
         ;
 
     PrimaryExpression
@@ -223,8 +175,8 @@ grammar! {
         | Lambda
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum PrimaryExpression {
-            Identifier(Token),
-            Call(Token, ArgList),
+            Identifier(Rc<str>),
+            Call(Rc<str>, ArgList),
             Literal(Literal),
             BlockExpression(Box<BlockExpression>),
             Expression(Box<Expression>),
@@ -305,6 +257,60 @@ grammar! {
     MaybeIdentifier -> #Token::Identifier | Epsilon;
     MaybeExpression -> Expression | Epsilon;
 }
+
+macro_rules! maybe_read_token {
+    ($iter:expr, $tok:path) => {
+        if let Some($tok(..)) = $iter.peek() {
+            $iter.next()
+        } else {
+            None
+        }
+    };
+}
+
+macro_rules! unexpected_token {
+    ($token:expr, $iter:expr) => {
+        match $token {
+            None => panic!("Unexpected end of file"),
+            Some(t) => panic!("Unexpected token: {:?}", t),
+        }
+    };
+}
+
+macro_rules! unexpected_token_expected_one {
+    ($token:expr, $iter:expr, $expected:path) => {
+        match $token {
+            None => panic!("Unexpected end of file, expected {}", stringify!($expected)),
+            Some(t) => panic!("Unexpected token: {:?}, expected {}", t, stringify!($expected)),
+        }
+    };
+}
+
+macro_rules! read_token {
+    ($iter:expr, $tok:path) => {
+        if let Some($tok(..)) = $iter.peek() {
+            $iter.next().unwrap().clone()
+        } else {
+            unexpected_token_expected_one!(&$iter.next(), $iter, $tok)
+        }
+    };
+}
+
+/* These macros create traits and functions for Option<T> -> Option<U> eg. the first one creates
+ * translation_unit :: Option<S> -> Option<TranslationUnit> by matching on the first field in
+ * S::TranslationUnit. The macro is defined in purkkaparser_procmacros. The essential benefit is
+ * the safe chaining of methods like
+ * Some(s).translation_unit().units().map(|t|t[0]).declaration()... These are a bit hard to create
+ * in the grammar, since half of these types are handwritten. */
+impl_enter!(S, TranslationUnit, TranslationUnit, translation_unit, 1);
+impl_enter!(TranslationUnit, Units, "Vec<Unit>", units, 1);
+impl_enter!(Unit, Declaration, Declaration, declaration, 1);
+impl_enter_fmap!(Declaration, Declaration, TypeSignature, ty, 4);
+impl_enter!(Declaration, Declaration, "Rc<str>", identifier, 3);
+impl_enter_fmap!(Declaration, Declaration, Assignment, expr, 5);
+impl_enter!(Assignment, Expression, Expression, expr, 1);
+
+impl_enter!(Token, Identifier, "Rc<str>", identifier_s, 1);
 
 impl Declaration {
     pub fn is_fn(&self) -> bool {
@@ -454,7 +460,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             default unexpected_token!(_t, self),
 
             Declaration => Unit::Declaration(self.parse_declaration()),
-            IncludeFile => Unit::IncludeFile(self.parse_include()),
+            ImportFile => Unit::ImportFile(self.parse_include()),
         )
     }
 
@@ -684,8 +690,27 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         things
     }
 
-    fn parse_include(&mut self) -> IncludeFile {
-        unexpected_token!(self.peek(), self)
+    fn parse_include(&mut self) -> ImportFile {
+        read_token!(self, Token::Import);
+        let ffi = match self.peek() {
+            Some(Token::OpenParen()) => {
+                read_token!(self, Token::OpenParen);
+                let ffi = if let Token::Identifier(s) = read_token!(self, Token::Identifier) {
+                    s
+                } else {
+                    unreachable!();
+                };
+                read_token!(self, Token::CloseParen);
+                Some(ffi)
+            }
+            _ => None
+        };
+        let file = if let Token::StringLiteral(s) = read_token!(self, Token::StringLiteral) {
+            s
+        } else {
+            unreachable!();
+        };
+        ImportFile::Import(file, ffi)
     }
 
     fn parse_assignment_expr(&mut self) -> Assignment {
@@ -737,7 +762,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn parse_primary_expression(&mut self) -> PrimaryExpression {
         match self.peek() {
             Some(Token::Identifier(..)) => {
-                let t = self.next().unwrap().clone();
+                let t = self.next().identifier_s().unwrap().clone();
                 match self.peek() {
                     Some(Token::OpenParen()) => {
                         PrimaryExpression::Call(t, self.parse_args())
@@ -745,7 +770,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     _ => PrimaryExpression::Identifier(t),
                 }
             }
-            Some(Token::Integer(..)) | Some(Token::Float(..)) => {
+            Some(Token::Integer(..)) | Some(Token::Float(..)) | Some(Token::StringLiteral(..)) => {
                 PrimaryExpression::Literal(self.parse_literal())
             }
             Some(Token::If(..)) => {
@@ -792,6 +817,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         match self.peek() {
             Some(Token::Integer(..)) => Literal::Integer(self.next().unwrap().clone()),
             Some(Token::Float(..)) => Literal::Float(self.next().unwrap().clone()),
+            Some(Token::StringLiteral(..)) => Literal::StringLiteral(self.next().unwrap().clone()),
             t => unexpected_token!(t, self),
         }
     }
@@ -1061,7 +1087,7 @@ mod tests {
                 .expr()
                 .unwrap(),
             &Expression::PrimaryExpression(PrimaryExpression::Call(
-                Token::Identifier(From::from("foo")),
+                From::from("foo"),
                 ArgList::Args(vec![])
             ))
         );
@@ -1103,9 +1129,9 @@ mod tests {
                 .expr()
                 .unwrap(),
             &Expression::PrimaryExpression(PrimaryExpression::Call(
-                Token::Identifier(From::from("foo")),
+                From::from("foo"),
                 ArgList::Args(vec![Expression::PrimaryExpression(
-                    PrimaryExpression::Identifier(Token::Identifier(From::from("asd")))
+                    PrimaryExpression::Identifier(From::from("asd"))
                 )])
             ))
         );
@@ -1149,13 +1175,13 @@ mod tests {
                 .expr()
                 .unwrap(),
             &Expression::PrimaryExpression(PrimaryExpression::Call(
-                Token::Identifier(From::from("foo")),
+                From::from("foo"),
                 ArgList::Args(vec![
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(
-                        Token::Identifier(From::from("asd"))
+                        From::from("asd")
                     )),
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(
-                        Token::Identifier(From::from("qwe"))
+                        From::from("qwe")
                     ))
                 ])
             ))
@@ -1202,16 +1228,16 @@ mod tests {
                 .expr()
                 .unwrap(),
             &Expression::PrimaryExpression(PrimaryExpression::Call(
-                Token::Identifier(From::from("foo")),
+                From::from("foo"),
                 ArgList::Args(vec![
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(
-                        Token::Identifier(From::from("asd"))
+                        From::from("asd")
                     )),
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(
-                        Token::Identifier(From::from("qwe"))
+                        From::from("qwe")
                     )),
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(
-                        Token::Identifier(From::from("aoeu"))
+                        From::from("aoeu")
                     ))
                 ])
             ))
