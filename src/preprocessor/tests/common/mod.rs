@@ -39,7 +39,7 @@ pub fn process_files(files: Vec<(&str, &str)>, start: &str, expected: Vec<MacroT
             assert_eq!(req.need_raw, true);
             for (name, content) in &files {
                 if name == &req.requested_file {
-                    return ResolveResult::new_raw(name, content)
+                    return ResolveResult::new_raw(name, content);
                 }
             }
             panic!()

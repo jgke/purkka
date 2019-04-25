@@ -14,7 +14,8 @@ struct Context {
 }
 
 pub fn format_c(tree: &S, includes: HashSet<Rc<str>>) -> String {
-    let mut buf = includes.into_iter()
+    let mut buf = includes
+        .into_iter()
         .map(|t| format!("#include \"{}\"\n", t))
         .collect::<Vec<_>>()
         .join("");
@@ -25,7 +26,7 @@ pub fn format_c(tree: &S, includes: HashSet<Rc<str>>) -> String {
         indent: 0,
         newline: false,
         whitespace: false,
-        buf
+        buf,
     };
     context.s(tree);
     context.buf
@@ -179,8 +180,7 @@ impl Context {
                                     return;
                                 }
                                 t => panic!("Unhandled case: {:?}", t),
-                            }
-
+                            },
                         };
                         self.whitespace = false;
                         self.newline = false;
@@ -254,11 +254,13 @@ impl Context {
 
     fn statement_list(&mut self, tree: &StatementList) {
         match tree {
-            StatementList::Epsilon() => {},
-            StatementList::StatementOrDeclaration(StatementOrDeclaration::Statement(statement))
-                => self.statement(statement),
-            StatementList::StatementOrDeclaration(StatementOrDeclaration::Declaration(decl))
-                => self.declaration(decl),
+            StatementList::Epsilon() => {}
+            StatementList::StatementOrDeclaration(StatementOrDeclaration::Statement(statement)) => {
+                self.statement(statement)
+            }
+            StatementList::StatementOrDeclaration(StatementOrDeclaration::Declaration(decl)) => {
+                self.declaration(decl)
+            }
             StatementList::More(list, StatementOrDeclaration::Statement(statement)) => {
                 self.statement_list(list);
                 self.statement(statement);
@@ -273,7 +275,9 @@ impl Context {
     fn statement(&mut self, tree: &Statement) {
         match tree {
             Statement::CompoundStatement(compound) => self.compound_statement(compound),
-            Statement::ExpressionStatement(box ExpressionStatement::Semicolon(t)) => self.push_token(t),
+            Statement::ExpressionStatement(box ExpressionStatement::Semicolon(t)) => {
+                self.push_token(t)
+            }
             Statement::ExpressionStatement(box ExpressionStatement::Expression(e, t)) => {
                 self.expression(e);
                 self.push_token(t);
@@ -348,17 +352,17 @@ impl Context {
         match tree {
             PrimaryExpression::Identifier(Token::Identifier(_, e)) => self.push(e),
             PrimaryExpression::Number(Token::Number(_, e)) => self.push(e),
-            PrimaryExpression::Asm(Token::Asm(_, e)) => { /* XXX: implement */ },
+            PrimaryExpression::Asm(Token::Asm(_, _e)) => { /* XXX: implement */ }
             PrimaryExpression::Expression(op, expr, cp) => {
                 self.push_token(op);
                 self.expression(expr);
                 self.push_token(cp);
-            },
+            }
             PrimaryExpression::Statement(op, stat, cp) => {
                 self.push_token(op);
                 self.compound_statement(stat);
                 self.push_token(cp);
-            },
+            }
             f => panic!("Not implemented.: {:?}", f),
         }
     }
@@ -422,7 +426,9 @@ impl Context {
 
     fn initializer(&mut self, tree: &Initializer) {
         match tree {
-            Initializer::AssignmentOrInitializerList(list)=> self.assignment_or_initializer_list(list),
+            Initializer::AssignmentOrInitializerList(list) => {
+                self.assignment_or_initializer_list(list)
+            }
             Initializer::Dot(dot, ident, assign, list) => {
                 self.push_token(dot);
                 self.push_token(ident);
@@ -435,7 +441,7 @@ impl Context {
     fn trailing_comma(&mut self, tree: &TrailingComma) {
         match tree {
             TrailingComma::Epsilon() => {}
-            TrailingComma::Comma(t) => self.push_token(t)
+            TrailingComma::Comma(t) => self.push_token(t),
         }
     }
 
@@ -588,7 +594,9 @@ impl Context {
             TypeSpecifier::Char(t) => (None, t),
             TypeSpecifier::SignedChar(sign, t) => (Some(self.sign_to_token(sign)), t),
             TypeSpecifier::Short(t, MaybeInt::Epsilon()) => (None, t),
-            TypeSpecifier::SignedShort(sign, t, MaybeInt::Epsilon()) => (Some(self.sign_to_token(sign)), t),
+            TypeSpecifier::SignedShort(sign, t, MaybeInt::Epsilon()) => {
+                (Some(self.sign_to_token(sign)), t)
+            }
             TypeSpecifier::Int(t) => (None, t),
             TypeSpecifier::SignedInt(sign, t) => (Some(self.sign_to_token(sign)), t),
             TypeSpecifier::Signed(sign) => (None, self.sign_to_token(sign)),

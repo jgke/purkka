@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use std::iter::Peekable;
 use std::rc::Rc;
 
-use purkkatypes::{TypeSignature, Param, StructField, EnumField};
+use purkkatypes::{EnumField, Param, StructField, TypeSignature};
 
 use crate::token::Token;
 
@@ -261,7 +261,11 @@ macro_rules! unexpected_token_expected_one {
     ($token:expr, $iter:expr, $expected:path) => {
         match $token {
             None => panic!("Unexpected end of file, expected {}", stringify!($expected)),
-            Some(t) => panic!("Unexpected token: {:?}, expected {}", t, stringify!($expected)),
+            Some(t) => panic!(
+                "Unexpected token: {:?}, expected {}",
+                t,
+                stringify!($expected)
+            ),
         }
     };
 }
@@ -295,11 +299,15 @@ impl_enter!(Token, Identifier, "Rc<str>", identifier_s, 1);
 impl Declaration {
     pub fn is_fn(&self) -> bool {
         if let Declaration::Declaration(
-            _, false, _, _,
-            Some(Assignment::Expression(
-                    Expression::PrimaryExpression(
-                        PrimaryExpression::Lambda(..))))) = self {
-
+            _,
+            false,
+            _,
+            _,
+            Some(Assignment::Expression(Expression::PrimaryExpression(PrimaryExpression::Lambda(
+                ..
+            )))),
+        ) = self
+        {
             true
         } else {
             false
@@ -439,12 +447,24 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Let()) => true,
             Some(Token::Const()) => false,
             Some(Token::Fun()) => {
-                let ident = Some(read_token!(self, Token::Identifier)).as_ref()
-                    .identifier_s().unwrap().clone();
+                let ident = Some(read_token!(self, Token::Identifier))
+                    .as_ref()
+                    .identifier_s()
+                    .unwrap()
+                    .clone();
                 let (params, return_type, block) = self.parse_fun();
-                return Declaration::Declaration(visible, false, ident, None,
-                                                Some(Assignment::Expression(self.fun_to_expr(params, return_type, block))));
-            },
+                return Declaration::Declaration(
+                    visible,
+                    false,
+                    ident,
+                    None,
+                    Some(Assignment::Expression(self.fun_to_expr(
+                        params,
+                        return_type,
+                        block,
+                    ))),
+                );
+            }
             t => unexpected_token!(t, self),
         };
         let ident = match self.next() {
@@ -535,8 +555,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                         read_token!(self, Token::SemiColon);
                         let lit = self.parse_literal();
                         match lit {
-                            Literal::Integer(Token::Integer(i)) => Some(TryFrom::try_from(i).unwrap()),
-                            _ => panic!("Not implemented: compile-time expr parsing")
+                            Literal::Integer(Token::Integer(i)) => {
+                                Some(TryFrom::try_from(i).unwrap())
+                            }
+                            _ => panic!("Not implemented: compile-time expr parsing"),
                         }
                     }
                     _ => None,
@@ -676,7 +698,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::CloseParen);
                 Some(ffi)
             }
-            _ => None
+            _ => None,
         };
         let file = if let Token::StringLiteral(s) = read_token!(self, Token::StringLiteral) {
             s
@@ -737,9 +759,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Identifier(..)) => {
                 let t = self.next().identifier_s().unwrap().clone();
                 match self.peek() {
-                    Some(Token::OpenParen()) => {
-                        PrimaryExpression::Call(t, self.parse_args())
-                    }
+                    Some(Token::OpenParen()) => PrimaryExpression::Call(t, self.parse_args()),
                     _ => PrimaryExpression::Identifier(t),
                 }
             }
@@ -768,14 +788,23 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::Operator);
                 self.parse_type()
             }
-            _ => TypeSignature::Infer
+            _ => TypeSignature::Infer,
         };
         let block = self.parse_block_expression();
         (params, return_type, block)
     }
 
-    fn fun_to_expr(&self, params: Vec<Param>, return_type: TypeSignature, block: BlockExpression) -> Expression {
-        Expression::PrimaryExpression(PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block)))
+    fn fun_to_expr(
+        &self,
+        params: Vec<Param>,
+        return_type: TypeSignature,
+        block: BlockExpression,
+    ) -> Expression {
+        Expression::PrimaryExpression(PrimaryExpression::Lambda(Lambda::Lambda(
+            params,
+            return_type,
+            block,
+        )))
     }
 
     fn parse_block_expression(&mut self) -> BlockExpression {
@@ -1150,12 +1179,8 @@ mod tests {
             &Expression::PrimaryExpression(PrimaryExpression::Call(
                 From::from("foo"),
                 ArgList::Args(vec![
-                    Expression::PrimaryExpression(PrimaryExpression::Identifier(
-                        From::from("asd")
-                    )),
-                    Expression::PrimaryExpression(PrimaryExpression::Identifier(
-                        From::from("qwe")
-                    ))
+                    Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("asd"))),
+                    Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("qwe")))
                 ])
             ))
         );
@@ -1203,15 +1228,11 @@ mod tests {
             &Expression::PrimaryExpression(PrimaryExpression::Call(
                 From::from("foo"),
                 ArgList::Args(vec![
-                    Expression::PrimaryExpression(PrimaryExpression::Identifier(
-                        From::from("asd")
-                    )),
-                    Expression::PrimaryExpression(PrimaryExpression::Identifier(
-                        From::from("qwe")
-                    )),
-                    Expression::PrimaryExpression(PrimaryExpression::Identifier(
-                        From::from("aoeu")
-                    ))
+                    Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("asd"))),
+                    Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("qwe"))),
+                    Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from(
+                        "aoeu"
+                    )))
                 ])
             ))
         );

@@ -6,8 +6,8 @@ pub mod tokentype;
 
 use fragment::fragment::FragmentIterator;
 use macrotoken::MacroToken;
-use tokenizer::{MacroContext, ParseResult};
 use resolve::{FileQuery, ResolveResult};
+use tokenizer::{MacroContext, ParseResult};
 
 pub struct PreprocessorOptions<'a> {
     pub include_path: Vec<&'a str>,

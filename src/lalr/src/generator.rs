@@ -305,14 +305,18 @@ pub fn panic_insert(
                         if let Action::Reduce(new_index, new_subindex, ..) = action {
                             panic!(
                                 "Conflict, not LR: tried to replace {}:{} with {}:{}\nToken: {:?}",
-                                rev_indices[orig_index], orig_subindex,
-                                rev_indices[&new_index], new_subindex,
-                                rev_indices[&identifier]);
+                                rev_indices[orig_index],
+                                orig_subindex,
+                                rev_indices[&new_index],
+                                new_subindex,
+                                rev_indices[&identifier]
+                            );
                         }
                     }
                     panic!(
                         "Conflict, not LR: tried to replace {} with {}\nToken: {:?}",
-                        act, action, rev_indices[&identifier]);
+                        act, action, rev_indices[&identifier]
+                    );
                 }
             }
         }
@@ -536,97 +540,100 @@ fn test_first() {
             span: DUMMY_SP,
             data: vec![],
             enumdef: None,
-        });
+        },
+    );
     tm.push_rule(
         "A".to_string(),
         Rule {
             identifier: "A".to_string(),
             span: DUMMY_SP,
-            data: vec![Component {
-                real_name: "A_a".to_string(),
-                action: None,
-                priority: None,
-                rules: vec![
-                    RuleData {
-                        identifier: "B".to_string(),
-                        full_path: "B".to_string(),
-                        span: DUMMY_SP,
-                        terminal: false,
-                        indirect: false,
-                        conversion_fn: None,
-                    },
-                    RuleData {
-                        identifier: "C".to_string(),
-                        full_path: "C".to_string(),
-                        span: DUMMY_SP,
-                        terminal: false,
-                        indirect: false,
-                        conversion_fn: None,
-                    },
-                ]
-            }, Component {
-                real_name: "A_b".to_string(),
-                action: None,
-                priority: None,
-                rules: vec![
-                    RuleData {
-                        identifier: "B".to_string(),
-                        full_path: "B".to_string(),
-                        span: DUMMY_SP,
-                        terminal: false,
-                        indirect: false,
-                        conversion_fn: None,
-                    },
-                    RuleData {
-                        identifier: "D".to_string(),
-                        full_path: "D".to_string(),
-                        span: DUMMY_SP,
-                        terminal: false,
-                        indirect: false,
-                        conversion_fn: None,
-                    },
-                ]
-            }
+            data: vec![
+                Component {
+                    real_name: "A_a".to_string(),
+                    action: None,
+                    priority: None,
+                    rules: vec![
+                        RuleData {
+                            identifier: "B".to_string(),
+                            full_path: "B".to_string(),
+                            span: DUMMY_SP,
+                            terminal: false,
+                            indirect: false,
+                            conversion_fn: None,
+                        },
+                        RuleData {
+                            identifier: "C".to_string(),
+                            full_path: "C".to_string(),
+                            span: DUMMY_SP,
+                            terminal: false,
+                            indirect: false,
+                            conversion_fn: None,
+                        },
+                    ],
+                },
+                Component {
+                    real_name: "A_b".to_string(),
+                    action: None,
+                    priority: None,
+                    rules: vec![
+                        RuleData {
+                            identifier: "B".to_string(),
+                            full_path: "B".to_string(),
+                            span: DUMMY_SP,
+                            terminal: false,
+                            indirect: false,
+                            conversion_fn: None,
+                        },
+                        RuleData {
+                            identifier: "D".to_string(),
+                            full_path: "D".to_string(),
+                            span: DUMMY_SP,
+                            terminal: false,
+                            indirect: false,
+                            conversion_fn: None,
+                        },
+                    ],
+                },
             ],
             enumdef: None,
-        });
+        },
+    );
     tm.push_rule(
         "B".to_string(),
         Rule {
             identifier: "B".to_string(),
             span: DUMMY_SP,
-            data: vec![Component {
-                real_name: "B_e".to_string(),
-                action: None,
-                priority: None,
-                rules: vec![
-                    RuleData {
+            data: vec![
+                Component {
+                    real_name: "B_e".to_string(),
+                    action: None,
+                    priority: None,
+                    rules: vec![RuleData {
                         identifier: "Epsilon".to_string(),
                         full_path: "Epsilon".to_string(),
                         span: DUMMY_SP,
                         terminal: false,
                         indirect: false,
                         conversion_fn: None,
-                    },
-                ]
-            }, Component {
-                real_name: "B_t".to_string(),
-                action: None,
-                priority: None,
-                rules: vec![
-                    RuleData {
+                    }],
+                },
+                Component {
+                    real_name: "B_t".to_string(),
+                    action: None,
+                    priority: None,
+                    rules: vec![RuleData {
                         identifier: "T_b".to_string(),
                         full_path: "T_b".to_string(),
                         span: DUMMY_SP,
                         terminal: true,
                         indirect: false,
                         conversion_fn: None,
-                    },
-                ]
-            }
+                    }],
+                },
             ],
             enumdef: None,
-        });
+        },
+    );
     tm.push_rule(
         "C".to_string(),
         Rule {
@@ -636,20 +643,18 @@ fn test_first() {
                 real_name: "C_t".to_string(),
                 action: None,
                 priority: None,
-                rules: vec![
-                    RuleData {
-                        identifier: "T_c".to_string(),
-                        full_path: "T_c".to_string(),
-                        span: DUMMY_SP,
-                        terminal: true,
-                        indirect: false,
-                        conversion_fn: None,
-                    },
-                ]
-            }
-            ],
+                rules: vec![RuleData {
+                    identifier: "T_c".to_string(),
+                    full_path: "T_c".to_string(),
+                    span: DUMMY_SP,
+                    terminal: true,
+                    indirect: false,
+                    conversion_fn: None,
+                }],
+            }],
             enumdef: None,
-        });
+        },
+    );
     tm.push_rule(
         "D".to_string(),
         Rule {
@@ -659,24 +664,21 @@ fn test_first() {
                 real_name: "D_t".to_string(),
                 action: None,
                 priority: None,
-                rules: vec![
-                    RuleData {
-                        identifier: "T_d".to_string(),
-                        full_path: "T_d".to_string(),
-                        span: DUMMY_SP,
-                        terminal: true,
-                        indirect: false,
-                        conversion_fn: None,
-                    },
-                ]
-            }
-            ],
+                rules: vec![RuleData {
+                    identifier: "T_d".to_string(),
+                    full_path: "T_d".to_string(),
+                    span: DUMMY_SP,
+                    terminal: true,
+                    indirect: false,
+                    conversion_fn: None,
+                }],
+            }],
             enumdef: None,
-        });
-    let mut res = HashSet::new(); 
+        },
+    );
+    let mut res = HashSet::new();
     let mut cache = HashSet::new();
     let index = tm.indices["A"];
     first(&tm, &mut res, &mut cache, index);
     assert_eq!(res.len(), 3);
 }
-

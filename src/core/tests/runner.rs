@@ -1,8 +1,8 @@
 use std::fs::{read_dir, File};
-use std::path::PathBuf;
-use std::process::Command;
 use std::io::prelude::*;
 use std::io::{self, Write};
+use std::path::PathBuf;
+use std::process::Command;
 
 use core::core::get_file_cb;
 use preprocessor::PreprocessorOptions;
@@ -76,15 +76,16 @@ fn check_result_files() {
                 .arg("/dev/null")
                 .arg("-c")
                 .arg(readable_path)
-                .output() {
-                    Ok(ok) => ok,
-                    Err(e) => {
-                        if let io::ErrorKind::NotFound = e.kind() {
-                            return;
-                        }
-                        panic!("Failed to compile a C test case: {:?}", e);
+                .output()
+            {
+                Ok(ok) => ok,
+                Err(e) => {
+                    if let io::ErrorKind::NotFound = e.kind() {
+                        return;
                     }
-                };
+                    panic!("Failed to compile a C test case: {:?}", e);
+                }
+            };
             io::stdout().write_all(&output.stdout).unwrap();
             io::stdout().write_all(&output.stderr).unwrap();
             assert!(output.status.success());

@@ -1,9 +1,8 @@
-/// Strip imports
-
-use purkkaparser::parser::*;
-use purkkaparser::visitor::*;
 use crate::traits::TreeTransformer;
 use crate::Context;
+/// Strip imports
+use purkkaparser::parser::*;
+use purkkaparser::visitor::*;
 
 #[derive(Debug)]
 pub struct StripImports<'a> {
@@ -23,21 +22,25 @@ impl ASTVisitor for StripImports<'_> {
     fn visit_translation_unit(&mut self, e: &mut TranslationUnit) {
         match e {
             TranslationUnit::Units(ref mut units) => {
-                units.drain_filter(|t| {
-                    if let Unit::ImportFile(_) = t {
-                        true
-                    } else {
-                        false
-                    }})
-                .for_each(|t| {
-                    match t {
-                        Unit::ImportFile(ImportFile::Import(file, None)) => {
-                            // XXX: global imports not implemented
-                            self.context.local_includes.insert(From::from(format!("{}.h", file)));
+                units
+                    .drain_filter(|t| {
+                        if let Unit::ImportFile(_) = t {
+                            true
+                        } else {
+                            false
                         }
-                        otherwise => panic!("Not implemented: {:?}", otherwise)
-                    }
-                });
+                    })
+                    .for_each(|t| {
+                        match t {
+                            Unit::ImportFile(ImportFile::Import(file, None)) => {
+                                // XXX: global imports not implemented
+                                self.context
+                                    .local_includes
+                                    .insert(From::from(format!("{}.h", file)));
+                            }
+                            otherwise => panic!("Not implemented: {:?}", otherwise),
+                        }
+                    });
             }
         }
     }

@@ -1,9 +1,8 @@
-/// Convert lambdas to global functions, replacing them in expressions with identifiers
-
-use purkkaparser::parser::*;
-use purkkaparser::visitor::*;
 use crate::traits::TreeTransformer;
 use crate::Context;
+/// Convert lambdas to global functions, replacing them in expressions with identifiers
+use purkkaparser::parser::*;
+use purkkaparser::visitor::*;
 
 #[derive(Debug)]
 pub struct StripLambda<'a> {
@@ -23,24 +22,31 @@ impl ASTVisitor for StripLambda<'_> {
     fn visit_translation_unit(&mut self, e: &mut TranslationUnit) {
         match e {
             TranslationUnit::Units(ref mut units) => {
-                units.drain_filter(|t| {
-                    if let Unit::Declaration(decl) = t {
-                        decl.is_fn()
-                    } else {
-                        false
-                    }})
-                .for_each(|t| {
-                    if let Unit::Declaration(Declaration::Declaration(
-                            _, _, name, _,
-                            Some(Assignment::Expression(
-                                    Expression::PrimaryExpression(
-                                        PrimaryExpression::Lambda(mut lambda)))))) = t {
-                        self.visit_lambda(&mut lambda);
-                        self.context.push_function(name, lambda);
-                    } else {
-                        unreachable!()
-                    }
-                });
+                units
+                    .drain_filter(|t| {
+                        if let Unit::Declaration(decl) = t {
+                            decl.is_fn()
+                        } else {
+                            false
+                        }
+                    })
+                    .for_each(|t| {
+                        if let Unit::Declaration(Declaration::Declaration(
+                            _,
+                            _,
+                            name,
+                            _,
+                            Some(Assignment::Expression(Expression::PrimaryExpression(
+                                PrimaryExpression::Lambda(mut lambda),
+                            ))),
+                        )) = t
+                        {
+                            self.visit_lambda(&mut lambda);
+                            self.context.push_function(name, lambda);
+                        } else {
+                            unreachable!()
+                        }
+                    });
                 units.iter_mut().for_each(|u| self.visit_unit(u));
             }
         }

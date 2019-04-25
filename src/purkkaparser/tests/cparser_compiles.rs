@@ -2,7 +2,7 @@ use purkkaparser::parse_file;
 use purkkaparser::parser::*;
 use purkkaparser::token::Token;
 
-use purkkatypes::{TypeSignature, Param};
+use purkkatypes::{Param, TypeSignature};
 
 fn test_parse_file(s: &str) -> S {
     parse_file("file.prk", s)

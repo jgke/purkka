@@ -14,7 +14,7 @@ pub struct FileQuery {
     pub current_file: String,
     pub requested_file: String,
     pub local_file: bool,
-    pub need_raw: bool
+    pub need_raw: bool,
 }
 
 impl FileQuery {
@@ -23,7 +23,7 @@ impl FileQuery {
             current_file: current.to_string(),
             requested_file: requested.to_string(),
             local_file: local,
-            need_raw: raw
+            need_raw: raw,
         }
     }
 }

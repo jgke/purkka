@@ -95,18 +95,18 @@ fn add_struct_type(state: &mut State, declaration: Box<StructOrUnionSpecifier>) 
 fn maybe_ident_to_option(ident: MaybeIdentifier) -> Option<String> {
     match ident {
         MaybeIdentifier::Epsilon() => None,
-        MaybeIdentifier::Identifier(ident) => Some(ident_to_name(ident))
+        MaybeIdentifier::Identifier(ident) => Some(ident_to_name(ident)),
     }
 }
 
 fn add_enum_type(state: &mut State, declaration: Box<EnumSpecifier>) {
     match *declaration {
         EnumSpecifier::Enum(_, maybe_ident, ..) => {
-            maybe_ident_to_option(maybe_ident)
-                .map(|ident| add_type(state, ident));
+            maybe_ident_to_option(maybe_ident).map(|ident| add_type(state, ident));
         }
-        EnumSpecifier::ExistingType(_, ty_or_name) =>
-            add_type(state, identifier_or_type_to_str(ty_or_name)),
+        EnumSpecifier::ExistingType(_, ty_or_name) => {
+            add_type(state, identifier_or_type_to_str(ty_or_name))
+        }
     };
 }
 
@@ -134,8 +134,7 @@ fn maybe_add_label(
         DeclarationSpecifiers::Left(_, TypeSpecifier::TypeNameStr(t))
         | DeclarationSpecifiers::Right(TypeSpecifier::TypeNameStr(t), _)
         | DeclarationSpecifiers::Both(_, TypeSpecifier::TypeNameStr(t), _)
-        | DeclarationSpecifiers::Neither(TypeSpecifier::TypeNameStr(t))
-            => {
+        | DeclarationSpecifiers::Neither(TypeSpecifier::TypeNameStr(t)) => {
             let ty = ident_to_name(t);
             if ty == "__label__" {
                 let labels = &mut state.scope.last_mut().unwrap().labels;

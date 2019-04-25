@@ -1,5 +1,4 @@
 /// Fetch all declarations from the file
-
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -8,12 +7,14 @@ use purkkaparser::visitor::*;
 
 #[derive(Debug)]
 pub struct FetchDeclarations {
-    pub declarations: HashMap<Rc<str>, Declaration>
+    pub declarations: HashMap<Rc<str>, Declaration>,
 }
 
 impl FetchDeclarations {
     pub fn new() -> FetchDeclarations {
-        FetchDeclarations { declarations: HashMap::new() }
+        FetchDeclarations {
+            declarations: HashMap::new(),
+        }
     }
     pub fn fetch_declarations(&mut self, s: &mut S) {
         self.visit_s(s);

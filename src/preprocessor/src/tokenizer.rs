@@ -710,8 +710,16 @@ where
                     panic!("Unexpected character: {}", end.display(&sub_iter));
                 };
 
-                let content = (self.get_file)(FileQuery::new(&iter.current_filename(), &filename, is_quote, true));
-                iter.split_and_push_file(&content.full_path, &content.h_content.unwrap_or(content.c_content));
+                let content = (self.get_file)(FileQuery::new(
+                    &iter.current_filename(),
+                    &filename,
+                    is_quote,
+                    true,
+                ));
+                iter.split_and_push_file(
+                    &content.full_path,
+                    &content.h_content.unwrap_or(content.c_content),
+                );
             }
             MacroType::Undef => {
                 let (left, _) = self.read_identifier_raw(&mut sub_iter);

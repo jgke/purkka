@@ -16,20 +16,26 @@ static DEFAULT_INCLUDE_PATH: &[&str] = &[
     "/usr/include",
 ];
 
-pub fn get_file_cb<'a>(options: &'a PreprocessorOptions, get_file_content: &'a Fn(&FileQuery) -> (String, String))
--> impl Fn(FileQuery) -> ResolveResult + 'a {
+pub fn get_file_cb<'a>(
+    options: &'a PreprocessorOptions,
+    get_file_content: &'a Fn(&FileQuery) -> (String, String),
+) -> impl Fn(FileQuery) -> ResolveResult + 'a {
     fix(move |get_file: &Fn(FileQuery) -> ResolveResult, req| {
         let (content, full_path) = get_file_content(&req);
 
         if req.need_raw {
             return ResolveResult {
-                full_path, c_content: content, h_content: None,
-                dependencies: None, declarations: None
+                full_path,
+                c_content: content,
+                h_content: None,
+                dependencies: None,
+                declarations: None,
             };
         }
 
         if full_path.to_lowercase().ends_with(".prk") {
-            let (parsed, context) = purkkaconverter::convert(purkkaparser::parse_file(&full_path, &content));
+            let (parsed, context) =
+                purkkaconverter::convert(purkkaparser::parse_file(&full_path, &content));
             let formatted = cformat::format_c(&parsed, context.local_includes);
             ResolveResult {
                 full_path,
@@ -107,9 +113,7 @@ pub fn real_main() {
         .map(|v| v.into_iter().map(|i| i.to_string()).collect())
         .unwrap();
 
-    let output: Option<String> = matches
-        .value_of("input")
-        .map(|v| v.to_string());
+    let output: Option<String> = matches.value_of("input").map(|v| v.to_string());
 
     let include_path: Vec<String> = matches
         .values_of("include")

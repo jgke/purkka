@@ -1,10 +1,9 @@
-/// Convert [T] to *T
-
-use purkkaparser::parser::*;
-use purkkatypes::{TypeSignature};
-use purkkaparser::visitor::*;
 use crate::traits::TreeTransformer;
 use crate::Context;
+/// Convert [T] to *T
+use purkkaparser::parser::*;
+use purkkaparser::visitor::*;
+use purkkatypes::TypeSignature;
 
 #[derive(Debug)]
 pub struct ArrayToPointer<'a> {
@@ -27,7 +26,10 @@ impl ASTVisitor for ArrayToPointer<'_> {
             std::mem::swap(&mut tmp, e);
             if let TypeSignature::Array(mut ty, None) = tmp {
                 self.visit_ty(&mut ty);
-                *e  = TypeSignature::Pointer { nullable: false, ty } ;
+                *e = TypeSignature::Pointer {
+                    nullable: false,
+                    ty,
+                };
             } else {
                 unreachable!()
             }
