@@ -166,6 +166,13 @@ fn parse_enumdef(
                         break_next = true;
                     }
                 }
+                if !break_next {
+                    // enable constructs like @ type TypeName = Foo
+                    if let Some(t @ TokenTree::Token(_, token::Semi)) = iter.peek() {
+                        res.push((*t).clone());
+                        break;
+                    }
+                }
             }
             Some(t) => res.push(t.clone()),
             None => {

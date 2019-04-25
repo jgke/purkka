@@ -8,4 +8,5 @@ edition = "2018"
 fragment = { path="../fragment" }
 lalr = { path="../lalr" }
 purkkaparser_procmacros = { path="../purkkaparser_procmacros" }
+purkkatypes = { path="../purkkatypes" }
 shared = { path="../shared" }

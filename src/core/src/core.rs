@@ -59,7 +59,7 @@ pub fn real_main() {
             Arg::with_name("include_file")
                 .short("i")
                 .value_name("include file")
-                .help("Add this file contents to macro definitions")
+                .help("Add this file contents to C macro definitions")
                 .multiple(true)
                 .takes_value(true),
         )
@@ -67,8 +67,15 @@ pub fn real_main() {
             Arg::with_name("define")
                 .short("D")
                 .value_name("define[=value]")
-                .help("Add this file contents to macro definitions")
+                .help("Add this file contents to C macro definitions")
                 .multiple(true)
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("output")
+                .short("o")
+                .value_name("output file")
+                .help("Output files for prk [output].c/[output].h")
                 .takes_value(true),
         )
         .arg(
@@ -83,6 +90,10 @@ pub fn real_main() {
         .values_of("input")
         .map(|v| v.into_iter().map(|i| i.to_string()).collect())
         .unwrap();
+
+    let output: Option<String> = matches
+        .value_of("input")
+        .map(|v| v.to_string());
 
     let include_path: Vec<String> = matches
         .values_of("include")
@@ -122,7 +133,7 @@ pub fn real_main() {
             .collect(),
     };
 
-    let get_file_as_c = |is_local, current_file, filename: String| {
+    let get_file = |is_local, current_file, filename: String| {
         let mut contents = String::new();
         if_debug(IncludeName, || {
             println!(
@@ -154,7 +165,12 @@ pub fn real_main() {
         panic!("File {} not found", filename);
     };
 
-    parse_files(&input, get_file_as_c, &options)
-        .iter()
-        .for_each(|t| println!("{:?}", t));
+    if input.len() > 1 {
+        assert!(output.is_none());
+    }
+
+    let results = parse_files(&input, get_file, &options);
+
+    for file in results {
+    }
 }

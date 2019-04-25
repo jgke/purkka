@@ -3,6 +3,8 @@ use std::convert::TryFrom;
 use std::iter::Peekable;
 use std::rc::Rc;
 
+use purkkatypes::{TypeSignature, Param, StructField, EnumField};
+
 use crate::token::Token;
 
 grammar! {
@@ -57,19 +59,7 @@ grammar! {
         | SingleParameterFunction. #Token::Identifier #Token::Operator TypeSignature
           /* (int, int) */
         | #Token::OpenParen TupleList #Token::CloseParen
-        @ #[derive(Clone, Debug, PartialEq)]
-        pub enum TypeSignature {
-            Plain(Rc<str>),
-            Pointer { nullable: bool, ty: Box<TypeSignature> },
-
-            Struct(Option<Rc<str>>, Vec<StructField>),
-            Enum(Option<Rc<str>>, Vec<EnumField>),
-            Tuple(Vec<Box<TypeSignature>>),
-            Array(Box<TypeSignature>, Option<Literal>),
-
-            Function(Vec<Param>, Box<TypeSignature>),
-            Infer
-        }
+        @ pub type _TypeSignature = TypeSignature
         ;
 
     TupleList
@@ -87,11 +77,7 @@ grammar! {
     Param
        -> #Token::Identifier #Token::Operator TypeSignature
         | TypeSignature
-        @ #[derive(Clone, Debug, PartialEq)]
-        pub enum Param {
-            Param(Rc<str>, Box<TypeSignature>),
-            Anon(Box<TypeSignature>),
-        }
+        @ pub type _Param = Param
         ;
 
     StructFieldList
@@ -108,19 +94,13 @@ grammar! {
 
     StructField
        -> #Token::Identifier #Token::Operator TypeSignature
-        @ #[derive(Clone, Debug, PartialEq)]
-        pub enum StructField {
-            Field { name: Rc<str>, ty: Box<TypeSignature> }
-        }
+        @ pub type _StructField = StructField
         ;
 
     EnumField
        -> #Token::Identifier
         | #Token::Identifier #Token::Operator TypeSignature
-        @ #[derive(Clone, Debug, PartialEq)]
-        pub enum EnumField {
-            Field { name: Rc<str>, value: Option<Expression>, ty: Option<TypeSignature> }
-        }
+        @ pub type _EnumField = EnumField
         ;
 
     Mutability
@@ -323,17 +303,6 @@ impl Declaration {
             true
         } else {
             false
-        }
-    }
-}
-
-impl TryFrom<Param> for TypeSignature {
-    type Error = ();
-
-    fn try_from(param: Param) -> Result<Self, Self::Error> {
-        match param {
-            Param::Anon(ty) => Ok(*ty),
-            Param::Param(..) => Err(()),
         }
     }
 }
@@ -564,7 +533,11 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let expr = match self.peek() {
                     Some(Token::SemiColon()) => {
                         read_token!(self, Token::SemiColon);
-                        Some(self.parse_literal())
+                        let lit = self.parse_literal();
+                        match lit {
+                            Literal::Integer(Token::Integer(i)) => Some(TryFrom::try_from(i).unwrap()),
+                            _ => panic!("Not implemented: compile-time expr parsing")
+                        }
                     }
                     _ => None,
                 };

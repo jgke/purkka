@@ -1,6 +1,7 @@
 /// Convert [T] to *T
 
 use purkkaparser::parser::*;
+use purkkatypes::{TypeSignature};
 use purkkaparser::visitor::*;
 use crate::traits::TreeTransformer;
 use crate::Context;

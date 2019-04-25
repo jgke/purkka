@@ -6,6 +6,7 @@ use std::rc::Rc;
 use cparser::parser as cp;
 use ctoken::token as ct;
 use purkkaparser::{parser as pp, token as pt};
+use purkkatypes::{TypeSignature, Param};
 
 mod traits;
 
@@ -179,7 +180,7 @@ impl Context {
         }
     }
     
-    pub fn function_params_from_params(&mut self, params: Vec<pp::Param>) -> cp::DirectDeclarator {
+    pub fn function_params_from_params(&mut self, params: Vec<Param>) -> cp::DirectDeclarator {
         let e = Box::new(cp::DirectDeclarator::Epsilon());
         let op = ct::Token::OpenParen(0);
         let cp = ct::Token::CloseParen(0);
@@ -195,7 +196,7 @@ impl Context {
         }
     }
 
-    pub fn parameter_list_from_params(&mut self, params: Vec<pp::Param>) -> cp::ParameterTypeList {
+    pub fn parameter_list_from_params(&mut self, params: Vec<Param>) -> cp::ParameterTypeList {
         let mut iter = params.into_iter();
         let first = iter.next().unwrap();
         cp::ParameterTypeList::ParameterList(
@@ -211,14 +212,14 @@ impl Context {
         )
     }
 
-    pub fn param_to_declaration(&mut self, param: pp::Param) -> cp::ParameterDeclaration {
+    pub fn param_to_declaration(&mut self, param: Param) -> cp::ParameterDeclaration {
         match param {
-            pp::Param::Param(name, ty) => {
+            Param::Param(name, ty) => {
                 let decl_spec = self.type_to_declaration_specifiers(*ty.clone());
                 let decl = self.format_decl(name, *ty);
                 cp::ParameterDeclaration::Declarator(Box::new(decl_spec), Box::new(decl))
             }
-            pp::Param::Anon(_ty) => {
+            Param::Anon(_ty) => {
                 unimplemented!()
             }
         }
@@ -261,9 +262,9 @@ impl Context {
         }
     }
 
-    pub fn type_to_declaration_specifiers(&mut self, ty: pp::TypeSignature) -> cp::DeclarationSpecifiers {
+    pub fn type_to_declaration_specifiers(&mut self, ty: TypeSignature) -> cp::DeclarationSpecifiers {
         match ty {
-            pp::TypeSignature::Plain(ty) => {
+            TypeSignature::Plain(ty) => {
                 let c_ty = match ty.as_ref() {
                     "int" => cp::TypeSpecifier::Int(ct::Token::Int(0)),
                     "char" => cp::TypeSpecifier::Char(ct::Token::Char(0)),
@@ -271,17 +272,17 @@ impl Context {
                 };
                 cp::DeclarationSpecifiers::Neither(c_ty)
             }
-            pp::TypeSignature::Infer => cp::DeclarationSpecifiers::Neither(
+            TypeSignature::Infer => cp::DeclarationSpecifiers::Neither(
                 cp::TypeSpecifier::Int(ct::Token::Int(0))),
-            pp::TypeSignature::Array(ty, _) => self.type_to_declaration_specifiers(*ty),
-            pp::TypeSignature::Pointer { ty,  ..} => self.type_to_declaration_specifiers(*ty),
+            TypeSignature::Array(ty, _) => self.type_to_declaration_specifiers(*ty),
+            TypeSignature::Pointer { ty,  ..} => self.type_to_declaration_specifiers(*ty),
             other => panic!("Not implemented: {:?}", other),
         }
     }
 
-    pub fn ty_to_pointer(&mut self, ty: pp::TypeSignature) -> cp::Pointer {
+    pub fn ty_to_pointer(&mut self, ty: TypeSignature) -> cp::Pointer {
         match ty {
-            pp::TypeSignature::Pointer { ty, .. }
+            TypeSignature::Pointer { ty, .. }
                 => cp::Pointer::Pointer(ct::Token::Times(0), Box::new(self.ty_to_pointer(*ty))),
             _ => cp::Pointer::Times(ct::Token::Times(0))
         }
@@ -331,11 +332,11 @@ impl Context {
         }
     }
 
-    pub fn format_decl(&mut self, name: Rc<str>, ty: pp::TypeSignature) -> cp::Declarator {
+    pub fn format_decl(&mut self, name: Rc<str>, ty: TypeSignature) -> cp::Declarator {
         let ident = ct::Token::Identifier(0, name.to_string());
         match ty {
-            pp::TypeSignature::Plain(_) => cp::Declarator::Identifier(ident, self.format_direct_decl(ty)),
-            pp::TypeSignature::Pointer { ty, .. }
+            TypeSignature::Plain(_) => cp::Declarator::Identifier(ident, self.format_direct_decl(ty)),
+            TypeSignature::Pointer { ty, .. }
                 => cp::Declarator::Pointer(
                     self.ty_to_pointer(*ty.clone()),
                     cp::IdentifierOrType::Identifier(ident),
@@ -344,10 +345,10 @@ impl Context {
         }
     }
 
-    pub fn format_direct_decl(&mut self, ty: pp::TypeSignature) -> cp::DirectDeclarator {
+    pub fn format_direct_decl(&mut self, ty: TypeSignature) -> cp::DirectDeclarator {
         match ty {
-            pp::TypeSignature::Plain(_) => cp::DirectDeclarator::Epsilon(),
-            pp::TypeSignature::Pointer { ty, .. } => self.format_direct_decl(*ty),
+            TypeSignature::Plain(_) => cp::DirectDeclarator::Epsilon(),
+            TypeSignature::Pointer { ty, .. } => self.format_direct_decl(*ty),
             other => panic!("Not implemented: {:?}", other),
         }
     }

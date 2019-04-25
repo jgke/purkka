@@ -1,11 +1,9 @@
 [package]
-name = "purkkaconverter"
+name = "resolve"
 version = "0.1.0"
 authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 edition = "2018"
 
 [dependencies]
-cparser = { path="../cparser" }
-ctoken = { path="../ctoken" }
-purkkaparser = { path="../purkkaparser" }
 purkkatypes = { path="../purkkatypes" }
+

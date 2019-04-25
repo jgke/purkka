@@ -5,13 +5,15 @@ members = [
     "src/cparser",
     "src/ctoken",
     "src/fragment",
+    "src/lalr",
+    "src/parser",
+    "src/preprocessor",
     "src/purkka",
     "src/purkkaconverter",
     "src/purkkaparser",
     "src/purkkaparser_procmacros",
-    "src/lalr",
-    "src/parser",
-    "src/preprocessor",
+    "src/purkkatypes",
+    "src/resolve",
     "src/shared"
 ]
 
