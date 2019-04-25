@@ -7,6 +7,7 @@ pub mod tokentype;
 use fragment::fragment::FragmentIterator;
 use macrotoken::MacroToken;
 use tokenizer::{MacroContext, ParseResult};
+use resolve::{FileQuery, ResolveResult};
 
 pub struct PreprocessorOptions<'a> {
     pub include_path: Vec<&'a str>,
@@ -19,7 +20,7 @@ pub fn preprocess<CB>(
     filename: &str,
 ) -> ParseResult<(Vec<MacroToken>, FragmentIterator)>
 where
-    CB: Fn(bool, String, String) -> (String, String),
+    CB: Fn(FileQuery) -> ResolveResult,
 {
     let mut context = MacroContext::new(get_file);
     Ok(context.preprocess(filename))
@@ -31,7 +32,7 @@ pub fn preprocess_file<CB>(
     options: &PreprocessorOptions,
 ) -> ParseResult<(Vec<MacroToken>, FragmentIterator)>
 where
-    CB: Fn(bool, String, String) -> (String, String),
+    CB: Fn(FileQuery) -> ResolveResult,
 {
     let mut context = MacroContext::new(get_file);
     context.add_definitions(&options.definitions);

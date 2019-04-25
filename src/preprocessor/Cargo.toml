@@ -8,5 +8,6 @@ edition = "2018"
 ctoken = { path="../ctoken" }
 debug = { path="../debug" }
 fragment = { path="../fragment" }
+resolve = { path="../resolve" }
 shared = { path="../shared" }
 regex = "1.1.0"

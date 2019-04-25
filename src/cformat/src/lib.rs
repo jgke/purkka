@@ -348,6 +348,17 @@ impl Context {
         match tree {
             PrimaryExpression::Identifier(Token::Identifier(_, e)) => self.push(e),
             PrimaryExpression::Number(Token::Number(_, e)) => self.push(e),
+            PrimaryExpression::Asm(Token::Asm(_, e)) => { /* XXX: implement */ },
+            PrimaryExpression::Expression(op, expr, cp) => {
+                self.push_token(op);
+                self.expression(expr);
+                self.push_token(cp);
+            },
+            PrimaryExpression::Statement(op, stat, cp) => {
+                self.push_token(op);
+                self.compound_statement(stat);
+                self.push_token(cp);
+            },
             f => panic!("Not implemented.: {:?}", f),
         }
     }
@@ -368,7 +379,63 @@ impl Context {
     fn init_declarator(&mut self, tree: &InitDeclarator) {
         match tree {
             InitDeclarator::Declarator(decl) => self.declarator(decl),
+            InitDeclarator::Assign(decl, t, list) => {
+                self.declarator(decl);
+                self.push_token(t);
+                self.assignment_or_initializer_list(list);
+            }
             f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn assignment_or_initializer_list(&mut self, tree: &AssignmentOrInitializerList) {
+        match tree {
+            AssignmentOrInitializerList::AssignmentExpression(e) => self.assignment_expression(e),
+            AssignmentOrInitializerList::OpenBrace(ob, list, cb) => {
+                self.push_token(ob);
+                self.initializer_list(list);
+                self.push_token(cb);
+            }
+        }
+    }
+
+    fn initializer_list(&mut self, tree: &InitializerList) {
+        match tree {
+            InitializerList::Epsilon() => {}
+            InitializerList::InitializerListContent(list, tc) => {
+                self.initializer_list_content(list);
+                self.trailing_comma(tc);
+            }
+        }
+    }
+
+    fn initializer_list_content(&mut self, tree: &InitializerListContent) {
+        match tree {
+            InitializerListContent::Initializer(init) => self.initializer(init),
+            InitializerListContent::InitializerListContent(list, comma, init) => {
+                self.initializer_list_content(list);
+                self.push_token(comma);
+                self.initializer(init);
+            }
+        }
+    }
+
+    fn initializer(&mut self, tree: &Initializer) {
+        match tree {
+            Initializer::AssignmentOrInitializerList(list)=> self.assignment_or_initializer_list(list),
+            Initializer::Dot(dot, ident, assign, list) => {
+                self.push_token(dot);
+                self.push_token(ident);
+                self.push_token(assign);
+                self.assignment_or_initializer_list(list);
+            }
+        }
+    }
+
+    fn trailing_comma(&mut self, tree: &TrailingComma) {
+        match tree {
+            TrailingComma::Epsilon() => {}
+            TrailingComma::Comma(t) => self.push_token(t)
         }
     }
 
@@ -525,6 +592,7 @@ impl Context {
             TypeSpecifier::Int(t) => (None, t),
             TypeSpecifier::SignedInt(sign, t) => (Some(self.sign_to_token(sign)), t),
             TypeSpecifier::Signed(sign) => (None, self.sign_to_token(sign)),
+            TypeSpecifier::TypeNameStr(t) => (None, t),
             f => panic!("Not implemented: {:?}", f),
         };
         sign.map(|token| self.push_token(token));

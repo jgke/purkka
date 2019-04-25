@@ -4,31 +4,28 @@ use std::process::Command;
 use std::io::prelude::*;
 use std::io::{self, Write};
 
-use cformat::format_c;
-use core::core::parse_files;
+use core::core::get_file_cb;
 use preprocessor::PreprocessorOptions;
+use resolve::*;
 
-fn parse(content: &str) -> Result<(cparser::parser::S, purkkaconverter::Context), Option<ctoken::token::Token>> {
+fn parse(content: &str) -> ResolveResult {
     let input = "main.prk";
-    let get_file = |_is_local, _current_file, filename: String| {
-        if filename == input {
-            (content.to_string(), filename)
+    let get_file_content = |req: &FileQuery| {
+        if req.requested_file == input {
+            (content.to_string(), req.requested_file.clone())
         } else {
-            panic!("Unexpected include: {}", filename)
+            panic!("Unexpected include: {}", req.requested_file)
         }
     };
 
-    parse_files(
-        &vec!["main.prk".to_string()],
-        get_file,
-        &PreprocessorOptions {
-            include_path: vec![],
-            include_files: vec![],
-            definitions: vec![],
-        },
-    )[0]
-    .clone()
-    .map(|(tree, context)| (tree, context.unwrap()))
+    let options = PreprocessorOptions {
+        include_path: vec![],
+        include_files: vec![],
+        definitions: vec![],
+    };
+
+    let res = get_file_cb(&options, &get_file_content)(FileQuery::new(".", input, true, false));
+    res
 }
 
 fn run_test(prefix: &str) {
@@ -41,8 +38,8 @@ fn run_test(prefix: &str) {
     let mut c = File::open(format!("{}.c", prefix)).expect("");
     c.read_to_string(&mut c_contents).expect("");
 
-    let (tree, context) = parse(&prk_contents).unwrap();
-    assert_eq!(format_c(&tree, context.local_includes), c_contents);
+    let result = parse(&prk_contents);
+    assert_eq!(result.c_content, c_contents);
 }
 
 #[test]

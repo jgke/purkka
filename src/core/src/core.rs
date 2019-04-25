@@ -1,11 +1,14 @@
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path;
 
 use clap::{App, Arg};
+use tool::fix;
 
 use debug::debug::{if_debug, DebugVal::IncludeName};
 use preprocessor::PreprocessorOptions;
+use resolve::{FileQuery, ResolveResult};
 
 static DEFAULT_INCLUDE_PATH: &[&str] = &[
     "/usr/local/include",
@@ -13,33 +16,46 @@ static DEFAULT_INCLUDE_PATH: &[&str] = &[
     "/usr/include",
 ];
 
-pub fn parse_files<CB>(
-    inputs: &Vec<String>,
-    get_file: CB,
-    options: &PreprocessorOptions,
-) -> Vec<Result<(cparser::parser::S, Option<purkkaconverter::Context>), Option<ctoken::token::Token>>>
-where
-    CB: Copy + Fn(bool, String, String) -> (String, String),
-{
-    let mut res = Vec::new();
-    for file in inputs {
-        if file.to_lowercase().ends_with(".prk") {
-            let (filename, content) = get_file(true, ".".to_string(), file.to_string());
-            let (parsed, context) = purkkaconverter::convert(purkkaparser::parse_file(&filename, &content));
-            res.push(Ok((parsed, Some(context))));
+pub fn get_file_cb<'a>(options: &'a PreprocessorOptions, get_file_content: &'a Fn(&FileQuery) -> (String, String))
+-> impl Fn(FileQuery) -> ResolveResult + 'a {
+    fix(move |get_file: &Fn(FileQuery) -> ResolveResult, req| {
+        let (content, full_path) = get_file_content(&req);
+
+        if req.need_raw {
+            return ResolveResult {
+                full_path, c_content: content, h_content: None,
+                dependencies: None, declarations: None
+            };
+        }
+
+        if full_path.to_lowercase().ends_with(".prk") {
+            let (parsed, context) = purkkaconverter::convert(purkkaparser::parse_file(&full_path, &content));
+            let formatted = cformat::format_c(&parsed, context.local_includes);
+            ResolveResult {
+                full_path,
+                c_content: formatted,
+                h_content: None,
+                dependencies: None,
+                declarations: None,
+            }
         } else {
-            let result = preprocessor::preprocess_file(&file, get_file, options);
+            let result = preprocessor::preprocess_file(&full_path, get_file, &options);
             match result {
                 Ok((output, context)) => {
                     let parsed = parser::parse(output, &context);
-                    println!("{:?}", parsed);
-                    res.push(parsed.map(|p| (p, None)));
+                    let formatted = cformat::format_c(&parsed.unwrap(), HashSet::new());
+                    ResolveResult {
+                        full_path,
+                        c_content: formatted,
+                        h_content: None,
+                        dependencies: None,
+                        declarations: None,
+                    }
                 }
                 Err(e) => panic!(e),
             }
         }
-    }
-    res
+    })
 }
 
 pub fn real_main() {
@@ -124,6 +140,10 @@ pub fn real_main() {
         })
         .unwrap_or(Vec::new());
 
+    if input.len() > 1 {
+        assert!(output.is_none());
+    }
+
     let options = PreprocessorOptions {
         include_path: include_path.iter().map(|t| t.as_ref()).collect(),
         include_files: include_files.iter().map(|t| t.as_ref()).collect(),
@@ -133,18 +153,18 @@ pub fn real_main() {
             .collect(),
     };
 
-    let get_file = |is_local, current_file, filename: String| {
+    let get_file_content = |req: &FileQuery| -> (String, String) {
         let mut contents = String::new();
         if_debug(IncludeName, || {
             println!(
                 "opening {} from {}, local: {}",
-                filename, current_file, is_local
+                req.requested_file, req.current_file, req.local_file
             )
         });
-        if is_local {
-            let mut path = path::PathBuf::from(current_file);
+        if req.local_file {
+            let mut path = path::PathBuf::from(req.current_file.clone());
             path.pop();
-            path.push(filename.clone());
+            path.push(req.requested_file.clone());
             let full_path = path.clone();
             if let Ok(mut f) = File::open(path) {
                 f.read_to_string(&mut contents)
@@ -154,7 +174,7 @@ pub fn real_main() {
         }
         for std_path in &options.include_path {
             let mut path = path::PathBuf::from(std_path);
-            path.push(filename.clone());
+            path.push(req.requested_file.clone());
             let full_path = path.clone();
             if let Ok(mut f) = File::open(path) {
                 f.read_to_string(&mut contents)
@@ -162,15 +182,12 @@ pub fn real_main() {
                 return (contents, full_path.to_str().unwrap().to_string());
             }
         }
-        panic!("File {} not found", filename);
+
+        panic!("File {} not found", req.requested_file);
     };
 
-    if input.len() > 1 {
-        assert!(output.is_none());
-    }
-
-    let results = parse_files(&input, get_file, &options);
-
-    for file in results {
+    let get_file = get_file_cb(&options, &get_file_content);
+    for file in &input {
+        println!("{:?}", get_file(FileQuery::new(".", file, true, false)))
     }
 }

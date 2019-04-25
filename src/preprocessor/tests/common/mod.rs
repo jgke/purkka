@@ -2,6 +2,7 @@
 
 use debug::debug::DEBUG_VALS;
 use fragment::fragment::{FragmentIterator, Source, Span};
+use resolve::*;
 
 use preprocessor::macrotoken::{MacroToken, MacroTokenType};
 use preprocessor::tokenizer::ParseResult;
@@ -13,9 +14,10 @@ pub fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<Macro
         }
     }
     preprocessor::preprocess(
-        |_is_quoted, _current_file, f| {
-            assert_eq!(filename, f);
-            (content.to_string(), f)
+        |req| {
+            assert_eq!(filename, req.requested_file);
+            assert_eq!(req.need_raw, true);
+            ResolveResult::new_raw(filename, content)
         },
         filename,
     )
@@ -33,10 +35,11 @@ pub fn process_files(files: Vec<(&str, &str)>, start: &str, expected: Vec<MacroT
     println!("---- End file list ----");
 
     let processed = preprocessor::preprocess(
-        |_is_quoted, _current_file, filename| {
+        |req| {
+            assert_eq!(req.need_raw, true);
             for (name, content) in &files {
-                if name == &filename {
-                    return (content.to_string(), filename);
+                if name == &req.requested_file {
+                    return ResolveResult::new_raw(name, content)
                 }
             }
             panic!()

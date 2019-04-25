@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use debug::debug::*;
 use fragment::fragment::{FragmentIterator, Source};
+use resolve::{FileQuery, ResolveResult};
 use shared::intern::StringInterner;
 use shared::utils::*;
 
@@ -58,7 +59,7 @@ enum MacroType {
 ///     -> (full_path: String, file_content: String)
 pub(crate) struct MacroContext<CB>
 where
-    CB: FnMut(bool, String, String) -> (String, String),
+    CB: FnMut(FileQuery) -> ResolveResult,
 {
     symbols: HashMap<Rc<str>, Macro>,
     if_stack: Vec<Option<bool>>,
@@ -78,7 +79,7 @@ struct MacroParseIter<'a>(
 
 impl<CB> MacroContext<CB>
 where
-    CB: FnMut(bool, String, String) -> (String, String),
+    CB: FnMut(FileQuery) -> ResolveResult,
 {
     pub(crate) fn new(get_file: CB) -> MacroContext<CB> {
         let mut intern = StringInterner::new();
@@ -131,7 +132,9 @@ where
     }
 
     fn get_iterator(&mut self, filename: &str) -> FragmentIterator {
-        let content = (self.get_file)(true, ".".to_string(), filename.to_string());
+        let content = (self.get_file)(FileQuery::new(".", filename, true, true));
+        let full_path = &content.full_path;
+        let file_content = &content.h_content.unwrap_or(content.c_content);
         let mut iter = None;
         std::mem::swap(&mut iter, &mut self.iter);
         iter.map(|mut t| {
@@ -139,10 +142,10 @@ where
             // file to the end
             while t.advance_and_reset_span() {}
             while t.next().is_some() {}
-            t.split_and_push_file(&content.1, &content.0);
+            t.split_and_push_file(full_path, file_content);
             t
         })
-        .unwrap_or_else(|| FragmentIterator::new(&content.1, &content.0))
+        .unwrap_or_else(|| FragmentIterator::new(full_path, file_content))
     }
 
     fn save_iterator(&mut self, mut iter: Option<FragmentIterator>) {
@@ -707,12 +710,8 @@ where
                     panic!("Unexpected character: {}", end.display(&sub_iter));
                 };
 
-                let content = (self.get_file)(
-                    is_quote,
-                    iter.current_filename().to_string(),
-                    filename.clone(),
-                );
-                iter.split_and_push_file(&content.1, &content.0);
+                let content = (self.get_file)(FileQuery::new(&iter.current_filename(), &filename, is_quote, true));
+                iter.split_and_push_file(&content.full_path, &content.h_content.unwrap_or(content.c_content));
             }
             MacroType::Undef => {
                 let (left, _) = self.read_identifier_raw(&mut sub_iter);
@@ -1839,6 +1838,6 @@ fn combine_tokens(
     }
 }
 
-fn unreachable_file_open(_: bool, _: String, _: String) -> (String, String) {
+fn unreachable_file_open(_: FileQuery) -> ResolveResult {
     unreachable!()
 }

@@ -1,28 +1,27 @@
 use preprocessor::PreprocessorOptions;
 
-use core::core::parse_files;
+use core::core::get_file_cb;
 
-fn parse(content: &str) -> Result<cparser::parser::S, Option<ctoken::token::Token>> {
+use resolve::*;
+
+fn parse(content: &str) -> ResolveResult {
     let input = "main.c";
-    let get_file = |_is_local, _current_file, filename: String| {
-        if filename == input {
-            (content.to_string(), filename)
+    let get_file_content = |req: &FileQuery| {
+        if req.requested_file == input {
+            (content.to_string(), req.requested_file.clone())
         } else {
-            panic!("Unexpected include: {}", filename)
+            panic!("Unexpected include: {}", req.requested_file)
         }
     };
 
-    parse_files(
-        &vec!["main.c".to_string()],
-        get_file,
-        &PreprocessorOptions {
-            include_path: vec![],
-            include_files: vec![],
-            definitions: vec![],
-        },
-    )[0]
-        .clone()
-        .map(|(t, _)| t)
+    let options = PreprocessorOptions {
+        include_path: vec![],
+        include_files: vec![],
+        definitions: vec![],
+    };
+
+    let res = get_file_cb(&options, &get_file_content)(FileQuery::new(".", input, true, false));
+    res
 }
 
 #[test]

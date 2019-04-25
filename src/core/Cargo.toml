@@ -12,5 +12,7 @@ parser = { path="../parser" }
 purkkaparser = { path="../purkkaparser" }
 purkkaconverter = { path="../purkkaconverter" }
 preprocessor = { path="../preprocessor" }
+resolve = { path="../resolve" }
 debug = { path="../debug" }
 clap = "2.32.0"
+tool = "0.2.1"

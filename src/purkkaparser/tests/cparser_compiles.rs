@@ -5,7 +5,7 @@ use purkkaparser::token::Token;
 use purkkatypes::{TypeSignature, Param};
 
 fn test_parse_file(s: &str) -> S {
-    parse_file(s, "file.prk")
+    parse_file("file.prk", s)
 }
 
 #[test]
