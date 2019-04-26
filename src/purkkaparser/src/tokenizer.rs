@@ -9,6 +9,10 @@ pub fn tokenize(content: &str, filename: &str) -> (Vec<Token>, StringInterner) {
     let mut intern = StringInterner::new();
     let mut res = Vec::new();
     while iter.peek().is_some() {
+        if iter.starts_with("//") || iter.starts_with("/*") {
+            flush_comment(&mut iter);
+            continue;
+        }
         let (token, _source) = match iter.peek().unwrap() {
             ' ' | '\t' | '\n' => {
                 iter.next();
@@ -25,13 +29,55 @@ pub fn tokenize(content: &str, filename: &str) -> (Vec<Token>, StringInterner) {
     (res, intern)
 }
 
+fn flush_comment(iter: &mut FragmentIterator) {
+    let ty = iter.peek_n(2);
+    iter.next();
+    iter.next();
+    match ty.as_ref() {
+        "//" => { iter.collect_while(|x| x != '\n'); }
+        "/*" => {
+            let mut prev_star = false;
+            let mut stop_next = false;
+            iter.collect_while(|x| {
+                if stop_next {
+                    return false;
+                }
+                if x == '*' {
+                    prev_star = true;
+                } else if x == '/' && prev_star {
+                    stop_next = true;
+                } else {
+                    prev_star = false;
+                }
+                true
+            });
+        }
+        t => panic!("Unexpected start of comment: {}", t)
+    }
+}
+
 fn read_number(iter: &mut FragmentIterator, intern: &mut StringInterner) -> (Token, Source) {
-    let (content, source) = iter.collect_while(|c| match c {
-        '0'...'9' | '_' | '.' => true,
+    let radix_str = iter.peek_n(2);
+    let radix = match radix_str.as_ref() {
+        "0b" => {
+            iter.next();
+            iter.next();
+            2
+        }
+        "0x" => {
+            iter.next();
+            iter.next();
+            16
+        }
+        _ => 10,
+    };
+    let (content_str, source) = iter.collect_while(|c| match c {
+        '0'...'9' | 'a'...'f' | 'A'...'F' | '_' | '.' => true,
         _ => false,
     });
+    let content = content_str.chars().filter(|c| *c != '_').collect::<String>();
     if !content.contains('.') {
-        (Token::Integer(content.parse().unwrap()), source)
+        (Token::Integer(i128::from_str_radix(&content, radix).unwrap()), source)
     } else {
         (Token::Float(intern.get_ref(&content)), source)
     }

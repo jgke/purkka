@@ -30,15 +30,15 @@ grammar! {
     OperatorOverload
        -> #Token::NewOperator #Token::StringLiteral #Token::Operator Function
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum OperatorOverload { OperatorOverload(Rc<str>, TypeSignature, Assignment) }
+        pub enum OperatorOverload { OperatorOverload(Rc<str>, TypeSignature, Expression) }
         ;
 
     Declaration
        -> Declaration. Visibility Mutability #Token::Identifier MaybeType #Token::SemiColon
-        | Definition. Visibility Mutability #Token::Identifier MaybeType #Token::Operator Assignment #Token::SemiColon
+        | Definition. Visibility Mutability #Token::Identifier MaybeType #Token::Operator Expression #Token::SemiColon
         | Function. Visibility #Token::Fun #Token::Identifier Function
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum Declaration { Declaration(bool, bool, Rc<str>, Option<TypeSignature>, Option<Assignment>) }
+        pub enum Declaration { Declaration(bool, bool, Rc<str>, Option<TypeSignature>, Option<Expression>) }
         ;
 
     Function
@@ -169,6 +169,7 @@ grammar! {
        -> #Token::Identifier
         | Call. #Token::Identifier ArgList
         | Literal
+        | ArrayAccess. PrimaryExpression #Token::OpenBracket Expression #Token::CloseBracket
         | BlockExpression
         | Expression. #Token::OpenParen Expression #Token::CloseParen
         | Lambda
@@ -179,6 +180,7 @@ grammar! {
             Literal(Literal),
             BlockExpression(Box<BlockExpression>),
             Expression(Box<Expression>),
+            ArrayAccess(Box<PrimaryExpression>, Box<Expression>),
             Lambda(Lambda),
         }
         ;
@@ -194,6 +196,7 @@ grammar! {
     BlockExpression
        -> Block
         | ConditionalExpression
+        | WhileExpression
         ;
 
     ConditionalExpression
@@ -201,6 +204,14 @@ grammar! {
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum ConditionalExpression {
             Exprs(Vec<(Box<Expression>, Box<Block>)>, Option<Box<Block>>)
+        }
+        ;
+
+    WhileExpression
+        -> #Token::While Expression Block IfTail
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum WhileExpression {
+            While(Box<Expression>, Box<Block>, Option<Box<Block>>)
         }
         ;
 
@@ -214,17 +225,13 @@ grammar! {
        -> PrimaryExpression
         | Op. #Token::Operator ExprList
         | Unary. #Token::Operator ExprList
-        | Prefix. #Token::Operator Expression
+        | PostFix. Expression #Token::Operator
         ;
 
     ExprList -> Expression | Expression ExprList
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum ExprList { List(Vec<Box<Expression>>) }
         ;
-
-    Assignment
-       -> Expression
-       ;
 
     Block -> #Token::OpenBrace Statements #Token::CloseBrace
         @ #[derive(Clone, Debug, PartialEq)]
@@ -309,9 +316,8 @@ impl_enter!(S, TranslationUnit, TranslationUnit, translation_unit, 1);
 impl_enter!(TranslationUnit, Units, "Vec<Unit>", units, 1);
 impl_enter!(Unit, Declaration, Declaration, declaration, 1);
 impl_enter_fmap!(Declaration, Declaration, TypeSignature, ty, 4);
+impl_enter_fmap!(Declaration, Declaration, Expression, expr, 5);
 impl_enter!(Declaration, Declaration, "Rc<str>", identifier, 3);
-impl_enter_fmap!(Declaration, Declaration, Assignment, expr, 5);
-impl_enter!(Assignment, Expression, Expression, expr, 1);
 
 impl_enter!(Token, Identifier, "Rc<str>", identifier_s, 1);
 
@@ -322,9 +328,9 @@ impl Declaration {
             false,
             _,
             _,
-            Some(Assignment::Expression(Expression::PrimaryExpression(PrimaryExpression::Lambda(
+            Some(Expression::PrimaryExpression(PrimaryExpression::Lambda(
                 ..
-            )))),
+            ))),
         ) = self
         {
             true
@@ -339,36 +345,40 @@ type PrecedenceMap = HashMap<Rc<str>, Precedence>;
 fn default_bin_ops() -> PrecedenceMap {
     let mut precedence = HashMap::new();
 
+    // Assignment
+    precedence.insert(From::from("="), Precedence::binop_right(1));
+    precedence.insert(From::from("&="), Precedence::binop_right(1));
+
     // Ternary
-    precedence.insert(From::from("?"), Precedence::binop_right(1));
-    precedence.insert(From::from(":"), Precedence::binop_right(1));
+    precedence.insert(From::from("?"), Precedence::binop_right(2));
+    precedence.insert(From::from(":"), Precedence::binop_right(2));
 
     // Logical operations: or, and, eq, neq, leq, meq, less, more
-    precedence.insert(From::from("||"), Precedence::binop(2));
-    precedence.insert(From::from("&&"), Precedence::binop(3));
-    precedence.insert(From::from("=="), Precedence::binop(4));
-    precedence.insert(From::from("!="), Precedence::binop(4));
-    precedence.insert(From::from("<="), Precedence::binop(5));
-    precedence.insert(From::from(">="), Precedence::binop(5));
-    precedence.insert(From::from("<"), Precedence::binop(5));
-    precedence.insert(From::from(">"), Precedence::binop(5));
+    precedence.insert(From::from("||"), Precedence::binop(3));
+    precedence.insert(From::from("&&"), Precedence::binop(4));
+    precedence.insert(From::from("=="), Precedence::binop(5));
+    precedence.insert(From::from("!="), Precedence::binop(5));
+    precedence.insert(From::from("<="), Precedence::binop(6));
+    precedence.insert(From::from(">="), Precedence::binop(6));
+    precedence.insert(From::from("<"), Precedence::binop(6));
+    precedence.insert(From::from(">"), Precedence::binop(6));
 
     // Bitwise operations: or, xor, and, shl, shr, rotating bitshifts
-    precedence.insert(From::from("|"), Precedence::binop(6));
-    precedence.insert(From::from("^"), Precedence::binop(7));
-    precedence.insert(From::from("&"), Precedence::binop(8));
-    precedence.insert(From::from("<<"), Precedence::binop(9));
-    precedence.insert(From::from(">>"), Precedence::binop(9));
-    precedence.insert(From::from("<<<"), Precedence::binop(9));
-    precedence.insert(From::from(">>>"), Precedence::binop(9));
+    precedence.insert(From::from("|"), Precedence::binop(7));
+    precedence.insert(From::from("^"), Precedence::binop(8));
+    precedence.insert(From::from("&"), Precedence::binop(9));
+    precedence.insert(From::from("<<"), Precedence::binop(10));
+    precedence.insert(From::from(">>"), Precedence::binop(10));
+    precedence.insert(From::from("<<<"), Precedence::binop(10));
+    precedence.insert(From::from(">>>"), Precedence::binop(10));
 
     // Standard arithmetic: plus, minus, mod, times, div, pow
-    precedence.insert(From::from("+"), Precedence::binop(10));
-    precedence.insert(From::from("-"), Precedence::binop(10));
-    precedence.insert(From::from("%"), Precedence::binop(11));
-    precedence.insert(From::from("*"), Precedence::binop(11));
-    precedence.insert(From::from("/"), Precedence::binop(11));
-    precedence.insert(From::from("**"), Precedence::binop_right(12));
+    precedence.insert(From::from("+"), Precedence::binop(11));
+    precedence.insert(From::from("-"), Precedence::binop(11));
+    precedence.insert(From::from("%"), Precedence::binop(12));
+    precedence.insert(From::from("*"), Precedence::binop(12));
+    precedence.insert(From::from("/"), Precedence::binop(12));
+    precedence.insert(From::from("**"), Precedence::binop_right(13));
 
     precedence
 }
@@ -376,11 +386,24 @@ fn default_bin_ops() -> PrecedenceMap {
 fn default_unary_ops() -> PrecedenceMap {
     let mut precedence = HashMap::new();
 
-    // Unary plus (nop), unary minus (negation), logical not (!= 0), bitwise not
+    // Unary plus (nop), unary minus (negation), logical not (!= 0), bitwise not,
+    // prefix increment/decrement
     precedence.insert(From::from("+"), Precedence::unary());
     precedence.insert(From::from("-"), Precedence::unary());
     precedence.insert(From::from("!"), Precedence::unary());
     precedence.insert(From::from("~"), Precedence::unary());
+    precedence.insert(From::from("++"), Precedence::unary());
+    precedence.insert(From::from("--"), Precedence::unary());
+
+    precedence
+}
+
+fn default_postfix_ops() -> PrecedenceMap {
+    let mut precedence = HashMap::new();
+
+    // Postfix increment, decrement
+    precedence.insert(From::from("++"), Precedence::unary_right());
+    precedence.insert(From::from("--"), Precedence::unary_right());
 
     precedence
 }
@@ -388,6 +411,7 @@ fn default_unary_ops() -> PrecedenceMap {
 pub fn parse(iter: Iter) -> S {
     let mut context = ParseContext {
         unary_precedence: default_unary_ops(),
+        postfix_precedence: default_postfix_ops(),
         precedence: default_bin_ops(),
         iter,
     };
@@ -423,12 +447,20 @@ impl Precedence {
             left_associative: true,
         }
     }
+    fn unary_right() -> Precedence {
+        Precedence {
+            precedence: 1,
+            param_count: 1,
+            left_associative: false,
+        }
+    }
 }
 
 pub(crate) type Iter<'a, 'b> = &'a mut Peekable<std::slice::Iter<'b, Token>>;
 
 struct ParseContext<'a, 'b> {
     unary_precedence: PrecedenceMap,
+    postfix_precedence: PrecedenceMap,
     precedence: PrecedenceMap,
     iter: Iter<'a, 'b>,
 }
@@ -478,11 +510,11 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     false,
                     ident,
                     None,
-                    Some(Assignment::Expression(self.fun_to_expr(
+                    Some(self.fun_to_expr(
                         params,
                         return_type,
                         block,
-                    ))),
+                    )),
                 );
             }
             t => unexpected_token!(t, self),
@@ -502,7 +534,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         let res = match self.peek() {
             Some(Token::Operator(t)) if &**t == "=" => {
                 read_token!(self, Token::Operator);
-                let expr = self.parse_assignment_expr();
+                let expr = self.parse_expression();
                 Declaration::Declaration(visible, mutable, ident, ty, Some(expr))
             }
             _ => Declaration::Declaration(visible, mutable, ident, ty, None),
@@ -732,7 +764,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         };
         let (params, return_type, block) = self.parse_fun();
         let ty = TypeSignature::Function(params.clone(), Box::new(return_type.clone()));
-        let body = Assignment::Expression(self.fun_to_expr(params, return_type, block));
+        let body = self.fun_to_expr(params, return_type, block);
         OperatorOverload::OperatorOverload(op, ty, body)
     }
 
@@ -759,25 +791,24 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         ImportFile::Import(file, ffi)
     }
 
-    fn parse_assignment_expr(&mut self) -> Assignment {
-        Assignment::Expression(self.parse_expression())
-    }
-
     fn parse_expression(&mut self) -> Expression {
         self.parse_expression_(1)
     }
 
     fn parse_expression_(&mut self, precedence: usize) -> Expression {
         match self.peek() {
-            Some(Token::Operator(p)) => match self.unary_precedence.get(p) {
-                Some(n) if n.left_associative && n.param_count == 1 => {
+            Some(Token::Operator(p)) => match self.unary_precedence.get(p).map(|t| *t) {
+                Some(n) if n.left_associative => {
                     assert_eq!(n.left_associative, true);
-                    let precedence = n.precedence;
                     let op = self.next().unwrap().clone();
-                    let expr = self.parse_expression_(precedence);
-                    return Expression::Unary(op, ExprList::List(vec![Box::new(expr)]));
+                    let exprs = (0..n.param_count)
+                        .into_iter()
+                        .map(|_| self.parse_expression_(n.precedence))
+                        .map(Box::new)
+                        .collect();
+                    return Expression::Unary(op, ExprList::List(exprs));
                 }
-                _ => panic!("Unexpected operator: {:?}", p),
+                _ => panic!("Unknown prefix operator: {:?}", p),
             },
             _ => {}
         }
@@ -797,8 +828,16 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                         expr = Expression::Op(op, ExprList::List(left));
                     }
                     Some(_) => break,
-                    None => panic!("Unknown operator: {}", p),
-                },
+                    None => {
+                        match self.postfix_precedence.get(p) {
+                            Some(_) => {
+                                let op = self.next().unwrap().clone();
+                                expr = Expression::PostFix(Box::new(expr), op);
+                            }
+                            _ => panic!("Unknown operator: {}", p),
+                        }
+                    }
+                }
                 _ => break,
             };
         }
@@ -806,7 +845,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_primary_expression(&mut self) -> PrimaryExpression {
-        match self.peek() {
+        let mut expr = match self.peek() {
             Some(Token::Identifier(..)) => {
                 let t = self.next().identifier_s().unwrap().clone();
                 match self.peek() {
@@ -817,11 +856,14 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Integer(..)) | Some(Token::Float(..)) | Some(Token::StringLiteral(..)) => {
                 PrimaryExpression::Literal(self.parse_literal())
             }
-            Some(Token::If(..)) => {
+            Some(Token::If(..)) | Some(Token::While(..)) => {
                 PrimaryExpression::BlockExpression(Box::new(self.parse_block_expression()))
             }
             Some(Token::OpenParen(..)) => {
-                PrimaryExpression::Expression(Box::new(self.parse_expression()))
+                read_token!(self, Token::OpenParen);
+                let expr = PrimaryExpression::Expression(Box::new(self.parse_expression()));
+                read_token!(self, Token::CloseParen);
+                expr
             }
             Some(Token::Fun(..)) => {
                 read_token!(self, Token::Fun);
@@ -829,7 +871,14 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block))
             }
             t => unexpected_token!(t, self),
+        };
+        while let Some(Token::OpenBracket(..)) = self.peek() {
+            read_token!(self, Token::OpenBracket);
+            let inner_expr = Box::new(self.parse_expression());
+            read_token!(self, Token::CloseBracket);
+            expr = PrimaryExpression::ArrayAccess(Box::new(expr), inner_expr);
         }
+        expr
     }
 
     fn parse_fun(&mut self) -> (Vec<Param>, TypeSignature, BlockExpression) {
@@ -871,9 +920,25 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn parse_block_expression(&mut self) -> BlockExpression {
         match self.peek() {
             Some(Token::If(..)) => BlockExpression::ConditionalExpression(self.parse_if_expr()),
+            Some(Token::While(..)) => BlockExpression::WhileExpression(self.parse_while_expr()),
             Some(Token::OpenBrace(..)) => BlockExpression::Block(self.parse_block()),
             t => unexpected_token!(t, self),
         }
+    }
+
+    fn parse_while_expr(&mut self) -> WhileExpression {
+        // while expr block [else block]
+        read_token!(self, Token::While);
+        let expr = self.parse_expression();
+        let block = self.parse_block();
+        let else_block = match self.peek() {
+            Some(Token::Else(..)) => {
+                read_token!(self, Token::Else);
+                Some(Box::new(self.parse_block()))
+            }
+            _ => None
+        };
+        WhileExpression::While(Box::new(expr), Box::new(block), else_block)
     }
 
     fn parse_literal(&mut self) -> Literal {
@@ -914,6 +979,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_block(&mut self) -> Block {
+        if maybe_read_token!(self, Token::SemiColon).is_some() {
+            return Block::Statements(vec![]);
+        }
         read_token!(self, Token::OpenBrace);
         let mut stmts = Vec::new();
         loop {
@@ -942,7 +1010,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
             // directly return the block_expr since it doesn't need a semicolon
             BlockExpression => return Statement::BlockExpression(self.parse_block_expression()),
-            Declaration => Statement::Declaration(self.parse_declaration()),
+            Declaration => return Statement::Declaration(self.parse_declaration()),
             // Expressions can contain BlockExpressions, so this is
             // partially unreachable
             Expression => Statement::Expression(self.parse_expression()),
@@ -1059,14 +1127,14 @@ mod tests {
                     _ => unreachable!(),
                 }
             }
-            Expression::Prefix(op, expr) => {
+            Expression::PostFix(expr, op) => {
                 let op_s: &str = if let Token::Operator(s) = op {
                     &*s
                 } else {
                     unreachable!()
                 };
                 match op_s {
-                    "~" => !eval_tree(&*expr),
+                    "++" => eval_tree(&*expr),
                     _ => unreachable!(),
                 }
             }
@@ -1075,6 +1143,7 @@ mod tests {
 
     fn check(expr: &str, expected: i128) {
         let unary_precedence = default_unary_ops();
+        let postfix_precedence = default_unary_ops();
         let precedence = default_bin_ops();
         let both = unary_precedence
             .clone()
@@ -1085,6 +1154,7 @@ mod tests {
         let mut context = ParseContext {
             precedence,
             unary_precedence,
+            postfix_precedence,
             iter: &mut vec.iter().peekable(),
         };
         let result = eval_tree(&context.parse_expression());
@@ -1110,6 +1180,8 @@ mod tests {
         check("0 ? 2 : 1 ? 3 : 4", 3);
         check("1 ? 2 : 1 ? 3 : 4", 2);
         check("0 ? 2 : 0 ? 3 : 4", 4);
+
+        check("0 ++", 0);
 
         check("1 & 2", 0);
         check("1 & 3 | 4", 5);
@@ -1147,7 +1219,6 @@ mod tests {
                 .units()
                 .and_then(|t| t.get(0))
                 .declaration()
-                .expr()
                 .expr()
                 .unwrap(),
             &Expression::PrimaryExpression(PrimaryExpression::Call(
@@ -1189,7 +1260,6 @@ mod tests {
                 .units()
                 .and_then(|t| t.get(0))
                 .declaration()
-                .expr()
                 .expr()
                 .unwrap(),
             &Expression::PrimaryExpression(PrimaryExpression::Call(
@@ -1235,7 +1305,6 @@ mod tests {
                 .units()
                 .and_then(|t| t.get(0))
                 .declaration()
-                .expr()
                 .expr()
                 .unwrap(),
             &Expression::PrimaryExpression(PrimaryExpression::Call(
@@ -1284,7 +1353,6 @@ mod tests {
                 .units()
                 .and_then(|t| t.get(0))
                 .declaration()
-                .expr()
                 .expr()
                 .unwrap(),
             &Expression::PrimaryExpression(PrimaryExpression::Call(

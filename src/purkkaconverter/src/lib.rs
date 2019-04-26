@@ -131,6 +131,7 @@ impl Context {
                 Box::new(self.block_to_statement_list(block)),
                 ct::Token::CloseBrace(0),
             ),
+            other => panic!("Not implemented: {:?}", other),
         }
     }
 
@@ -302,12 +303,8 @@ impl Context {
         }
     }
 
-    pub fn assignment_expression(&mut self, k: pp::Assignment) -> cp::AssignmentExpression {
-        match k {
-            pp::Assignment::Expression(expr) => {
-                cp::AssignmentExpression::TernaryExpression(self.expression_as_ternary(expr))
-            }
-        }
+    pub fn assignment_expression(&mut self, expr: pp::Expression) -> cp::AssignmentExpression {
+        cp::AssignmentExpression::TernaryExpression(self.expression_as_ternary(expr))
     }
 
     pub fn expression(&mut self, k: pp::Expression) -> cp::Expression {

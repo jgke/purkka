@@ -131,3 +131,24 @@ fn parse_terse_fn() {
 fn parse_operators() {
     test_parse_file("operator \"&~\" (left: long, bits: long) => left & ~bits;");
 }
+
+#[test]
+fn parse_while() {
+    test_parse_file("let a = while 1 { foo(); bar(); };");
+    test_parse_file("let a = while 1 { foo(); bar(); } else { baz(); };");
+}
+
+#[test]
+fn parse_multiple_statements() {
+    test_parse_file("let a = if 1 { foo(); bar(); };");
+}
+
+#[test]
+fn parse_assignment() {
+    test_parse_file("let a = if 1 { let foo = 1; foo = 2; };");
+}
+
+#[test]
+fn parse_complex_expressions() {
+    test_parse_file("let a = 1 + (2 & 3++);");
+}

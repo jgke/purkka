@@ -30,9 +30,6 @@ pub trait ASTVisitor {
     fn visit_enum_field(&mut self, s: &mut EnumField) {
         walk_enum_field(self, s);
     }
-    fn visit_assignment(&mut self, s: &mut Assignment) {
-        walk_assignment(self, s);
-    }
     fn visit_expression(&mut self, s: &mut Expression) {
         walk_expression(self, s);
     }
@@ -48,6 +45,9 @@ pub trait ASTVisitor {
     }
     fn visit_conditional_expression(&mut self, s: &mut ConditionalExpression) {
         walk_conditional_expression(self, s);
+    }
+    fn visit_while_expression(&mut self, s: &mut WhileExpression) {
+        walk_while_expression(self, s);
     }
     fn visit_statement(&mut self, s: &mut Statement) {
         walk_statement(self, s);
@@ -85,7 +85,7 @@ pub fn walk_operator_overload<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut O
     match s {
         OperatorOverload::OperatorOverload(_, ty, body) => {
             visitor.visit_ty(ty);
-            visitor.visit_assignment(body);
+            visitor.visit_expression(body);
         }
     }
 }
@@ -97,7 +97,7 @@ pub fn walk_declaration<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Declara
                 visitor.visit_ty(ty);
             }
             if let Some(assignment) = assignment {
-                visitor.visit_assignment(assignment);
+                visitor.visit_expression(assignment);
             }
         }
     }
@@ -141,14 +141,6 @@ pub fn walk_enum_field<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut EnumFiel
     }
 }
 
-pub fn walk_assignment<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Assignment) {
-    match s {
-        Assignment::Expression(expr) => {
-            visitor.visit_expression(expr);
-        }
-    }
-}
-
 pub fn walk_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Expression) {
     match s {
         Expression::PrimaryExpression(expr) => {
@@ -160,7 +152,7 @@ pub fn walk_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Expressi
         Expression::Unary(_op, ExprList::List(exprs)) => {
             exprs.iter_mut().for_each(|e| visitor.visit_expression(e));
         }
-        Expression::Prefix(_op, expr) => {
+        Expression::PostFix(expr, _op) => {
             visitor.visit_expression(expr);
         }
     }
@@ -185,6 +177,10 @@ pub fn walk_primary_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut 
         PrimaryExpression::Lambda(lambda) => {
             visitor.visit_lambda(lambda);
         }
+        PrimaryExpression::ArrayAccess(primary_expr, expr) => {
+            visitor.visit_primary_expression(primary_expr.deref_mut());
+            visitor.visit_expression(expr.deref_mut());
+        }
     }
 }
 
@@ -194,6 +190,7 @@ pub fn walk_block_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Bl
             visitor.visit_block(block);
         }
         BlockExpression::ConditionalExpression(cond) => visitor.visit_conditional_expression(cond),
+        BlockExpression::WhileExpression(cond) => visitor.visit_while_expression(cond),
     }
 }
 
@@ -207,6 +204,21 @@ pub fn walk_conditional_expression<T: ASTVisitor + ?Sized>(
                 visitor.visit_expression(condition.deref_mut());
                 visitor.visit_block(arm.deref_mut());
             });
+            otherwise
+                .iter_mut()
+                .for_each(|b| visitor.visit_block(b.deref_mut()));
+        }
+    }
+}
+
+pub fn walk_while_expression<T: ASTVisitor + ?Sized>(
+    visitor: &mut T,
+    s: &mut WhileExpression,
+) {
+    match s {
+        WhileExpression::While(expr, block, otherwise) => {
+            visitor.visit_expression(expr.deref_mut());
+            visitor.visit_block(block.deref_mut());
             otherwise
                 .iter_mut()
                 .for_each(|b| visitor.visit_block(b.deref_mut()));

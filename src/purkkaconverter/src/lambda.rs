@@ -36,9 +36,9 @@ impl ASTVisitor for StripLambda<'_> {
                             _,
                             name,
                             _,
-                            Some(Assignment::Expression(Expression::PrimaryExpression(
+                            Some(Expression::PrimaryExpression(
                                 PrimaryExpression::Lambda(mut lambda),
-                            ))),
+                            )),
                         )) = t
                         {
                             self.visit_lambda(&mut lambda);
