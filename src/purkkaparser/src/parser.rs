@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use regex::Regex;
 
+use fragment::fragment::{FragmentIterator, Source};
 use purkkatypes::{EnumField, Param, StructField, TypeSignature};
 
 use crate::token::Token;
@@ -286,7 +287,11 @@ macro_rules! unexpected_token {
     ($token:expr, $iter:expr) => {
         match $token {
             None => panic!("Unexpected end of file"),
-            Some(t) => panic!("Unexpected token: {:?}", t),
+            Some(t) => {
+                let as_s = format!("{:?}", t);
+                let num = t.get_num();
+                panic!("Unexpected token: {}\n{}", as_s, $iter.fragment.source_to_str(&$iter.sources[num]));
+            }
         }
     };
 }
@@ -295,11 +300,12 @@ macro_rules! unexpected_token_expected_one {
     ($token:expr, $iter:expr, $expected:path) => {
         match $token {
             None => panic!("Unexpected end of file, expected {}", stringify!($expected)),
-            Some(t) => panic!(
-                "Unexpected token: {:?}, expected {}",
-                t,
-                stringify!($expected)
-            ),
+            Some(t) => {
+                let as_s = format!("{:?}", t);
+                let expected = stringify!($expected);
+                let num = t.get_num();
+                panic!("Unexpected token: {}, expected {}\n{}", as_s, expected, $iter.fragment.source_to_str(&$iter.sources[num]));
+            }
         }
     };
 }
@@ -327,7 +333,7 @@ impl_enter_fmap!(Declaration, Declaration, TypeSignature, ty, 4);
 impl_enter_fmap!(Declaration, Declaration, Expression, expr, 5);
 impl_enter!(Declaration, Declaration, "Rc<str>", identifier, 3);
 
-impl_enter!(Token, Identifier, "Rc<str>", identifier_s, 1);
+impl_enter!(Token, Identifier, "Rc<str>", identifier_s, 2);
 
 impl Declaration {
     pub fn is_fn(&self) -> bool {
@@ -416,12 +422,14 @@ fn default_postfix_ops() -> PrecedenceMap {
     precedence
 }
 
-pub fn parse(iter: Iter) -> S {
+pub fn parse(iter: Iter, sources: &Vec<Source>, fragment_iter: &FragmentIterator) -> S {
     let mut context = ParseContext {
         unary_precedence: default_unary_ops(),
         postfix_precedence: default_postfix_ops(),
         precedence: default_bin_ops(),
         iter,
+        fragment: fragment_iter,
+        sources
     };
     S::TranslationUnit(context.parse_translation_unit())
 }
@@ -471,6 +479,8 @@ struct ParseContext<'a, 'b> {
     postfix_precedence: PrecedenceMap,
     precedence: PrecedenceMap,
     iter: Iter<'a, 'b>,
+    fragment: &'a FragmentIterator,
+    sources: &'a Vec<Source>,
 }
 
 impl<'a, 'b> ParseContext<'a, 'b> {
@@ -504,9 +514,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn parse_declaration(&mut self, semi: bool) -> Declaration {
         let visible = maybe_read_token!(self, Token::Pub).is_some();
         let mutable = match self.next() {
-            Some(Token::Let()) => true,
-            Some(Token::Const()) => false,
-            Some(Token::Fun()) => {
+            Some(Token::Let(..)) => true,
+            Some(Token::Const(..)) => false,
+            Some(Token::Fun(..)) => {
                 let ident = Some(read_token!(self, Token::Identifier))
                     .as_ref()
                     .identifier_s()
@@ -528,11 +538,11 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             t => unexpected_token!(t, self),
         };
         let ident = match self.next() {
-            Some(Token::Identifier(s)) => s.clone(),
+            Some(Token::Identifier(_, s)) => s.clone(),
             t => unexpected_token!(t, self),
         };
         let ty = match self.peek() {
-            Some(Token::Operator(t)) if &**t == ":" => {
+            Some(Token::Operator(_, t)) if &**t == ":" => {
                 read_token!(self, Token::Operator);
                 Some(self.parse_type())
             }
@@ -540,7 +550,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         };
 
         let res = match self.peek() {
-            Some(Token::Operator(t)) if &**t == "=" => {
+            Some(Token::Operator(_, t)) if &**t == "=" => {
                 read_token!(self, Token::Operator);
                 let expr = self.parse_expression();
                 Declaration::Declaration(visible, mutable, ident, ty, Some(expr))
@@ -572,7 +582,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::OpenParen(..)) => {
                 let params = self.parse_param_list();
                 match self.peek() {
-                    Some(Token::Operator(t)) if &**t == "->" && maybe_fn => {
+                    Some(Token::Operator(_, t)) if &**t == "->" && maybe_fn => {
                         read_token!(self, Token::Operator);
                         let return_type = self.parse_type();
                         return TypeSignature::Function(params, Box::new(return_type));
@@ -615,11 +625,11 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::OpenBracket);
                 let ty = self.parse_type();
                 let expr = match self.peek() {
-                    Some(Token::SemiColon()) => {
+                    Some(Token::SemiColon(..)) => {
                         read_token!(self, Token::SemiColon);
                         let lit = self.parse_literal();
                         match lit {
-                            Literal::Integer(Token::Integer(i)) => {
+                            Literal::Integer(Token::Integer(_, i)) => {
                                 Some(TryFrom::try_from(i).unwrap())
                             }
                             _ => panic!("Not implemented: compile-time expr parsing"),
@@ -631,7 +641,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 TypeSignature::Array(Box::new(ty), expr)
             }
             /* &int, &?int */
-            Some(Token::Operator(t)) if ref_regex.is_match(t) => {
+            Some(Token::Operator(_, t)) if ref_regex.is_match(t) => {
                 read_token!(self, Token::Operator);
                 let mut ty = self.parse_type_(false);
                 let mut ref_iter = t.chars().rev();
@@ -667,7 +677,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn maybe_parse_fn(&mut self, arg_ty: TypeSignature) -> TypeSignature {
         match self.peek() {
-            Some(Token::Operator(t)) if &**t == "->" => {
+            Some(Token::Operator(_, t)) if &**t == "->" => {
                 read_token!(self, Token::Operator);
                 let return_type = self.parse_type();
                 TypeSignature::Function(vec![Param::Anon(Box::new(arg_ty))], Box::new(return_type))
@@ -685,11 +695,11 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_param(&mut self) -> Option<Param> {
         match self.peek() {
-            Some(Token::Identifier(ident)) => {
+            Some(Token::Identifier(_, ident)) => {
                 let ty = self.parse_type();
                 if let TypeSignature::Plain(_) = &ty {
                     match self.peek() {
-                        Some(Token::Operator(t)) if &**t == ":" => {
+                        Some(Token::Operator(_, t)) if &**t == ":" => {
                             self.next();
                             let ty = self.parse_type();
                             Some(Param::Param(ident.clone(), Box::new(ty)))
@@ -719,7 +729,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_struct_field(&mut self) -> Option<StructField> {
         match self.peek() {
-            Some(Token::Identifier(_)) => {
+            Some(Token::Identifier(_, _)) => {
                 let name = self.next().identifier_s().unwrap().clone();
                 read_token!(self, Token::Operator);
                 let ty = Box::new(self.parse_type());
@@ -731,10 +741,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_enum_field(&mut self) -> Option<EnumField> {
         match self.peek() {
-            Some(Token::Identifier(_)) => {
+            Some(Token::Identifier(_, _)) => {
                 let name = self.next().identifier_s().unwrap().clone();
                 let value = match self.peek() {
-                    Some(Token::Operator(t)) if &**t == "=" => {
+                    Some(Token::Operator(_, t)) if &**t == "=" => {
                         panic!("Not implemented");
                     }
                     _ => None,
@@ -756,7 +766,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         } else {
             return things;
         }
-        while let Some(Token::Comma()) = self.peek() {
+        while let Some(Token::Comma(..)) = self.peek() {
             read_token!(self, Token::Comma);
             match cb(self) {
                 Some(p) => things.push(p),
@@ -768,7 +778,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_new_operator(&mut self) -> OperatorOverload {
         read_token!(self, Token::NewOperator);
-        let op = if let Token::StringLiteral(s) = read_token!(self, Token::StringLiteral) {
+        let op = if let Token::StringLiteral(_, s) = read_token!(self, Token::StringLiteral) {
             s
         } else {
             unreachable!();
@@ -782,9 +792,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn parse_include(&mut self) -> ImportFile {
         read_token!(self, Token::Import);
         let ffi = match self.peek() {
-            Some(Token::OpenParen()) => {
+            Some(Token::OpenParen(..)) => {
                 read_token!(self, Token::OpenParen);
-                let ffi = if let Token::Identifier(s) = read_token!(self, Token::Identifier) {
+                let ffi = if let Token::Identifier(_, s) = read_token!(self, Token::Identifier) {
                     s
                 } else {
                     unreachable!();
@@ -794,7 +804,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
             _ => None,
         };
-        let file = if let Token::StringLiteral(s) = read_token!(self, Token::StringLiteral) {
+        let file = if let Token::StringLiteral(_, s) = read_token!(self, Token::StringLiteral) {
             s
         } else {
             unreachable!();
@@ -808,7 +818,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_expression_(&mut self, precedence: usize) -> Expression {
         match self.peek() {
-            Some(Token::Operator(p)) => match self.unary_precedence.get(p).map(|t| *t) {
+            Some(Token::Operator(_, p)) => match self.unary_precedence.get(p).map(|t| *t) {
                 Some(n) if n.left_associative => {
                     assert_eq!(n.left_associative, true);
                     let op = self.next().unwrap().clone();
@@ -826,7 +836,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         let mut expr = Expression::PrimaryExpression(self.parse_primary_expression());
         loop {
             match self.peek() {
-                Some(Token::Operator(p)) => match self.precedence.get(p).map(|t| *t) {
+                Some(Token::Operator(_, p)) => match self.precedence.get(p).map(|t| *t) {
                     Some(n) if precedence <= n.precedence => {
                         let mut left = vec![Box::new(expr)];
                         let op = self.next().unwrap().clone();
@@ -860,7 +870,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Identifier(..)) => {
                 let t = self.next().identifier_s().unwrap().clone();
                 match self.peek() {
-                    Some(Token::OpenParen()) => PrimaryExpression::Call(t, self.parse_args()),
+                    Some(Token::OpenParen(..)) => PrimaryExpression::Call(t, self.parse_args()),
                     _ => PrimaryExpression::Identifier(t),
                 }
             }
@@ -895,14 +905,14 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn parse_fun(&mut self) -> (Vec<Param>, TypeSignature, BlockExpression) {
         let params = self.parse_param_list();
         let return_type = match self.peek() {
-            Some(Token::Operator(t)) if &**t == "->" => {
+            Some(Token::Operator(_, t)) if &**t == "->" => {
                 read_token!(self, Token::Operator);
                 self.parse_type()
             }
             _ => TypeSignature::Infer,
         };
         let block = match self.peek() {
-            Some(Token::Operator(t)) if &**t == "=>" => {
+            Some(Token::Operator(_, t)) if &**t == "=>" => {
                 read_token!(self, Token::Operator);
                 let expr = self.parse_expression();
                 read_token!(self, Token::SemiColon);
@@ -960,19 +970,19 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         read_token!(self, Token::OpenParen);
 
         let init = match self.peek() {
-            Some(Token::SemiColon()) => None,
+            Some(Token::SemiColon(..)) => None,
             _ => Some(Box::new(self.parse_statement(false)))
         };
         read_token!(self, Token::SemiColon);
 
         let cond = match self.peek() {
-            Some(Token::SemiColon()) => None,
+            Some(Token::SemiColon(..)) => None,
             _ => Some(Box::new(self.parse_statement(false)))
         };
         read_token!(self, Token::SemiColon);
 
         let post_loop = match self.peek() {
-            Some(Token::CloseParen()) => None,
+            Some(Token::CloseParen(..)) => None,
             _ => Some(Box::new(self.parse_statement(false)))
         };
 
@@ -1066,7 +1076,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             ReturnStatement => {
                 read_token!(self, Token::Return);
                 let expr = match self.peek() {
-                    Some(Token::SemiColon()) => None,
+                    Some(Token::SemiColon(..)) => None,
                     _ => Some(self.parse_expression())
                 };
                 Statement::Return(expr)
@@ -1084,18 +1094,18 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         read_token!(self, Token::OpenParen);
         loop {
             match self.peek() {
-                Some(Token::CloseParen()) => {
+                Some(Token::CloseParen(..)) => {
                     read_token!(self, Token::CloseParen);
                     break;
                 }
                 Some(_) => {
                     args.push(self.parse_expression());
                     match self.peek() {
-                        Some(Token::CloseParen()) => {
+                        Some(Token::CloseParen(..)) => {
                             read_token!(self, Token::CloseParen);
                             break;
                         }
-                        Some(Token::Comma()) => {
+                        Some(Token::Comma(..)) => {
                             read_token!(self, Token::Comma);
                         }
                         t => unexpected_token!(t, self),
@@ -1116,8 +1126,8 @@ mod tests {
 
     fn to_token(prec: &PrecedenceMap, s: &str) -> Token {
         prec.get(s)
-            .map(|_| Token::Operator(From::from(s)))
-            .unwrap_or_else(|| Token::Integer(s.parse().unwrap()))
+            .map(|_| Token::Operator(0, From::from(s)))
+            .unwrap_or_else(|| Token::Integer(0, s.parse().unwrap()))
     }
 
     macro_rules! eval_bin {
@@ -1129,11 +1139,11 @@ mod tests {
     fn eval_tree(expr: &Expression) -> i128 {
         match expr {
             Expression::PrimaryExpression(PrimaryExpression::Literal(Literal::Integer(
-                Token::Integer(e),
+                Token::Integer(0, e),
             ))) => *e,
             Expression::PrimaryExpression(_) => unreachable!(),
             Expression::Op(op, ExprList::List(list)) => {
-                let op_s: &str = if let Token::Operator(s) = op {
+                let op_s: &str = if let Token::Operator(e, s) = op {
                     &*s
                 } else {
                     unreachable!()
@@ -1148,7 +1158,7 @@ mod tests {
                     "^" => eval_bin!(list, ^),
                     "**" => eval_tree(&*list[0]).pow(eval_tree(&*list[1]) as u32),
                     "?" => {
-                        if let Expression::Op(Token::Operator(op), ExprList::List(res_list)) =
+                        if let Expression::Op(Token::Operator(e, op), ExprList::List(res_list)) =
                             &*list[1]
                         {
                             if &**op != ":" {
@@ -1167,7 +1177,7 @@ mod tests {
                 }
             }
             Expression::Unary(op, ExprList::List(list)) => {
-                let op_s: &str = if let Token::Operator(s) = op {
+                let op_s: &str = if let Token::Operator(_, s) = op {
                     &*s
                 } else {
                     unreachable!()
@@ -1179,7 +1189,7 @@ mod tests {
                 }
             }
             Expression::PostFix(expr, op) => {
-                let op_s: &str = if let Token::Operator(s) = op {
+                let op_s: &str = if let Token::Operator(_, s) = op {
                     &*s
                 } else {
                     unreachable!()
@@ -1207,6 +1217,8 @@ mod tests {
             unary_precedence,
             postfix_precedence,
             iter: &mut vec.iter().peekable(),
+            fragment: &FragmentIterator::new("", ""),
+            sources: &Vec::new(),
         };
         let result = eval_tree(&context.parse_expression());
         println!("{} = {} (expected: {})", expr, result, expected);
@@ -1239,20 +1251,26 @@ mod tests {
         check("1 | 3 & 4", 1);
     }
 
+    fn test_parse(list: Vec<Token>) -> S {
+        parse(
+            &mut list.iter().peekable(),
+            &vec![],
+            &FragmentIterator::new("", ""),
+        )
+    }
+
     #[test]
     fn parse_fn_empty() {
-        let s = parse(
-            &mut vec![
-                Token::Let(),
-                Token::Identifier(From::from("bar")),
-                Token::Operator(From::from("=")),
-                Token::Identifier(From::from("foo")),
-                Token::OpenParen(),
-                Token::CloseParen(),
-                Token::SemiColon(),
+        let s = test_parse(
+            vec![
+                Token::Let(0),
+                Token::Identifier(1, From::from("bar")),
+                Token::Operator(2, From::from("=")),
+                Token::Identifier(3, From::from("foo")),
+                Token::OpenParen(4),
+                Token::CloseParen(5),
+                Token::SemiColon(6),
             ]
-            .iter()
-            .peekable(),
         );
         assert_eq!(
             Some(&s)
@@ -1281,19 +1299,17 @@ mod tests {
 
     #[test]
     fn parse_fn_one_arg() {
-        let s = parse(
-            &mut vec![
-                Token::Let(),
-                Token::Identifier(From::from("bar")),
-                Token::Operator(From::from("=")),
-                Token::Identifier(From::from("foo")),
-                Token::OpenParen(),
-                Token::Identifier(From::from("asd")),
-                Token::CloseParen(),
-                Token::SemiColon(),
+        let s = test_parse(
+            vec![
+                Token::Let(0),
+                Token::Identifier(1, From::from("bar")),
+                Token::Operator(2, From::from("=")),
+                Token::Identifier(3, From::from("foo")),
+                Token::OpenParen(4),
+                Token::Identifier(5, From::from("asd")),
+                Token::CloseParen(6),
+                Token::SemiColon(7),
             ]
-            .iter()
-            .peekable(),
         );
         assert_eq!(
             Some(&s)
@@ -1324,21 +1340,19 @@ mod tests {
 
     #[test]
     fn parse_fn_two_args() {
-        let s = parse(
-            &mut vec![
-                Token::Let(),
-                Token::Identifier(From::from("bar")),
-                Token::Operator(From::from("=")),
-                Token::Identifier(From::from("foo")),
-                Token::OpenParen(),
-                Token::Identifier(From::from("asd")),
-                Token::Comma(),
-                Token::Identifier(From::from("qwe")),
-                Token::CloseParen(),
-                Token::SemiColon(),
+        let s = test_parse(
+            vec![
+                Token::Let(0),
+                Token::Identifier(1, From::from("bar")),
+                Token::Operator(2, From::from("=")),
+                Token::Identifier(3, From::from("foo")),
+                Token::OpenParen(4),
+                Token::Identifier(5, From::from("asd")),
+                Token::Comma(6),
+                Token::Identifier(7, From::from("qwe")),
+                Token::CloseParen(8),
+                Token::SemiColon(9),
             ]
-            .iter()
-            .peekable(),
         );
         assert_eq!(
             Some(&s)
@@ -1370,23 +1384,21 @@ mod tests {
 
     #[test]
     fn parse_fn_three_args() {
-        let s = parse(
-            &mut vec![
-                Token::Let(),
-                Token::Identifier(From::from("bar")),
-                Token::Operator(From::from("=")),
-                Token::Identifier(From::from("foo")),
-                Token::OpenParen(),
-                Token::Identifier(From::from("asd")),
-                Token::Comma(),
-                Token::Identifier(From::from("qwe")),
-                Token::Comma(),
-                Token::Identifier(From::from("aoeu")),
-                Token::CloseParen(),
-                Token::SemiColon(),
+        let s = test_parse(
+            vec![
+                Token::Let(1),
+                Token::Identifier(2, From::from("bar")),
+                Token::Operator(3, From::from("=")),
+                Token::Identifier(4, From::from("foo")),
+                Token::OpenParen(5),
+                Token::Identifier(6, From::from("asd")),
+                Token::Comma(7),
+                Token::Identifier(8, From::from("qwe")),
+                Token::Comma(9),
+                Token::Identifier(10, From::from("aoeu")),
+                Token::CloseParen(11),
+                Token::SemiColon(12),
             ]
-            .iter()
-            .peekable(),
         );
         assert_eq!(
             Some(&s)

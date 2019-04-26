@@ -317,7 +317,7 @@ impl Context {
 
     pub fn primary_expr(&mut self, k: pp::PrimaryExpression) -> cp::PrimaryExpression {
         match k {
-            pp::PrimaryExpression::Literal(pp::Literal::Integer(pt::Token::Integer(i))) => {
+            pp::PrimaryExpression::Literal(pp::Literal::Integer(pt::Token::Integer(_, i))) => {
                 cp::PrimaryExpression::Number(ct::Token::Number(0, i.to_string()))
             }
             pp::PrimaryExpression::Identifier(i) => {

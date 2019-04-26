@@ -2,6 +2,7 @@ use purkkaparser::parse_file;
 use purkkaparser::parser::*;
 use purkkaparser::token::Token;
 
+use fragment::fragment::{FragmentIterator};
 use purkkatypes::{Param, TypeSignature};
 
 fn test_parse_file(s: &str) -> S {
@@ -12,12 +13,14 @@ fn test_parse_file(s: &str) -> S {
 fn parse_simple() {
     parse(
         &mut vec![
-            Token::Let(),
-            Token::Identifier(From::from("foo")),
-            Token::SemiColon(),
+            Token::Let(0),
+            Token::Identifier(1, From::from("foo")),
+            Token::SemiColon(2),
         ]
         .iter()
         .peekable(),
+        &vec![],
+        &FragmentIterator::new("", "")
     );
 }
 

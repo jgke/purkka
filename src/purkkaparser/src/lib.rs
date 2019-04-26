@@ -14,6 +14,6 @@ use parser::{parse, S};
 use tokenizer::tokenize;
 
 pub fn parse_file(filename: &str, content: &str) -> S {
-    let (tokens, _interner) = tokenize(content, filename);
-    parse(&mut tokens.iter().peekable())
+    let (tokens, _interner, fragment, sources) = tokenize(content, filename);
+    parse(&mut tokens.iter().peekable(), &sources, &fragment)
 }
