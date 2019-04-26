@@ -3,6 +3,8 @@ use std::convert::TryFrom;
 use std::iter::Peekable;
 use std::rc::Rc;
 
+use regex::Regex;
+
 use purkkatypes::{EnumField, Param, StructField, TypeSignature};
 
 use crate::token::Token;
@@ -20,16 +22,33 @@ grammar! {
 
     Unit
        -> Declaration
+        | OperatorOverload
         | ImportFile
         | Typedef
+        ;
+
+    OperatorOverload
+       -> #Token::NewOperator #Token::StringLiteral #Token::Operator Function
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum OperatorOverload { OperatorOverload(Rc<str>, TypeSignature, Assignment) }
         ;
 
     Declaration
        -> Declaration. Visibility Mutability #Token::Identifier MaybeType #Token::SemiColon
         | Definition. Visibility Mutability #Token::Identifier MaybeType #Token::Operator Assignment #Token::SemiColon
-        | Function. Visibility #Token::Fun #Token::Identifier ParamList #Token::Operator Block
+        | Function. Visibility #Token::Fun #Token::Identifier Function
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Declaration { Declaration(bool, bool, Rc<str>, Option<TypeSignature>, Option<Assignment>) }
+        ;
+
+    Function
+       -> ParamList #Token::Operator TypeSignature FunctionBody
+        | Infer. ParamList FunctionBody
+        ;
+
+    FunctionBody
+       -> Block
+        | Expression #Token::SemiColon
         ;
 
     Typedef
@@ -357,7 +376,7 @@ fn default_bin_ops() -> PrecedenceMap {
 fn default_unary_ops() -> PrecedenceMap {
     let mut precedence = HashMap::new();
 
-    // Unary plus (nop), unary minus (negation), unary not (!= 0), bitwise not
+    // Unary plus (nop), unary minus (negation), logical not (!= 0), bitwise not
     precedence.insert(From::from("+"), Precedence::unary());
     precedence.insert(From::from("-"), Precedence::unary());
     precedence.insert(From::from("!"), Precedence::unary());
@@ -437,6 +456,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             default unexpected_token!(_t, self),
 
             Declaration => Unit::Declaration(self.parse_declaration()),
+            OperatorOverload => Unit::OperatorOverload(self.parse_new_operator()),
             ImportFile => Unit::ImportFile(self.parse_include()),
         )
     }
@@ -496,6 +516,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_type_(&mut self, maybe_fn: bool) -> TypeSignature {
+        let ref_regex = Regex::new(r"^(&|&\?)+$").unwrap();
         let ty = match self.peek() {
             /* int */
             /* int -> int */
@@ -567,13 +588,30 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 TypeSignature::Array(Box::new(ty), expr)
             }
             /* &int, &?int */
-            Some(Token::Reference(..)) | Some(Token::NullableReference(..)) => {
-                let nullable = maybe_read_token!(self, Token::NullableReference).is_some();
-                if !nullable {
-                    read_token!(self, Token::Reference);
+            Some(Token::Operator(t)) if ref_regex.is_match(t) => {
+                read_token!(self, Token::Operator);
+                let mut ty = self.parse_type_(false);
+                let mut ref_iter = t.chars().rev();
+                loop {
+                    match ref_iter.next() {
+                        Some('?') => {
+                            assert_eq!(ref_iter.next(), Some('&'));
+                            ty = TypeSignature::Pointer {
+                                nullable: true,
+                                ty: Box::new(ty),
+                            };
+                        }
+                        Some('&') => {
+                            ty = TypeSignature::Pointer {
+                                nullable: false,
+                                ty: Box::new(ty),
+                            }
+                        }
+                        None => break,
+                        _ => unreachable!(),
+                    }
                 }
-                let ty = Box::new(self.parse_type_(false));
-                TypeSignature::Pointer { nullable, ty }
+                ty
             }
             t => unexpected_token!(t, self),
         };
@@ -685,6 +723,19 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         things
     }
 
+    fn parse_new_operator(&mut self) -> OperatorOverload {
+        read_token!(self, Token::NewOperator);
+        let op = if let Token::StringLiteral(s) = read_token!(self, Token::StringLiteral) {
+            s
+        } else {
+            unreachable!();
+        };
+        let (params, return_type, block) = self.parse_fun();
+        let ty = TypeSignature::Function(params.clone(), Box::new(return_type.clone()));
+        let body = Assignment::Expression(self.fun_to_expr(params, return_type, block));
+        OperatorOverload::OperatorOverload(op, ty, body)
+    }
+
     fn parse_include(&mut self) -> ImportFile {
         read_token!(self, Token::Import);
         let ffi = match self.peek() {
@@ -790,7 +841,17 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
             _ => TypeSignature::Infer,
         };
-        let block = self.parse_block_expression();
+        let block = match self.peek() {
+            Some(Token::Operator(t)) if &**t == "=>" => {
+                read_token!(self, Token::Operator);
+                let expr = self.parse_expression();
+                read_token!(self, Token::SemiColon);
+                BlockExpression::Block(Block::Statements(vec![Box::new(Statement::Return(Some(
+                    expr,
+                )))]))
+            }
+            _ => self.parse_block_expression(),
+        };
         (params, return_type, block)
     }
 
@@ -1034,10 +1095,11 @@ mod tests {
     #[test]
     fn parse_expr_and_eval() {
         check("0", 0);
-        check("-1", -1);
+        check("- 1", -1);
         check("1 + 1", 2);
-        check("1 + -1", 0);
-        check("1 * -1", -1);
+        check("1 & ~ 1", 0);
+        check("1 + - 1", 0);
+        check("1 * - 1", -1);
         check("1 + 2 * 2", 5);
         check("1 - 2 * 2", -3);
         check("2 ** 3", 8);

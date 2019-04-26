@@ -115,3 +115,19 @@ fn parse_main() {
     );
     assert_eq!(fun, lambda);
 }
+
+#[test]
+fn parse_terse_fn() {
+    let normal = test_parse_file(
+        "fun fn(arg: int) -> int {
+    return arg;
+};",
+    );
+    let terse = test_parse_file("fun fn(arg: int) -> int => arg;");
+    assert_eq!(normal, terse);
+}
+
+#[test]
+fn parse_operators() {
+    test_parse_file("operator \"&~\" (left: long, bits: long) => left & ~bits;");
+}

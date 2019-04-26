@@ -250,6 +250,7 @@ dependencies = [
  "lalr 0.1.0",
  "purkkaparser_procmacros 0.1.0",
  "purkkatypes 0.1.0",
+ "regex 1.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "shared 0.1.0",
 ]
 

@@ -10,3 +10,4 @@ lalr = { path="../lalr" }
 purkkaparser_procmacros = { path="../purkkaparser_procmacros" }
 purkkatypes = { path="../purkkatypes" }
 shared = { path="../shared" }
+regex = "1.1.6"

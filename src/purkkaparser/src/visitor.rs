@@ -15,6 +15,9 @@ pub trait ASTVisitor {
         walk_unit(self, s);
     }
     fn visit_import(&mut self, _s: &mut ImportFile) {}
+    fn visit_operator_overload(&mut self, s: &mut OperatorOverload) {
+        walk_operator_overload(self, s);
+    }
     fn visit_declaration(&mut self, s: &mut Declaration) {
         walk_declaration(self, s);
     }
@@ -73,7 +76,17 @@ pub fn walk_unit<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Unit) {
     match s {
         Unit::Declaration(decl) => visitor.visit_declaration(decl),
         Unit::ImportFile(import) => visitor.visit_import(import),
+        Unit::OperatorOverload(op) => visitor.visit_operator_overload(op),
         Unit::Typedef(_) => unimplemented!(),
+    }
+}
+
+pub fn walk_operator_overload<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut OperatorOverload) {
+    match s {
+        OperatorOverload::OperatorOverload(_, ty, body) => {
+            visitor.visit_ty(ty);
+            visitor.visit_assignment(body);
+        }
     }
 }
 

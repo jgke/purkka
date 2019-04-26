@@ -20,10 +20,6 @@ pub enum Token {
     Comma(),
     SemiColon(),
 
-    // References: & &?
-    Reference(),
-    NullableReference(),
-
     // Keywords
     Pub(),
     Const(),
@@ -37,6 +33,7 @@ pub enum Token {
     Struct(),
     Enum(),
     Return(),
+    NewOperator(),
 
     Import(),
 }
@@ -52,8 +49,6 @@ pub static TOKEN_TYPES: &[(&str, fn() -> Token)] = &[
     ("}", CloseBrace),
     ("[", OpenBracket),
     ("]", CloseBracket),
-    ("&?", NullableReference),
-    ("&", Reference),
 ];
 
 pub static KEYWORDS: &[(&str, fn() -> Token)] = &[
@@ -70,4 +65,5 @@ pub static KEYWORDS: &[(&str, fn() -> Token)] = &[
     ("enum", Enum),
     ("return", Return),
     ("import", Import),
+    ("operator", NewOperator),
 ];
