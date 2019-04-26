@@ -117,15 +117,7 @@ impl Context {
         block: pp::BlockExpression,
     ) -> cp::CompoundStatement {
         match block {
-            pp::BlockExpression::ConditionalExpression(cond) => cp::CompoundStatement::PushScope(
-                cp::PushScope::OpenBrace(ct::Token::OpenBrace(0)),
-                Box::new(cp::StatementList::StatementOrDeclaration(
-                    cp::StatementOrDeclaration::Statement(
-                        self.conditional_expression_to_statement(cond),
-                    ),
-                )),
-                ct::Token::CloseBrace(0),
-            ),
+            pp::BlockExpression::If(_arms, _otherwise) => unimplemented!(),
             pp::BlockExpression::Block(block) => cp::CompoundStatement::PushScope(
                 cp::PushScope::OpenBrace(ct::Token::OpenBrace(0)),
                 Box::new(self.block_to_statement_list(block)),
@@ -148,13 +140,6 @@ impl Context {
                     })
             }
         }
-    }
-
-    pub fn conditional_expression_to_statement(
-        &mut self,
-        _block: pp::ConditionalExpression,
-    ) -> cp::Statement {
-        unimplemented!()
     }
 
     pub fn statement_to_statement_or_declaration(

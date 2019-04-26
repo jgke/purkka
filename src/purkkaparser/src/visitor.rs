@@ -43,12 +43,6 @@ pub trait ASTVisitor {
     fn visit_block(&mut self, s: &mut Block) {
         walk_block(self, s);
     }
-    fn visit_conditional_expression(&mut self, s: &mut ConditionalExpression) {
-        walk_conditional_expression(self, s);
-    }
-    fn visit_while_expression(&mut self, s: &mut WhileExpression) {
-        walk_while_expression(self, s);
-    }
     fn visit_statement(&mut self, s: &mut Statement) {
         walk_statement(self, s);
     }
@@ -189,17 +183,7 @@ pub fn walk_block_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Bl
         BlockExpression::Block(block) => {
             visitor.visit_block(block);
         }
-        BlockExpression::ConditionalExpression(cond) => visitor.visit_conditional_expression(cond),
-        BlockExpression::WhileExpression(cond) => visitor.visit_while_expression(cond),
-    }
-}
-
-pub fn walk_conditional_expression<T: ASTVisitor + ?Sized>(
-    visitor: &mut T,
-    s: &mut ConditionalExpression,
-) {
-    match s {
-        ConditionalExpression::Exprs(arms, otherwise) => {
+        BlockExpression::If(arms, otherwise) => {
             arms.iter_mut().for_each(|(condition, arm)| {
                 visitor.visit_expression(condition.deref_mut());
                 visitor.visit_block(arm.deref_mut());
@@ -208,16 +192,23 @@ pub fn walk_conditional_expression<T: ASTVisitor + ?Sized>(
                 .iter_mut()
                 .for_each(|b| visitor.visit_block(b.deref_mut()));
         }
-    }
-}
-
-pub fn walk_while_expression<T: ASTVisitor + ?Sized>(
-    visitor: &mut T,
-    s: &mut WhileExpression,
-) {
-    match s {
-        WhileExpression::While(expr, block, otherwise) => {
+        BlockExpression::While(expr, block, otherwise) => {
             visitor.visit_expression(expr.deref_mut());
+            visitor.visit_block(block.deref_mut());
+            otherwise
+                .iter_mut()
+                .for_each(|b| visitor.visit_block(b.deref_mut()));
+        }
+        BlockExpression::For(init, cond, postloop, block, otherwise) => {
+            init
+                .iter_mut()
+                .for_each(|b| visitor.visit_statement(b.deref_mut()));
+            cond
+                .iter_mut()
+                .for_each(|b| visitor.visit_statement(b.deref_mut()));
+            postloop
+                .iter_mut()
+                .for_each(|b| visitor.visit_statement(b.deref_mut()));
             visitor.visit_block(block.deref_mut());
             otherwise
                 .iter_mut()

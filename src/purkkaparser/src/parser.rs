@@ -197,22 +197,30 @@ grammar! {
        -> Block
         | ConditionalExpression
         | WhileExpression
+        | ForExpression
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum BlockExpression {
+            Block(Block),
+            If(Vec<(Box<Expression>, Box<Block>)>, Option<Box<Block>>),
+            While(Box<Expression>, Box<Block>, Option<Box<Block>>),
+            For(Option<Box<Statement>>, Option<Box<Statement>>, Option<Box<Statement>>, Box<Block>, Option<Box<Block>>),
+        }
         ;
 
     ConditionalExpression
-        -> #Token::If Expression Block IfTail
-        @ #[derive(Clone, Debug, PartialEq)]
-        pub enum ConditionalExpression {
-            Exprs(Vec<(Box<Expression>, Box<Block>)>, Option<Box<Block>>)
-        }
+       -> #Token::If Expression Block IfTail
         ;
 
     WhileExpression
-        -> #Token::While Expression Block IfTail
-        @ #[derive(Clone, Debug, PartialEq)]
-        pub enum WhileExpression {
-            While(Box<Expression>, Box<Block>, Option<Box<Block>>)
-        }
+       -> #Token::While Expression Block IfTail
+        ;
+
+    ForExpression
+       -> #Token::For #Token::OpenParen ForConditions #Token::CloseParen Block IfTail
+        ;
+
+    ForConditions
+       -> MaybeExpression #Token::SemiColon MaybeExpression #Token::SemiColon MaybeExpression
         ;
 
     IfTail
@@ -487,13 +495,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             self.peek() => _t,
             default unexpected_token!(_t, self),
 
-            Declaration => Unit::Declaration(self.parse_declaration()),
+            Declaration => Unit::Declaration(self.parse_declaration(true)),
             OperatorOverload => Unit::OperatorOverload(self.parse_new_operator()),
             ImportFile => Unit::ImportFile(self.parse_include()),
         )
     }
 
-    fn parse_declaration(&mut self) -> Declaration {
+    fn parse_declaration(&mut self, semi: bool) -> Declaration {
         let visible = maybe_read_token!(self, Token::Pub).is_some();
         let mutable = match self.next() {
             Some(Token::Let()) => true,
@@ -539,7 +547,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
             _ => Declaration::Declaration(visible, mutable, ident, ty, None),
         };
-        read_token!(self, Token::SemiColon);
+
+        if semi {
+            read_token!(self, Token::SemiColon);
+        }
         res
     }
 
@@ -919,14 +930,15 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_block_expression(&mut self) -> BlockExpression {
         match self.peek() {
-            Some(Token::If(..)) => BlockExpression::ConditionalExpression(self.parse_if_expr()),
-            Some(Token::While(..)) => BlockExpression::WhileExpression(self.parse_while_expr()),
+            Some(Token::If(..)) => self.parse_if_expr(),
+            Some(Token::While(..)) => self.parse_while_expr(),
+            Some(Token::For(..)) => self.parse_for_expr(),
             Some(Token::OpenBrace(..)) => BlockExpression::Block(self.parse_block()),
             t => unexpected_token!(t, self),
         }
     }
 
-    fn parse_while_expr(&mut self) -> WhileExpression {
+    fn parse_while_expr(&mut self) -> BlockExpression {
         // while expr block [else block]
         read_token!(self, Token::While);
         let expr = self.parse_expression();
@@ -938,8 +950,45 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
             _ => None
         };
-        WhileExpression::While(Box::new(expr), Box::new(block), else_block)
+        BlockExpression::While(Box::new(expr), Box::new(block), else_block)
     }
+
+    fn parse_for_expr(&mut self) -> BlockExpression {
+        // for (maybe-statement ; maybe-statement ; maybe-statement) block [else block]
+        read_token!(self, Token::For);
+
+        read_token!(self, Token::OpenParen);
+
+        let init = match self.peek() {
+            Some(Token::SemiColon()) => None,
+            _ => Some(Box::new(self.parse_statement(false)))
+        };
+        read_token!(self, Token::SemiColon);
+
+        let cond = match self.peek() {
+            Some(Token::SemiColon()) => None,
+            _ => Some(Box::new(self.parse_statement(false)))
+        };
+        read_token!(self, Token::SemiColon);
+
+        let post_loop = match self.peek() {
+            Some(Token::CloseParen()) => None,
+            _ => Some(Box::new(self.parse_statement(false)))
+        };
+
+        read_token!(self, Token::CloseParen);
+
+        let block = self.parse_block();
+        let else_block = match self.peek() {
+            Some(Token::Else(..)) => {
+                read_token!(self, Token::Else);
+                Some(Box::new(self.parse_block()))
+            }
+            _ => None
+        };
+        BlockExpression::For(init, cond, post_loop, Box::new(block), else_block)
+    }
+
 
     fn parse_literal(&mut self) -> Literal {
         match self.peek() {
@@ -950,7 +999,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         }
     }
 
-    fn parse_if_expr(&mut self) -> ConditionalExpression {
+    fn parse_if_expr(&mut self) -> BlockExpression {
         // if expr block [elif expr block ]* [else block]
         read_token!(self, Token::If);
         let mut choices = Vec::new();
@@ -975,7 +1024,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 _ => break,
             }
         }
-        ConditionalExpression::Exprs(choices, or_else)
+        BlockExpression::If(choices, or_else)
     }
 
     fn parse_block(&mut self) -> Block {
@@ -993,7 +1042,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     read_token!(self, Token::SemiColon);
                 }
                 Some(_) => {
-                    stmts.push(Box::new(self.parse_stmt()));
+                    stmts.push(Box::new(self.parse_statement(true)));
                 }
                 t => unexpected_token!(t, self),
             }
@@ -1003,14 +1052,14 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     #[allow(unreachable_patterns)]
-    fn parse_stmt(&mut self) -> Statement {
+    fn parse_statement(&mut self, semi: bool) -> Statement {
         let res = match_first!(
             self.peek() => _t,
             default unexpected_token!(_t, self),
 
             // directly return the block_expr since it doesn't need a semicolon
             BlockExpression => return Statement::BlockExpression(self.parse_block_expression()),
-            Declaration => return Statement::Declaration(self.parse_declaration()),
+            Declaration => return Statement::Declaration(self.parse_declaration(semi)),
             // Expressions can contain BlockExpressions, so this is
             // partially unreachable
             Expression => Statement::Expression(self.parse_expression()),
@@ -1023,7 +1072,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 Statement::Return(expr)
             },
         );
-        read_token!(self, Token::SemiColon);
+        if semi {
+            read_token!(self, Token::SemiColon);
+        }
         res
     }
 
