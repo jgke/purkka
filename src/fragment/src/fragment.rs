@@ -155,7 +155,7 @@ impl Source {
     }
 
     pub fn is_dummy(&self) -> bool {
-        return self.span.lo == usize::max_value();
+        self.span.lo == usize::max_value()
     }
 }
 
@@ -227,7 +227,7 @@ impl Iterator for FragmentIterator {
 
     /// Get next char in the current fragment.
     fn next(&mut self) -> Option<char> {
-        if self.vec_iter.0.len() > 0 {
+        if !self.vec_iter.0.is_empty() {
             if self.vec_iter.0.len() > self.vec_iter.1 {
                 let (s, c) = self.vec_iter.0[self.vec_iter.1];
                 self.vec_iter.1 += 1;
@@ -289,7 +289,7 @@ impl FragmentIterator {
         let mut fragments = Vec::new();
         fragments.push(Fragment {
             content: static_content,
-            offset: offset,
+            offset,
         });
         if !contents.contains_key(filename) {
             contents.insert(filename.to_string(), content.to_string());
@@ -507,7 +507,7 @@ impl FragmentIterator {
 
     /// Peek the next character in the current fragment.
     pub fn peek(&self) -> Option<char> {
-        if self.vec_iter.0.len() > 0 {
+        if !self.vec_iter.0.is_empty() {
             self.vec_iter.0.get(self.vec_iter.1).map(|(_s, c)| *c)
         } else {
             self.char_iter.peek()
@@ -516,7 +516,7 @@ impl FragmentIterator {
 
     /// Peek the next character in the current fragment.
     pub fn peek_n(&self, n: usize) -> String {
-        if self.vec_iter.0.len() > 0 {
+        if !self.vec_iter.0.is_empty() {
             self.vec_iter.0[self.vec_iter.1..min(self.vec_iter.0.len(), self.vec_iter.1 + n)]
                 .iter()
                 .map(|(_s, c)| *c)
@@ -529,7 +529,7 @@ impl FragmentIterator {
 
     /// Get the rest of the current fragment as a String
     pub fn as_str(&self) -> String {
-        if self.vec_iter.0.len() > 0 {
+        if !self.vec_iter.0.is_empty() {
             self.vec_iter.0[self.vec_iter.1..]
                 .iter()
                 .map(|(_s, c)| *c)
@@ -541,7 +541,7 @@ impl FragmentIterator {
 
     /// Returns whether the current fragment starts with `s`.
     pub fn starts_with(&self, s: &str) -> bool {
-        if self.vec_iter.0.len() > 0 {
+        if !self.vec_iter.0.is_empty() {
             let hi = min(self.vec_iter.0.len(), self.vec_iter.1 + s.len());
             let ss = self.vec_iter.0[self.vec_iter.1..hi]
                 .iter()
@@ -579,7 +579,7 @@ impl FragmentIterator {
     fn advance_fragment(&mut self) -> bool {
         if self.current_fragment + 1 < self.fragments.len() {
             self.current_fragment += 1;
-            if self.vec_iter.0.len() > 0 {
+            if !self.vec_iter.0.is_empty() {
                 panic!();
             }
             self.char_iter = self.current_fragment().content.char_indices();
@@ -593,7 +593,7 @@ impl FragmentIterator {
     pub fn advance_and_reset_span(&mut self) -> bool {
         if self.current_fragment + 1 < self.fragments.len() {
             self.current_fragment += 1;
-            if self.vec_iter.0.len() > 0 {
+            if !self.vec_iter.0.is_empty() {
                 panic!();
             }
             self.char_iter = self.current_fragment().content.char_indices();
@@ -638,7 +638,7 @@ impl FragmentIterator {
         }
         let max = lines
             .iter()
-            .flat_map(|(s, _)| s.split("\n").map(str::to_owned).collect::<Vec<_>>())
+            .flat_map(|(s, _)| s.split('\n').map(str::to_owned).collect::<Vec<_>>())
             .fold(0, |prev, s| std::cmp::max(prev, s.len()));
         lines
             .iter()
@@ -648,8 +648,8 @@ impl FragmentIterator {
                     return format!("{} ({}: {}-{})\n", s, file, lo, hi);
                 }
                 let lines = s
-                    .split("\n")
-                    .map(|t| t.to_string())
+                    .split('\n')
+                    .map(ToString::to_string)
                     .collect::<Vec<String>>();
                 if lines.len() == 1 {
                     if s == &builtin {

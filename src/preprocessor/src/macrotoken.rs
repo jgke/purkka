@@ -111,7 +111,7 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
                 "void" => Void(index),
                 "volatile" => Volatile(index),
                 "while" => While(index),
-                s => Identifier(index, s.to_string()),
+                s => Identifier(index, From::from(s)),
             }
         }
 
@@ -128,8 +128,8 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
         MacroTokenType::Punctuation(Punctuation::Semicolon) => Semicolon(index),
         MacroTokenType::Punctuation(Punctuation::Varargs) => Varargs(index),
 
-        MacroTokenType::StringLiteral(s) => StringLiteral(index, s.to_string()),
-        MacroTokenType::Number(s) => Number(index, s.to_string()),
+        MacroTokenType::StringLiteral(s) => StringLiteral(index, s.clone()),
+        MacroTokenType::Number(s) => Number(index, s.clone()),
         MacroTokenType::Special(SpecialType::Sizeof(expr)) => Sizeof(
             index,
             expr.iter()
@@ -186,7 +186,7 @@ impl MacroToken {
                 "asm ({})",
                 exprs
                     .iter()
-                    .map(|t| t.to_src())
+                    .map(MacroToken::to_src)
                     .collect::<Vec<_>>()
                     .join(" ")
             ),

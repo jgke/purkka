@@ -125,7 +125,7 @@ fn default_postfix_ops() -> PrecedenceMap {
     precedence
 }
 
-pub fn parse(iter: Iter, sources: &Vec<Source>, fragment_iter: &FragmentIterator) -> S {
+pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator) -> S {
     let mut context = ParseContext {
         unary_precedence: default_unary_ops(),
         postfix_precedence: default_postfix_ops(),
@@ -183,15 +183,15 @@ struct ParseContext<'a, 'b> {
     precedence: PrecedenceMap,
     iter: Iter<'a, 'b>,
     fragment: &'a FragmentIterator,
-    sources: &'a Vec<Source>,
+    sources: &'a [Source],
 }
 
 impl<'a, 'b> ParseContext<'a, 'b> {
     fn next(&mut self) -> Option<&'a Token> {
-        From::from(self.iter.next())
+        self.iter.next()
     }
     fn peek(&mut self) -> Option<&&'a Token> {
-        From::from(self.iter.peek())
+        self.iter.peek()
     }
     fn parse_translation_unit(&mut self) -> TranslationUnit {
         let mut units = Vec::new();
@@ -208,9 +208,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             self.peek() => _t,
             default unexpected_token!(_t, self),
 
-            Declaration => Unit::Declaration(self.parse_declaration(true)),
-            OperatorOverload => Unit::OperatorOverload(self.parse_new_operator()),
-            ImportFile => Unit::ImportFile(self.parse_include()),
+            Declaration => Unit::Declaration(Box::new(self.parse_declaration(true))),
+            OperatorOverload => Unit::OperatorOverload(Box::new(self.parse_new_operator())),
+            ImportFile => Unit::ImportFile(Box::new(self.parse_include())),
         )
     }
 
@@ -231,11 +231,11 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     false,
                     ident,
                     None,
-                    Some(self.fun_to_expr(
+                    Some(Box::new(self.fun_to_expr(
                         params,
                         return_type,
                         block,
-                    )),
+                    ))),
                 );
             }
             t => unexpected_token!(t, self),
@@ -247,7 +247,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         let ty = match self.peek() {
             Some(Token::Operator(_, t)) if &**t == ":" => {
                 read_token!(self, Token::Operator);
-                Some(self.parse_type())
+                Some(Box::new(self.parse_type()))
             }
             _ => None,
         };
@@ -255,7 +255,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         let res = match self.peek() {
             Some(Token::Operator(_, t)) if &**t == "=" => {
                 read_token!(self, Token::Operator);
-                let expr = self.parse_expression();
+                let expr = Box::new(self.parse_expression());
                 Declaration::Declaration(visible, mutable, ident, ty, Some(expr))
             }
             _ => Declaration::Declaration(visible, mutable, ident, ty, None),
@@ -282,93 +282,15 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
             /* (foo, bar: int) -> int */
             /* (int, int) */
-            Some(Token::OpenParen(..)) => {
-                let params = self.parse_param_list();
-                match self.peek() {
-                    Some(Token::Operator(_, t)) if &**t == "->" && maybe_fn => {
-                        read_token!(self, Token::Operator);
-                        let return_type = self.parse_type();
-                        return TypeSignature::Function(params, Box::new(return_type));
-                    }
-                    t => {
-                        let ty_list: Result<Vec<Box<TypeSignature>>, ()> = params
-                            .clone()
-                            .into_iter()
-                            .map(TryFrom::try_from)
-                            .map(|t| t.map(Box::new))
-                            .collect();
-                        if ty_list.is_ok() {
-                            TypeSignature::Tuple(ty_list.unwrap())
-                        } else {
-                            unexpected_token!(t, self)
-                        }
-                    }
-                }
-            }
+            Some(Token::OpenParen(..)) => self.parse_fn_or_tuple(maybe_fn),
             /* struct { foo: int, bar: int } */
-            Some(Token::Struct(..)) => {
-                read_token!(self, Token::Struct);
-                let name = maybe_read_token!(self, Token::Identifier);
-                read_token!(self, Token::OpenBrace);
-                let fields = self.parse_struct_list();
-                read_token!(self, Token::CloseBrace);
-                TypeSignature::Struct(name.identifier_s().map(|t| t.clone()), fields)
-            }
+            Some(Token::Struct(..)) => self.parse_struct(),
             /* enum { foo, bar(int) } */
-            Some(Token::Enum(..)) => {
-                read_token!(self, Token::Enum);
-                let name = maybe_read_token!(self, Token::Identifier);
-                read_token!(self, Token::OpenBrace);
-                let fields = self.parse_enum_list();
-                read_token!(self, Token::CloseBrace);
-                TypeSignature::Enum(name.identifier_s().map(|t| t.clone()), fields)
-            }
+            Some(Token::Enum(..)) => self.parse_enum(),
             /* [int] */
-            Some(Token::OpenBracket(..)) => {
-                read_token!(self, Token::OpenBracket);
-                let ty = self.parse_type();
-                let expr = match self.peek() {
-                    Some(Token::SemiColon(..)) => {
-                        read_token!(self, Token::SemiColon);
-                        let lit = self.parse_literal();
-                        match lit {
-                            Literal::Integer(Token::Integer(_, i)) => {
-                                Some(TryFrom::try_from(i).unwrap())
-                            }
-                            _ => panic!("Not implemented: compile-time expr parsing"),
-                        }
-                    }
-                    _ => None,
-                };
-                read_token!(self, Token::CloseBracket);
-                TypeSignature::Array(Box::new(ty), expr)
-            }
+            Some(Token::OpenBracket(..)) => self.parse_array(),
             /* &int, &?int */
-            Some(Token::Operator(_, t)) if ref_regex.is_match(t) => {
-                read_token!(self, Token::Operator);
-                let mut ty = self.parse_type_(false);
-                let mut ref_iter = t.chars().rev();
-                loop {
-                    match ref_iter.next() {
-                        Some('?') => {
-                            assert_eq!(ref_iter.next(), Some('&'));
-                            ty = TypeSignature::Pointer {
-                                nullable: true,
-                                ty: Box::new(ty),
-                            };
-                        }
-                        Some('&') => {
-                            ty = TypeSignature::Pointer {
-                                nullable: false,
-                                ty: Box::new(ty),
-                            }
-                        }
-                        None => break,
-                        _ => unreachable!(),
-                    }
-                }
-                ty
-            }
+            Some(Token::Operator(_, t)) if ref_regex.is_match(t) => self.parse_ptr(t),
             t => unexpected_token!(t, self),
         };
         if maybe_fn {
@@ -376,6 +298,93 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         } else {
             ty
         }
+    }
+
+    fn parse_fn_or_tuple(&mut self, maybe_fn: bool) -> TypeSignature {
+        let params = self.parse_param_list();
+        match self.peek() {
+            Some(Token::Operator(_, t)) if &**t == "->" && maybe_fn => {
+                read_token!(self, Token::Operator);
+                let return_type = self.parse_type();
+                TypeSignature::Function(params, Box::new(return_type))
+            }
+            t => {
+                let ty_list: Result<Vec<TypeSignature>, ()> = params
+                    .clone()
+                    .into_iter()
+                    .map(TryFrom::try_from)
+                    .collect();
+                if ty_list.is_ok() {
+                    TypeSignature::Tuple(ty_list.unwrap())
+                } else {
+                    unexpected_token!(t, self)
+                }
+            }
+        }
+    }
+
+    fn parse_struct(&mut self) -> TypeSignature {
+        read_token!(self, Token::Struct);
+        let name = maybe_read_token!(self, Token::Identifier);
+        read_token!(self, Token::OpenBrace);
+        let fields = self.parse_struct_list();
+        read_token!(self, Token::CloseBrace);
+        TypeSignature::Struct(name.identifier_s().cloned(), fields)
+    }
+
+    fn parse_enum(&mut self) -> TypeSignature {
+        read_token!(self, Token::Enum);
+        let name = maybe_read_token!(self, Token::Identifier);
+        read_token!(self, Token::OpenBrace);
+        let fields = self.parse_enum_list();
+        read_token!(self, Token::CloseBrace);
+        TypeSignature::Enum(name.identifier_s().cloned(), fields)
+    }
+
+    fn parse_array(&mut self) -> TypeSignature {
+        read_token!(self, Token::OpenBracket);
+        let ty = self.parse_type();
+        let expr = match self.peek() {
+            Some(Token::SemiColon(..)) => {
+                read_token!(self, Token::SemiColon);
+                let lit = self.parse_literal();
+                match lit {
+                    Literal::Integer(Token::Integer(_, i)) => {
+                        Some(TryFrom::try_from(i).unwrap())
+                    }
+                    _ => panic!("Not implemented: compile-time expr parsing"),
+                }
+            }
+            _ => None,
+        };
+        read_token!(self, Token::CloseBracket);
+        TypeSignature::Array(Box::new(ty), expr)
+    }
+
+    fn parse_ptr(&mut self, op: &str) -> TypeSignature {
+        read_token!(self, Token::Operator);
+        let mut ty = self.parse_type_(false);
+        let mut ref_iter = op.chars().rev();
+        loop {
+            match ref_iter.next() {
+                Some('?') => {
+                    assert_eq!(ref_iter.next(), Some('&'));
+                    ty = TypeSignature::Pointer {
+                        nullable: true,
+                        ty: Box::new(ty),
+                    };
+                }
+                Some('&') => {
+                    ty = TypeSignature::Pointer {
+                        nullable: false,
+                        ty: Box::new(ty),
+                    }
+                }
+                None => break,
+                _ => unreachable!(),
+            }
+        }
+        ty
     }
 
     fn maybe_parse_fn(&mut self, arg_ty: TypeSignature) -> TypeSignature {
@@ -489,7 +498,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         let (params, return_type, block) = self.parse_fun();
         let ty = TypeSignature::Function(params.clone(), Box::new(return_type.clone()));
         let body = self.fun_to_expr(params, return_type, block);
-        OperatorOverload::OperatorOverload(op, ty, body)
+        OperatorOverload::OperatorOverload(op, Box::new(ty), Box::new(body))
     }
 
     fn parse_include(&mut self) -> ImportFile {
@@ -520,50 +529,42 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_expression_(&mut self, precedence: usize) -> Expression {
-        match self.peek() {
-            Some(Token::Operator(_, p)) => match self.unary_precedence.get(p).map(|t| *t) {
+        if let Some(Token::Operator(_, p)) = self.peek() {
+            match self.unary_precedence.get(p).copied() {
                 Some(n) if n.left_associative => {
                     assert_eq!(n.left_associative, true);
                     let op = self.next().unwrap().clone();
                     let exprs = (0..n.param_count)
-                        .into_iter()
                         .map(|_| self.parse_expression_(n.precedence))
-                        .map(Box::new)
                         .collect();
                     return Expression::Unary(op, ExprList::List(exprs));
                 }
                 _ => panic!("Unknown prefix operator: {:?}", p),
-            },
-            _ => {}
+            }
         }
         let mut expr = Expression::PrimaryExpression(self.parse_primary_expression());
-        loop {
-            match self.peek() {
-                Some(Token::Operator(_, p)) => match self.precedence.get(p).map(|t| *t) {
-                    Some(n) if precedence <= n.precedence => {
-                        let mut left = vec![Box::new(expr)];
-                        let op = self.next().unwrap().clone();
-                        let mut tail = (1..n.param_count)
-                            .into_iter()
-                            .map(|_| self.parse_expression_(n.precedence))
-                            .map(Box::new)
-                            .collect();
-                        left.append(&mut tail);
-                        expr = Expression::Op(op, ExprList::List(left));
-                    }
-                    Some(_) => break,
-                    None => {
-                        match self.postfix_precedence.get(p) {
-                            Some(_) => {
-                                let op = self.next().unwrap().clone();
-                                expr = Expression::PostFix(Box::new(expr), op);
-                            }
-                            _ => panic!("Unknown operator: {}", p),
+        while let Some(Token::Operator(_, p)) = self.peek() {
+            match self.precedence.get(p).copied() {
+                Some(n) if precedence <= n.precedence => {
+                    let mut left = vec![expr];
+                    let op = self.next().unwrap().clone();
+                    let mut tail = (1..n.param_count)
+                        .map(|_| self.parse_expression_(n.precedence))
+                        .collect();
+                    left.append(&mut tail);
+                    expr = Expression::Op(op, ExprList::List(left));
+                }
+                Some(_) => break,
+                None => {
+                    match self.postfix_precedence.get(p) {
+                        Some(_) => {
+                            let op = self.next().unwrap().clone();
+                            expr = Expression::PostFix(Box::new(expr), op);
                         }
+                        _ => panic!("Unknown operator: {}", p),
                     }
                 }
-                _ => break,
-            };
+            }
         }
         expr
     }
@@ -619,9 +620,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::Operator);
                 let expr = self.parse_expression();
                 read_token!(self, Token::SemiColon);
-                BlockExpression::Block(Block::Statements(vec![Box::new(Statement::Return(Some(
-                    expr,
-                )))]))
+                BlockExpression::Block(Block::Statements(vec![Statement::Return(Some(
+                    Box::new(expr),
+                ))]))
             }
             _ => self.parse_block_expression(),
         };
@@ -755,7 +756,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     read_token!(self, Token::SemiColon);
                 }
                 Some(_) => {
-                    stmts.push(Box::new(self.parse_statement(true)));
+                    stmts.push(self.parse_statement(true));
                 }
                 t => unexpected_token!(t, self),
             }
@@ -771,16 +772,16 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             default unexpected_token!(_t, self),
 
             // directly return the block_expr since it doesn't need a semicolon
-            BlockExpression => return Statement::BlockExpression(self.parse_block_expression()),
-            Declaration => return Statement::Declaration(self.parse_declaration(semi)),
+            BlockExpression => return Statement::BlockExpression(Box::new(self.parse_block_expression())),
+            Declaration => return Statement::Declaration(Box::new(self.parse_declaration(semi))),
             // Expressions can contain BlockExpressions, so this is
             // partially unreachable
-            Expression => Statement::Expression(self.parse_expression()),
+            Expression => Statement::Expression(Box::new(self.parse_expression())),
             ReturnStatement => {
                 read_token!(self, Token::Return);
                 let expr = match self.peek() {
                     Some(Token::SemiColon(..)) => None,
-                    _ => Some(self.parse_expression())
+                    _ => Some(Box::new(self.parse_expression()))
                 };
                 Statement::Return(expr)
             },
@@ -835,7 +836,7 @@ mod tests {
 
     macro_rules! eval_bin {
         ($list:ident, $op:tt) => {
-            eval_tree(&*$list[0]) $op eval_tree(&*$list[1])
+            eval_tree(&$list[0]) $op eval_tree(&$list[1])
         }
     }
 
@@ -859,18 +860,18 @@ mod tests {
                     "&" => eval_bin!(list, &),
                     "|" => eval_bin!(list, |),
                     "^" => eval_bin!(list, ^),
-                    "**" => eval_tree(&*list[0]).pow(eval_tree(&*list[1]) as u32),
+                    "**" => eval_tree(&list[0]).pow(eval_tree(&list[1]) as u32),
                     "?" => {
                         if let Expression::Op(Token::Operator(_, op), ExprList::List(res_list)) =
-                            &*list[1]
+                            &list[1]
                         {
                             if &**op != ":" {
                                 unreachable!();
                             }
-                            if eval_tree(&*list[0]) != 0 {
-                                eval_tree(&*res_list[0])
+                            if eval_tree(&list[0]) != 0 {
+                                eval_tree(&res_list[0])
                             } else {
-                                eval_tree(&*res_list[1])
+                                eval_tree(&res_list[1])
                             }
                         } else {
                             unreachable!()
@@ -886,8 +887,8 @@ mod tests {
                     unreachable!()
                 };
                 match op_s {
-                    "-" => -eval_tree(&*list[0]),
-                    "~" => !eval_tree(&*list[0]),
+                    "-" => -eval_tree(&list[0]),
+                    "~" => !eval_tree(&list[0]),
                     _ => unreachable!(),
                 }
             }
@@ -898,7 +899,7 @@ mod tests {
                     unreachable!()
                 };
                 match op_s {
-                    "++" => eval_tree(&*expr),
+                    "++" => eval_tree(&expr),
                     _ => unreachable!(),
                 }
             }

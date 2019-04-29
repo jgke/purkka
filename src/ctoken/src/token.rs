@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 #[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token {
@@ -88,12 +90,12 @@ pub enum Token {
     Varargs(usize),
 
     // Special forms
-    Sizeof(usize, Vec<Token>),
-    Asm(usize, Vec<Token>),
+    Sizeof(usize, Box<[Token]>),
+    Asm(usize, Box<[Token]>),
 
     // Literals
-    Identifier(usize, String),
-    StringLiteral(usize, String),
+    Identifier(usize, Rc<str>),
+    StringLiteral(usize, Rc<str>),
     CharLiteral(usize, char),
-    Number(usize, String),
+    Number(usize, Rc<str>),
 }

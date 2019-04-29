@@ -144,7 +144,7 @@ pub fn goto(
     for item in items {
         let Component { rules, .. } = &tm.rules[&item.index].data[item.subindex];
         if rules.len() > item.position && tm.indices[&rules[item.position].full_path] == rule {
-            let mut goto_item = item.clone();
+            let mut goto_item = *item;
             goto_item.position += 1;
             goto_items.insert(goto_item);
         }
@@ -152,7 +152,7 @@ pub fn goto(
     closure(tm, goto_items);
 }
 
-pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &Vec<Index>) {
+pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &[Index]) {
     let mut initial = HashSet::new();
     initial.insert(Item {
         index: tm.indices["S"],
@@ -176,7 +176,7 @@ pub fn items(tm: &RuleTranslationMap, items: &mut Vec<HashSet<Item>>, symbols: &
             for symbol in symbols {
                 let mut goto_items = HashSet::new();
                 goto(tm, &mut goto_items, set, *symbol);
-                if goto_items.len() > 0
+                if !goto_items.is_empty()
                     && !items.contains(&goto_items)
                     && !added_next.contains(&goto_items)
                 {
@@ -196,14 +196,14 @@ fn get_cores(items: &HashSet<Item>) -> HashSet<Core> {
     items
         .iter()
         .map(|item| Core {
-            index: item.index.clone(),
+            index: item.index,
             subindex: item.subindex,
             position: item.position,
         })
         .collect()
 }
 
-pub fn get_lalr_items(lalr_items: &mut Vec<HashSet<Item>>, lr_items: &Vec<HashSet<Item>>) {
+pub fn get_lalr_items(lalr_items: &mut Vec<HashSet<Item>>, lr_items: &[HashSet<Item>]) {
     // for each set a in lr_items:
     //      set union := a
     //      for each set b != a in lr_items:
@@ -326,8 +326,8 @@ pub fn panic_insert(
 
 pub fn lr_parsing_table(
     tm: &RuleTranslationMap,
-    lr_items: &Vec<HashSet<Item>>,
-    nonterminals: &Vec<Index>,
+    lr_items: &[HashSet<Item>],
+    nonterminals: &[Index],
 ) -> Box<LRTable> {
     let mut open_table = Box::new(LRTable { actions: vec![] });
     {
@@ -397,27 +397,25 @@ pub fn lr_parsing_table(
                             Action::Shift(pos, *priority),
                         );
                     }
+                } else if item.index == tm.indices["S"] {
+                    panic_insert(
+                        &tm.rev_indices,
+                        &mut table.lock().unwrap().actions[i],
+                        tm.indices["$"],
+                        Action::Accept,
+                    );
                 } else {
-                    if item.index == tm.indices["S"] {
-                        panic_insert(
-                            &tm.rev_indices,
-                            &mut table.lock().unwrap().actions[i],
-                            tm.indices["$"],
-                            Action::Accept,
-                        );
-                    } else {
-                        panic_insert(
-                            &tm.rev_indices,
-                            &mut table.lock().unwrap().actions[i],
-                            item.lookahead,
-                            Action::Reduce(
-                                item.index,
-                                item.subindex,
-                                tm.rules[&item.index].data[item.subindex].rules.len(),
-                                *priority,
-                            ),
-                        );
-                    }
+                    panic_insert(
+                        &tm.rev_indices,
+                        &mut table.lock().unwrap().actions[i],
+                        item.lookahead,
+                        Action::Reduce(
+                            item.index,
+                            item.subindex,
+                            tm.rules[&item.index].data[item.subindex].rules.len(),
+                            *priority,
+                        ),
+                    );
                 }
             }
 
@@ -435,7 +433,7 @@ pub fn lr_parsing_table(
         });
     }
 
-    return open_table;
+    open_table
 }
 
 pub fn compute_lalr(tm: &RuleTranslationMap, terminals: &HashSet<Terminal>) -> Box<LRTable> {
@@ -447,7 +445,7 @@ pub fn compute_lalr(tm: &RuleTranslationMap, terminals: &HashSet<Terminal>) -> B
     }
 
     println!("Computing lalr table");
-    let mut rule_names: Vec<Index> = tm.rules.iter().map(|(x, _)| x.clone()).collect();
+    let mut rule_names: Vec<Index> = tm.rules.iter().map(|(x, _)| *x).collect();
     rule_names.sort_unstable();
 
     let mut terminal_names: Vec<Index> = terminals
@@ -455,7 +453,7 @@ pub fn compute_lalr(tm: &RuleTranslationMap, terminals: &HashSet<Terminal>) -> B
         .map(|term| {
             tm.indices
                 .get(&term.full_path)
-                .map(|t| *t)
+                .copied()
                 .unwrap_or_else(|| panic!("Terminal {} not found", &term.full_path))
         })
         .collect();
@@ -464,7 +462,7 @@ pub fn compute_lalr(tm: &RuleTranslationMap, terminals: &HashSet<Terminal>) -> B
     let mut symbols: Vec<Index> = rule_names
         .iter()
         .chain(terminal_names.iter())
-        .map(|x| *x)
+        .cloned()
         .collect();
     symbols.sort_unstable();
     let mut lr_items = Vec::new();
@@ -509,7 +507,7 @@ pub fn compute_lalr(tm: &RuleTranslationMap, terminals: &HashSet<Terminal>) -> B
         for symbol in terminal_names.iter().chain(rule_names.iter()) {
             print!("{: >7.5}", &symbol);
         }
-        println!("");
+        println!();
         for (i, row) in table.actions.iter().enumerate() {
             print!("{: <3}", i);
             for symbol in terminal_names.iter().chain(rule_names.iter()) {
@@ -518,11 +516,11 @@ pub fn compute_lalr(tm: &RuleTranslationMap, terminals: &HashSet<Terminal>) -> B
                     None => print!("{}", Action::Error),
                 }
             }
-            println!("");
+            println!();
         }
     });
 
-    return table;
+    table
 }
 
 #[test]

@@ -54,16 +54,16 @@ fn parse_failure<SuccessType>(
         Some(TokenTree::Token(span, t)) => {
             let s: Span = *span;
             cx.span_err(s, &format!("Unexpected token: {:?}", t));
-            return Err(Some(s));
+            Err(Some(s))
         }
         Some(TokenTree::Delimited(span, _, t)) => {
             let s: Span = span.entire();
             cx.span_err(s, &format!("Unexpected span: {:?}", t));
-            return Err(Some(s));
+            Err(Some(s))
         }
         None => {
             cx.span_err(outer_span, "Unexpected end of input");
-            return Err(None);
+            Err(None)
         }
     }
 }
@@ -146,7 +146,7 @@ fn parse_special(
 fn parse_enumdef(
     cx: &mut ExtCtxt,
     iter: &mut Peekable<Iter<'_, TokenTree>>,
-    sp: &Span,
+    sp: Span,
 ) -> ParseResult<P<ast::Item>> {
     let mut res = Vec::new();
     let mut break_next = false;
@@ -162,7 +162,7 @@ fn parse_enumdef(
             Some(t @ TokenTree::Token(_, token::Ident(..))) => {
                 res.push(t.clone());
                 if let TokenTree::Token(_, token::Ident(ident, _)) = t {
-                    if ident.name.to_string() == "enum" {
+                    if ident.name == "enum" {
                         break_next = true;
                     }
                 }
@@ -178,10 +178,10 @@ fn parse_enumdef(
             None => {
                 return parse_failure(
                     cx,
-                    *res.last()
+                    res.last()
                         .and_then(|t| {
                             if let TokenTree::Token(s, _) = t {
-                                Some(s)
+                                Some(*s)
                             } else {
                                 None
                             }
@@ -320,12 +320,12 @@ fn parse_item(
                 }
             }
             Some(TokenTree::Token(s, token::Token::At)) => {
-                enumdef = Some(parse_enumdef(cx, iter, s)?);
+                enumdef = Some(parse_enumdef(cx, iter, *s)?);
             }
             tt => return parse_failure(cx, s.to(rsp), tt),
         }
     }
-    if current_components.len() > 0 {
+    if !current_components.is_empty() {
         let real_real_name =
             real_name.unwrap_or_else(|| current_components.get(0).unwrap().identifier.clone());
         components.push(Component {

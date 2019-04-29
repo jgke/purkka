@@ -102,9 +102,9 @@ pub fn parse(
         .enumerate()
         .map(|(i, t)| preprocessor_to_parser(context, &t, i))
         .fold(Vec::new(), |mut list, t| {
-            if let Some(Token::StringLiteral(_, s)) = list.last_mut() {
+            if let Some(Token::StringLiteral(_, ref mut s)) = list.last_mut() {
                 if let Token::StringLiteral(_, ss) = t {
-                    s.push_str(&ss);
+                    *s = From::from(format!("{}{}", s, ss));
                     return list;
                 }
             }

@@ -158,8 +158,8 @@ fn eval_expression_postfix(expr: Vec<ConstExprToken>) -> i64 {
     stack[0]
 }
 
-fn stack_top(stack: &Vec<ConstExprToken>) -> Option<ConstExprToken> {
-    if stack.len() == 0 {
+fn stack_top(stack: &[ConstExprToken]) -> Option<ConstExprToken> {
+    if stack.is_empty() {
         None
     } else {
         Some(stack[stack.len() - 1])
@@ -167,7 +167,7 @@ fn stack_top(stack: &Vec<ConstExprToken>) -> Option<ConstExprToken> {
 }
 
 // Use the shunting yard algorithm to convert infix to postfix
-fn shunt(expr: &Vec<ConstExprToken>) -> Vec<ConstExprToken> {
+fn shunt(expr: &[ConstExprToken]) -> Vec<ConstExprToken> {
     let mut stack = Vec::new();
     let mut out = Vec::new();
     let mut i = 0;
@@ -175,9 +175,9 @@ fn shunt(expr: &Vec<ConstExprToken>) -> Vec<ConstExprToken> {
     while i < expr.len() {
         let tok = expr[i];
         match tok {
-            Number(_) => out.push(expr[i].clone()),
+            Number(_) => out.push(expr[i]),
             Op(op) => {
-                let op_prec = tokentype::get_precedence(&op);
+                let op_prec = tokentype::get_precedence(op);
                 if op_prec == 1 {
                     // hack: make unary operators binary
                     out.push(Number(0));
@@ -193,10 +193,10 @@ fn shunt(expr: &Vec<ConstExprToken>) -> Vec<ConstExprToken> {
                                    or (the operator at the top of the operator stack has equal precedence and is left associative))
                                   :
                                                  */
-                            let stack_op_prec = tokentype::get_precedence(&stack_op);
+                            let stack_op_prec = tokentype::get_precedence(stack_op);
                             if !(stack_op_prec < op_prec
                                 || (stack_op_prec == op_prec
-                                    && tokentype::is_left_associative(&stack_op)))
+                                    && tokentype::is_left_associative(stack_op)))
                             {
                                 break;
                             }
@@ -234,8 +234,8 @@ fn shunt(expr: &Vec<ConstExprToken>) -> Vec<ConstExprToken> {
     out
 }
 
-pub fn eval_expression(expr: &Vec<MacroToken>) -> bool {
-    assert!(expr.len() > 0);
+pub fn eval_expression(expr: &[MacroToken]) -> bool {
+    assert!(!expr.is_empty());
     let tokens: Vec<ConstExprToken> = expr
         .iter()
         .map(|t| const_expr_token_from_macro(&t.ty))

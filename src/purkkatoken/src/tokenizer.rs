@@ -171,17 +171,19 @@ fn get_octal(iter: &mut FragmentIterator, c: char) -> char {
             match iter.peek() {
                 Some(third @ '0'...'7') => {
                     iter.next();
-                    return char_from_octal(c, second, third);
+                    char_from_octal(c, second, third)
                 }
-                _ => return char_from_octal('0', c, second),
+                _ => char_from_octal('0', c, second)
             }
         }
-        _ => return char_from_octal('0', '0', c),
+        _ => char_from_octal('0', '0', c)
     }
 }
 
+#[allow(clippy::char_lit_as_u8)]
 fn get_hex(iter: &mut FragmentIterator) -> char {
     let mut num: u8 = 0;
+
     while let Some(c) = iter.peek() {
         match c {
             c @ '0'...'9' => {
@@ -203,7 +205,8 @@ fn get_hex(iter: &mut FragmentIterator) -> char {
             _ => break,
         }
     }
-    return (num & 255) as u8 as char;
+
+    num as char
 }
 
 fn read_identifier(iter: &mut FragmentIterator, intern: &mut StringInterner, num: usize) -> (Token, Source) {
@@ -213,7 +216,7 @@ fn read_identifier(iter: &mut FragmentIterator, intern: &mut StringInterner, num
     });
 
     for (keyword, k) in KEYWORDS.iter() {
-        if &content == *keyword {
+        if content == *keyword {
             return (k(num), iter.current_source());
         }
     }
@@ -239,7 +242,7 @@ fn read_other(iter: &mut FragmentIterator, intern: &mut StringInterner, num: usi
         | '\\' | '^' | '|' | '-' | '~' | ':' => true,
         _ => false,
     });
-    if content.len() > 0 {
+    if !content.is_empty() {
         (Token::Operator(num, intern.get_ref(&content)), source)
     } else {
         panic!("Unexpected character: '{}'", peeked.unwrap());

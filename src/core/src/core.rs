@@ -110,47 +110,46 @@ pub fn real_main() {
 
     let input: Vec<String> = matches
         .values_of("input")
-        .map(|v| v.into_iter().map(|i| i.to_string()).collect())
+        .map(|v| v.map(ToString::to_string).collect())
         .unwrap();
 
-    let output: Option<String> = matches.value_of("input").map(|v| v.to_string());
+    let output: Option<String> = matches.value_of("input").map(ToString::to_string);
 
     let include_path: Vec<String> = matches
         .values_of("include")
-        .map(|t| t.collect())
-        .unwrap_or(Vec::new())
+        .map(Iterator::collect::<Vec<_>>)
+        .unwrap_or_default()
         .into_iter()
-        .map(|i| i.to_string())
-        .chain(DEFAULT_INCLUDE_PATH.iter().map(|t| t.to_string()))
+        .map(ToString::to_string)
+        .chain(DEFAULT_INCLUDE_PATH.iter().map(ToString::to_string))
         .collect();
 
     let include_files: Vec<String> = matches
         .values_of("include_file")
-        .map(|v| v.into_iter().map(|i| i.to_string()).collect())
-        .unwrap_or(Vec::new());
+        .map(|v| v.map(ToString::to_string).collect())
+        .unwrap_or_default();
 
     let definitions: Vec<(String, String)> = matches
         .values_of("define")
         .map(|v| {
-            v.into_iter()
-                .map(|i| {
-                    let split = i.split("=").collect::<Vec<_>>();
-                    (
-                        split[0].to_string(),
-                        split.get(1).unwrap_or(&"1").to_string(),
+            v.map(|i| {
+                let split = i.split('=').collect::<Vec<_>>();
+                (
+                    split[0].to_string(),
+                    split.get(1).unwrap_or(&"1").to_string(),
                     )
-                })
-                .collect()
+            })
+            .collect()
         })
-        .unwrap_or(Vec::new());
+        .unwrap_or_default();
 
     if input.len() > 1 {
         assert!(output.is_none());
     }
 
     let options = PreprocessorOptions {
-        include_path: include_path.iter().map(|t| t.as_ref()).collect(),
-        include_files: include_files.iter().map(|t| t.as_ref()).collect(),
+        include_path: include_path.iter().map(AsRef::as_ref).collect(),
+        include_files: include_files.iter().map(AsRef::as_ref).collect(),
         definitions: definitions
             .iter()
             .map(|(a, b)| (a.as_ref(), b.as_ref()))

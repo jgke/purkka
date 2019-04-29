@@ -208,16 +208,16 @@ pub static PRECEDENCE: &[(usize, &Operator)] = &[
 ];
 
 // return (precedence, is-right-to-left)
-pub fn get_precedence(op: &Operator) -> usize {
+pub fn get_precedence(op: Operator) -> usize {
     for (precedence, ty) in PRECEDENCE {
-        if *ty == op {
+        if **ty == op {
             return *precedence;
         }
     }
     panic!();
 }
 
-pub fn is_left_associative(op: &Operator) -> bool {
+pub fn is_left_associative(op: Operator) -> bool {
     match op {
         Ternary | TernaryAlternative => false,
         _ => true,

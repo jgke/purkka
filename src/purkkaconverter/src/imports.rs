@@ -32,7 +32,7 @@ impl ASTVisitor for StripImports<'_> {
                     })
                     .for_each(|t| {
                         match t {
-                            Unit::ImportFile(ImportFile::Import(file, None)) => {
+                            Unit::ImportFile(box ImportFile::Import(file, None)) => {
                                 // XXX: global imports not implemented
                                 self.context
                                     .local_includes

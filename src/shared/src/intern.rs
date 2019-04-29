@@ -6,7 +6,7 @@ use std::hash::Hash;
 use std::rc::Rc;
 
 /// Simple HashMap-based interner.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Interner<K, V>
 where
     K: Clone + Hash + Eq,

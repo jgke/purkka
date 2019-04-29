@@ -15,10 +15,10 @@ pub struct State {
 
 fn get_decls(decl: InitDeclaratorList) -> Vec<InitDeclarator> {
     match decl {
-        InitDeclaratorList::InitDeclarator(decl) => vec![decl],
+        InitDeclaratorList::InitDeclarator(decl) => vec![*decl],
         InitDeclaratorList::Comma(more, _, decl) => {
             let mut decls = get_decls(*more);
-            decls.push(decl);
+            decls.push(*decl);
             decls
         }
     }
@@ -26,7 +26,7 @@ fn get_decls(decl: InitDeclaratorList) -> Vec<InitDeclarator> {
 
 fn ident_to_name(token: Token) -> String {
     match token {
-        Token::Identifier(_, s) => s,
+        Token::Identifier(_, s) => s.to_string(),
         t => panic!(
             "Internal compiler error: Unexpected token: {:?}, expected identifier",
             t
@@ -55,11 +55,12 @@ fn add_decl(state: &mut State, init_decl: InitDeclarator) {
         InitDeclarator::Assign(..) => panic!("Assignment to a typedef"),
     };
 
-    get_decl_identifier(decl)
+    get_decl_identifier(*decl)
         .into_iter()
         .for_each(|name| add_type(state, name));
 }
 
+#[allow(clippy::boxed_local)]
 fn add_typedef(state: &mut State, declaration: Box<TypeDeclaration>) {
     let (_spec, list) = match *declaration {
         TypeDeclaration::Typedef(..) => {
@@ -69,7 +70,7 @@ fn add_typedef(state: &mut State, declaration: Box<TypeDeclaration>) {
         TypeDeclaration::List(_, spec, list, ..) => (spec, list),
     };
 
-    let decls = get_decls(list);
+    let decls = get_decls(*list);
     decls.into_iter().for_each(|decl| add_decl(state, decl));
 }
 
@@ -80,6 +81,7 @@ fn identifier_or_type_to_str(ty: IdentifierOrType) -> String {
     }
 }
 
+#[allow(clippy::boxed_local)]
 fn add_struct_type(state: &mut State, declaration: Box<StructOrUnionSpecifier>) {
     match *declaration {
         StructOrUnionSpecifier::NewType(_, ty, ..) => {
@@ -99,10 +101,13 @@ fn maybe_ident_to_option(ident: MaybeIdentifier) -> Option<String> {
     }
 }
 
+#[allow(clippy::boxed_local)]
 fn add_enum_type(state: &mut State, declaration: Box<EnumSpecifier>) {
     match *declaration {
         EnumSpecifier::Enum(_, maybe_ident, ..) => {
-            maybe_ident_to_option(maybe_ident).map(|ident| add_type(state, ident));
+            if let Some(ident) = maybe_ident_to_option(maybe_ident) {
+                add_type(state, ident)
+            }
         }
         EnumSpecifier::ExistingType(_, ty_or_name) => {
             add_type(state, identifier_or_type_to_str(ty_or_name))
@@ -112,40 +117,41 @@ fn add_enum_type(state: &mut State, declaration: Box<EnumSpecifier>) {
 
 fn is_type(state: &State, token: &Token) -> bool {
     match token {
-        Token::Identifier(_, i) => state.scope.iter().any(|s| s.types.contains(i)),
+        Token::Identifier(_, i) => state.scope.iter().any(|s| s.types.contains(&i.to_string())),
         _ => panic!(),
     }
 }
 
 fn is_label(state: &State, token: &Token) -> bool {
     match token {
-        Token::Identifier(_, i) => state.scope.iter().any(|s| s.labels.contains(i)),
+        Token::Identifier(_, i) => state.scope.iter().any(|s| s.labels.contains(&i.to_string())),
         _ => panic!(),
     }
 }
 
+#[allow(clippy::boxed_local)]
 fn maybe_add_label(
     state: &mut State,
-    decl_spec: DeclarationSpecifiers,
-    init_list: InitDeclaratorList,
+    decl_spec: Box<DeclarationSpecifiers>,
+    init_list: Box<InitDeclaratorList>,
     _semicolon: Token,
 ) {
-    match decl_spec {
-        DeclarationSpecifiers::Left(_, TypeSpecifier::TypeNameStr(t))
-        | DeclarationSpecifiers::Right(TypeSpecifier::TypeNameStr(t), _)
-        | DeclarationSpecifiers::Both(_, TypeSpecifier::TypeNameStr(t), _)
-        | DeclarationSpecifiers::Neither(TypeSpecifier::TypeNameStr(t)) => {
+    match *decl_spec {
+        DeclarationSpecifiers::Left(_, box TypeSpecifier::TypeNameStr(t))
+        | DeclarationSpecifiers::Right(box TypeSpecifier::TypeNameStr(t), _)
+        | DeclarationSpecifiers::Both(_, box TypeSpecifier::TypeNameStr(t), _)
+        | DeclarationSpecifiers::Neither(box TypeSpecifier::TypeNameStr(t)) => {
             let ty = ident_to_name(t);
             if ty == "__label__" {
                 let labels = &mut state.scope.last_mut().unwrap().labels;
-                get_decls(init_list).into_iter().for_each(|init_decl| {
+                get_decls(*init_list).into_iter().for_each(|init_decl| {
                     let decl = match init_decl {
                         InitDeclarator::Declarator(decl) => decl,
                         InitDeclarator::Asm(..) => panic!("Invalid __label__"),
                         InitDeclarator::Assign(..) => panic!("Invalid __label__"),
                     };
 
-                    get_decl_identifier(decl).into_iter().for_each(|name| {
+                    get_decl_identifier(*decl).into_iter().for_each(|name| {
                         labels.insert(name);
                     });
                 });
@@ -162,6 +168,7 @@ fn push_scope(state: &mut State, _open_brace: Token) {
     });
 }
 
+#[allow(clippy::boxed_local)]
 fn pop_scope(state: &mut State, _open: PushScope, _statements: Box<StatementList>, _close: Token) {
     state.scope.pop();
 }
@@ -185,12 +192,12 @@ lalr! {
         ;
 
     PostfixExpression
-        -> PrimaryExpression
-        | Index. PostfixExpression #Token::OpenBracket Expression #Token::CloseBracket
+       -> PrimaryExpression
+        | Index. PostfixExpression #Token::OpenBracket &Expression #Token::CloseBracket
         | Call.PostfixExpression #Token::OpenParen ArgumentExpressionList #Token::CloseParen
         | Member. PostfixExpression MemberAccess #Token::Identifier
         | Increment. PostfixExpression IncrementOrDecrement
-        | StructValue. #Token::OpenParen TypeName #Token::CloseParen #Token::OpenBrace InitializerList #Token::CloseBrace
+        | StructValue. #Token::OpenParen &TypeName #Token::CloseParen #Token::OpenBrace &InitializerList #Token::CloseBrace
         ;
 
     MemberAccess
@@ -205,23 +212,23 @@ lalr! {
 
     ArgumentExpressionList
        -> Epsilon
-        | NonemptyArgumentExpressionList
+        | &NonemptyArgumentExpressionList
         ;
 
     NonemptyArgumentExpressionList
-       -> AssignmentExpression
-        | NonemptyArgumentExpressionList #Token::Comma AssignmentExpression
+       -> &AssignmentExpression
+        | &NonemptyArgumentExpressionList #Token::Comma &AssignmentExpression
         ;
 
     UnaryExpression
-       -> PostfixExpression
+       -> &PostfixExpression
         | IncrementOrDecrement UnaryExpression
         | UnaryOperator &CastExpression
         ;
 
     CastExpression
       -> UnaryExpression
-       | #Token::OpenParen TypeName #Token::CloseParen GeneralExpression
+       | #Token::OpenParen &TypeName #Token::CloseParen &GeneralExpression
        ;
 
     GeneralExpression
@@ -285,20 +292,20 @@ lalr! {
         ;
 
     Declaration
-       -> DeclarationSpecifiers #Token::Semicolon
-        | !maybe_add_label List. DeclarationSpecifiers InitDeclaratorList #Token::Semicolon
+       -> &DeclarationSpecifiers #Token::Semicolon
+        | !maybe_add_label List. &DeclarationSpecifiers &InitDeclaratorList #Token::Semicolon
         ;
 
     TypeDeclaration
-       -> #Token::Typedef DeclarationSpecifiers #Token::Semicolon
-        | List. #Token::Typedef DeclarationSpecifiers InitDeclaratorList #Token::Semicolon
+       -> #Token::Typedef &DeclarationSpecifiers #Token::Semicolon
+        | List. #Token::Typedef &DeclarationSpecifiers &InitDeclaratorList #Token::Semicolon
         ;
 
     DeclarationSpecifiers
-       -> Left. Specifiers TypeSpecifier
-        | Right. TypeSpecifier Specifiers
-        | Both. Specifiers TypeSpecifier Specifiers
-        | Neither. TypeSpecifier
+       -> Left. &Specifiers &TypeSpecifier
+        | Right. &TypeSpecifier &Specifiers
+        | Both. &Specifiers &TypeSpecifier &Specifiers
+        | Neither. &TypeSpecifier
         ;
 
     Specifiers
@@ -309,14 +316,14 @@ lalr! {
         ;
 
     InitDeclaratorList
-       -> InitDeclarator
-        | Comma. InitDeclaratorList #Token::Comma InitDeclarator
+       -> &InitDeclarator
+        | Comma. InitDeclaratorList #Token::Comma &InitDeclarator
         ;
 
     InitDeclarator
-       -> Declarator
-        | Asm. Declarator #Token::Asm
-        | Assign. Declarator #Token::Assign AssignmentOrInitializerList
+       -> &Declarator
+        | Asm. &Declarator #Token::Asm
+        | Assign. &Declarator #Token::Assign &AssignmentOrInitializerList
         ;
 
     StorageClassSpecifier
@@ -364,8 +371,8 @@ lalr! {
         | #Label;
 
     StructOrUnionSpecifier
-       -> NewType. StructOrUnion IdentifierOrType #Token::OpenBrace StructDeclarationList #Token::CloseBrace
-        | Anonymous. StructOrUnion #Token::OpenBrace StructDeclarationList #Token::CloseBrace
+       -> NewType. StructOrUnion IdentifierOrType #Token::OpenBrace &StructDeclarationList #Token::CloseBrace
+        | Anonymous. StructOrUnion #Token::OpenBrace &StructDeclarationList #Token::CloseBrace
         | NameOnly. StructOrUnion IdentifierOrType
         ;
 
@@ -375,21 +382,21 @@ lalr! {
         ;
 
     StructDeclarationList
-       -> StructDeclaration
-        | StructDeclarationList StructDeclaration
+       -> &StructDeclaration
+        | StructDeclarationList &StructDeclaration
         | Epsilon
         ;
 
     StructDeclaration
-       -> SpecifierQualifierList StructDeclaratorList #Token::Semicolon
-        | Anonymous. SpecifierQualifierList #Token::Semicolon
+       -> &SpecifierQualifierList &StructDeclaratorList #Token::Semicolon
+        | Anonymous. &SpecifierQualifierList #Token::Semicolon
         ;
 
     SpecifierQualifierList
-       -> Left. Qualifiers TypeSpecifier
-        | Both. Qualifiers TypeSpecifier Qualifiers
-        | Right. TypeSpecifier Qualifiers
-        | Neither. TypeSpecifier
+       -> Left. Qualifiers &TypeSpecifier
+        | Both. Qualifiers &TypeSpecifier Qualifiers
+        | Right. &TypeSpecifier Qualifiers
+        | Neither. &TypeSpecifier
         ;
 
     StructDeclaratorList
@@ -398,13 +405,13 @@ lalr! {
         ;
 
     StructDeclarator
-       -> Declarator
-        | BitField. #Token::Colon GeneralExpression
-        | NamedBitField. Declarator #Token::Colon GeneralExpression
+       -> &Declarator
+        | BitField. #Token::Colon &GeneralExpression
+        | NamedBitField. &Declarator #Token::Colon &GeneralExpression
         ;
 
     EnumSpecifier
-       -> #Token::Enum MaybeIdentifier #Token::OpenBrace EnumeratorList #Token::CloseBrace
+       -> #Token::Enum MaybeIdentifier #Token::OpenBrace &EnumeratorList #Token::CloseBrace
         | ExistingType. #Token::Enum IdentifierOrType
         ;
 
@@ -424,14 +431,14 @@ lalr! {
 
     Enumerator
        -> #Token::Identifier
-        | Assign. #Token::Identifier #Token::Assign TernaryExpression
+        | Assign. #Token::Identifier #Token::Assign &TernaryExpression
         ;
 
     Declarator
-       -> Pointer IdentifierOrType DirectDeclarator
-        | #Token::Identifier DirectDeclarator
-        | FunctionPointer. #Token::OpenParen &Declarator #Token::CloseParen DirectDeclarator
-        | FunctionPointerReturningPointer. Pointer #Token::OpenParen &Declarator #Token::CloseParen DirectDeclarator
+       -> &Pointer IdentifierOrType &DirectDeclarator
+        | #Token::Identifier &DirectDeclarator
+        | FunctionPointer. #Token::OpenParen &Declarator #Token::CloseParen &DirectDeclarator
+        | FunctionPointerReturningPointer. &Pointer #Token::OpenParen &Declarator #Token::CloseParen &DirectDeclarator
         ;
 
     DirectDeclarator
@@ -481,8 +488,8 @@ lalr! {
 
     ParameterDeclaration
        -> Declarator. &DeclarationSpecifiers &Declarator
-        | AbstractDeclarator. DeclarationSpecifiers AbstractDeclarator
-        | DeclarationSpecifiers
+        | AbstractDeclarator. &DeclarationSpecifiers &AbstractDeclarator
+        | &DeclarationSpecifiers
         ;
 
     IdentifierList
@@ -491,14 +498,14 @@ lalr! {
         ;
 
     TypeName
-       -> SpecifierQualifierList
-        | AbstractDeclarator. SpecifierQualifierList AbstractDeclarator
+       -> &SpecifierQualifierList
+        | AbstractDeclarator. &SpecifierQualifierList &AbstractDeclarator
         ;
 
     AbstractDeclarator
-       -> Pointer
-        | DirectAbstractDeclarator
-        | Both. Pointer DirectAbstractDeclarator
+       -> &Pointer
+        | &DirectAbstractDeclarator
+        | Both. &Pointer &DirectAbstractDeclarator
         ;
 
     DirectAbstractDeclarator
@@ -511,7 +518,7 @@ lalr! {
 
     MaybeParameterTypeList
        -> Epsilon
-        | ParameterTypeList
+        | &ParameterTypeList
         ;
 
     AssignmentOrInitializerList
@@ -520,8 +527,8 @@ lalr! {
         ;
 
     Initializer
-       -> AssignmentOrInitializerList
-        | #Token::Dot #Token::Identifier #Token::Assign AssignmentOrInitializerList
+       -> &AssignmentOrInitializerList
+        | #Token::Dot #Token::Identifier #Token::Assign &AssignmentOrInitializerList
         ;
 
     InitializerListContent
@@ -551,8 +558,8 @@ lalr! {
 
     LabeledStatement
        -> IdentifierOrLabel #Token::Colon Statement
-        | Case. #Token::Case GeneralExpression #Token::Colon Statement
-        | RangeCase. #Token::Case GeneralExpression #Token::Varargs GeneralExpression #Token::Colon Statement
+        | Case. #Token::Case &GeneralExpression #Token::Colon Statement
+        | RangeCase. #Token::Case &GeneralExpression #Token::Varargs &GeneralExpression #Token::Colon Statement
         | #Token::Default #Token::Colon Statement
         ;
 
@@ -582,12 +589,12 @@ lalr! {
 
     ExpressionStatement
        -> #Token::Semicolon
-        | Expression #Token::Semicolon
+        | &Expression #Token::Semicolon
         ;
 
     SelectionStatement
-       -> #Token::If #Token::OpenParen Expression #Token::CloseParen Statement MaybeElse
-        | #Token::Switch #Token::OpenParen Expression #Token::CloseParen Statement
+       -> #Token::If #Token::OpenParen &Expression #Token::CloseParen Statement &MaybeElse
+        | #Token::Switch #Token::OpenParen &Expression #Token::CloseParen Statement
         ;
 
     MaybeElse
@@ -596,14 +603,14 @@ lalr! {
         ;
 
     IterationStatement
-       -> #Token::While #Token::OpenParen Expression #Token::CloseParen Statement
-        | #Token::Do Statement #Token::While #Token::OpenParen Expression #Token::CloseParen #Token::Semicolon
-        | #Token::For #Token::OpenParen ForExpr #Token::CloseParen Statement
+       -> #Token::While #Token::OpenParen &Expression #Token::CloseParen &Statement
+        | #Token::Do &Statement #Token::While #Token::OpenParen &Expression #Token::CloseParen #Token::Semicolon
+        | #Token::For #Token::OpenParen &ForExpr #Token::CloseParen &Statement
         ;
 
     ForExpr
-       -> EmptyLast. ExpressionStatement ExpressionStatement
-        | ExpressionStatement ExpressionStatement Expression
+       -> EmptyLast. &ExpressionStatement &ExpressionStatement
+        | ExpressionStatement &ExpressionStatement &Expression
         ;
 
     JumpStatement
@@ -628,9 +635,9 @@ lalr! {
         ;
 
     FunctionDefinition
-       -> SpecifiersDeclarations. DeclarationSpecifiers Declarator DeclarationList CompoundStatement
-        | Specifiers. DeclarationSpecifiers Declarator CompoundStatement
-        | Declarations. Declarator DeclarationList CompoundStatement
-        | Declarator CompoundStatement
+       -> SpecifiersDeclarations. &DeclarationSpecifiers &Declarator &DeclarationList &CompoundStatement
+        | Specifiers. &DeclarationSpecifiers &Declarator &CompoundStatement
+        | Declarations. &Declarator &DeclarationList &CompoundStatement
+        | Declarator. &Declarator &CompoundStatement
         ;
 }

@@ -42,7 +42,9 @@ pub enum Token {
 
 use Token::*;
 
-pub static TOKEN_TYPES: &[(&str, fn(usize) -> Token)] = &[
+type TokenConstructor = fn(usize) -> Token;
+
+pub static TOKEN_TYPES: &[(&str, TokenConstructor)] = &[
     (";", SemiColon),
     (",", Comma),
     ("(", OpenParen),
@@ -53,7 +55,7 @@ pub static TOKEN_TYPES: &[(&str, fn(usize) -> Token)] = &[
     ("]", CloseBracket),
 ];
 
-pub static KEYWORDS: &[(&str, fn(usize) -> Token)] = &[
+pub static KEYWORDS: &[(&str, TokenConstructor)] = &[
     ("pub", Pub),
     ("const", Const),
     ("static", Static),

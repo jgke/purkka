@@ -22,16 +22,16 @@ grammar! {
         ;
 
     Unit
-       -> Declaration
-        | OperatorOverload
-        | ImportFile
-        | Typedef
+       -> &Declaration
+        | &OperatorOverload
+        | &ImportFile
+        | &Typedef
         ;
 
     OperatorOverload
        -> #Token::NewOperator #Token::StringLiteral #Token::Operator Function
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum OperatorOverload { OperatorOverload(Rc<str>, TypeSignature, Expression) }
+        pub enum OperatorOverload { OperatorOverload(Rc<str>, Box<TypeSignature>, Box<Expression>) }
         ;
 
     Declaration
@@ -39,12 +39,12 @@ grammar! {
         | Definition. Visibility Mutability #Token::Identifier MaybeType #Token::Operator Expression #Token::SemiColon
         | Function. Visibility #Token::Fun #Token::Identifier Function
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum Declaration { Declaration(bool, bool, Rc<str>, Option<TypeSignature>, Option<Expression>) }
+        pub enum Declaration { Declaration(bool, bool, Rc<str>, Option<Box<TypeSignature>>, Option<Box<Expression>>) }
         ;
 
     Function
-       -> ParamList #Token::Operator TypeSignature FunctionBody
-        | Infer. ParamList FunctionBody
+       -> &ParamList #Token::Operator TypeSignature &FunctionBody
+        | Infer. &ParamList &FunctionBody
         ;
 
     FunctionBody
@@ -209,15 +209,15 @@ grammar! {
         ;
 
     ConditionalExpression
-       -> #Token::If Expression Block IfTail
+       -> #Token::If &Expression Block IfTail
         ;
 
     WhileExpression
-       -> #Token::While Expression Block IfTail
+       -> #Token::While &Expression Block IfTail
         ;
 
     ForExpression
-       -> #Token::For #Token::OpenParen ForConditions #Token::CloseParen Block IfTail
+       -> #Token::For #Token::OpenParen &ForConditions #Token::CloseParen Block &IfTail
         ;
 
     ForConditions
@@ -226,8 +226,8 @@ grammar! {
 
     IfTail
        -> Epsilon
-        | #Token::Elif Expression Block IfTail
-        | #Token::Else Expression Block
+        | #Token::Elif &Expression Block IfTail
+        | #Token::Else &Expression Block
         ;
 
     Expression
@@ -239,15 +239,15 @@ grammar! {
 
     ExprList -> Expression | Expression ExprList
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum ExprList { List(Vec<Box<Expression>>) }
+        pub enum ExprList { List(Vec<Expression>) }
         ;
 
     Block -> #Token::OpenBrace Statements #Token::CloseBrace
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum Block { Statements(Vec<Box<Statement>>) }
+        pub enum Block { Statements(Vec<Statement>) }
         ;
 
-    Statements -> Epsilon | Statement #Token::SemiColon Statements;
+    Statements -> Epsilon | &Statement #Token::SemiColon Statements;
     Statement
        -> Declaration #Token::SemiColon
         | BlockExpression
@@ -255,10 +255,10 @@ grammar! {
         | ReturnStatement #Token::SemiColon
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Statement {
-            Declaration(Declaration),
-            BlockExpression(BlockExpression),
-            Expression(Expression),
-            Return(Option<Expression>),
+            Declaration(Box<Declaration>),
+            BlockExpression(Box<BlockExpression>),
+            Expression(Box<Expression>),
+            Return(Option<Box<Expression>>),
         }
         ;
 
@@ -270,7 +270,7 @@ grammar! {
 
     TrailingComma -> #Token::Comma | Epsilon;
     MaybeIdentifier -> #Token::Identifier | Epsilon;
-    MaybeExpression -> Expression | Epsilon;
+    MaybeExpression -> &Expression | Epsilon;
 }
 
 /* These macros create traits and functions for Option<T> -> Option<U> eg. the first one creates
@@ -282,8 +282,8 @@ grammar! {
 impl_enter!(S, TranslationUnit, TranslationUnit, translation_unit, 1);
 impl_enter!(TranslationUnit, Units, "Vec<Unit>", units, 1);
 impl_enter!(Unit, Declaration, Declaration, declaration, 1);
-impl_enter_fmap!(Declaration, Declaration, TypeSignature, ty, 4);
-impl_enter_fmap!(Declaration, Declaration, Expression, expr, 5);
+impl_enter_unbox_fmap!(Declaration, Declaration, TypeSignature, ty, 4);
+impl_enter_unbox_fmap!(Declaration, Declaration, Expression, expr, 5);
 impl_enter!(Declaration, Declaration, "Rc<str>", identifier, 3);
 
 impl_enter!(Token, Identifier, "Rc<str>", identifier_s, 2);
@@ -298,7 +298,7 @@ pub enum TypeSignature {
 
     Struct(Option<Rc<str>>, Vec<StructField>),
     Enum(Option<Rc<str>>, Vec<EnumField>),
-    Tuple(Vec<Box<TypeSignature>>),
+    Tuple(Vec<TypeSignature>),
     Array(Box<TypeSignature>, Option<usize>),
     DynamicArray(Box<TypeSignature>, Option<Box<Expression>>),
 
@@ -347,7 +347,7 @@ impl Declaration {
             false,
             _,
             _,
-            Some(Expression::PrimaryExpression(PrimaryExpression::Lambda(
+            Some(box Expression::PrimaryExpression(PrimaryExpression::Lambda(
                 ..
             ))),
         ) = self

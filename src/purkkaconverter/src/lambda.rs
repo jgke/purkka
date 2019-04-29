@@ -31,12 +31,12 @@ impl ASTVisitor for StripLambda<'_> {
                         }
                     })
                     .for_each(|t| {
-                        if let Unit::Declaration(Declaration::Declaration(
+                        if let Unit::Declaration(box Declaration::Declaration(
                             _,
                             _,
                             name,
                             _,
-                            Some(Expression::PrimaryExpression(
+                            Some(box Expression::PrimaryExpression(
                                 PrimaryExpression::Lambda(mut lambda),
                             )),
                         )) = t

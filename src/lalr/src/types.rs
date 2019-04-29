@@ -113,7 +113,7 @@ pub enum Action {
     Goto(usize),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct LRTable {
     pub actions: Vec<HashMap<Index, Action>>,
 }
@@ -202,7 +202,7 @@ impl RuleTranslationMap {
         });
 
         self.rules.insert(self.indices[&name], rule);
-        return Some(());
+        Some(())
     }
 
     fn push_symbol(&mut self, symbol: &str) {

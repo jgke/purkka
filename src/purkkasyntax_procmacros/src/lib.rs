@@ -20,6 +20,7 @@ use syntax_pos::{FileName, Span};
 pub fn format_blocks(
     cx: &mut ExtCtxt,
     fmap: bool,
+    unbox: bool,
     this: &str,
     variant: &str,
     result_type: &str,
@@ -35,14 +36,13 @@ pub fn format_blocks(
             .collect::<String>()
     );
     let trait_name = format!("{}_{}", this, fn_name);
-    let impl_enter_match = if fmap {
-        format!(
-            "if let Some({}) = self {{ t.as_ref() }} else {{ None }}",
-            pat
-        )
-    } else {
-        format!("if let Some({}) = self {{ Some(t) }} else {{ None }}", pat)
+    let t = match (fmap, unbox) {
+        (false, false) => "Some(t)",
+        (true, false) => "t.as_ref()",
+        (false, true) => "Some(t.as_ref())",
+        (true, true) => "t.as_ref().map(AsRef::as_ref)",
     };
+    let impl_enter_match = format!("if let Some({}) = self {{ {} }} else {{ None }}", pat, t);
 
     let trait_block = format!(
         "
@@ -100,23 +100,23 @@ fn parse_failure(
 
 fn read_ident(
     cx: &mut ExtCtxt,
-    sp: &Span,
+    sp: Span,
     iter: &mut std::slice::Iter<'_, TokenTree>,
 ) -> Result<String, Box<MacResult + 'static>> {
     match iter.next() {
         Some(TokenTree::Token(_, token::Ident(t, _))) => Ok(t.to_string()),
-        tt => Err(parse_failure(cx, *sp, tt)),
+        tt => Err(parse_failure(cx, sp, tt)),
     }
 }
 
 fn read_comma(
     cx: &mut ExtCtxt,
-    sp: &Span,
+    sp: Span,
     iter: &mut std::slice::Iter<'_, TokenTree>,
 ) -> Result<(), Box<MacResult + 'static>> {
     match iter.next() {
         Some(TokenTree::Token(_, token::Comma)) => Ok(()),
-        tt => Err(parse_failure(cx, *sp, tt)),
+        tt => Err(parse_failure(cx, sp, tt)),
     }
 }
 
@@ -125,20 +125,21 @@ fn impl_enter_res(
     sp: Span,
     args: &[TokenTree],
     fmap: bool,
+    unbox: bool,
 ) -> Result<Box<MacResult + 'static>, Box<MacResult + 'static>> {
     let mut iter = args.iter();
-    let this = read_ident(cx, &sp, &mut iter)?;
-    read_comma(cx, &sp, &mut iter)?;
-    let variant = read_ident(cx, &sp, &mut iter)?;
-    read_comma(cx, &sp, &mut iter)?;
+    let this = read_ident(cx, sp, &mut iter)?;
+    read_comma(cx, sp, &mut iter)?;
+    let variant = read_ident(cx, sp, &mut iter)?;
+    read_comma(cx, sp, &mut iter)?;
     let result_type: String = match iter.next() {
         Some(TokenTree::Token(_, token::Ident(t, _))) => t.to_string(),
         Some(TokenTree::Token(_, token::Literal(token::Str_(i), None))) => i.to_string(),
         tt => return Err(parse_failure(cx, sp, tt)),
     };
-    read_comma(cx, &sp, &mut iter)?;
-    let fn_name = read_ident(cx, &sp, &mut iter)?;
-    read_comma(cx, &sp, &mut iter)?;
+    read_comma(cx, sp, &mut iter)?;
+    let fn_name = read_ident(cx, sp, &mut iter)?;
+    read_comma(cx, sp, &mut iter)?;
     let field_num = match iter.next() {
         Some(TokenTree::Token(_, token::Literal(token::Integer(i), None))) => i,
         tt => return Err(parse_failure(cx, sp, tt)),
@@ -146,6 +147,7 @@ fn impl_enter_res(
     Ok(format_blocks(
         cx,
         fmap,
+        unbox,
         &this,
         &variant,
         &result_type,
@@ -154,15 +156,8 @@ fn impl_enter_res(
     ))
 }
 
-fn impl_enter(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult + 'static> {
-    match impl_enter_res(cx, sp, args, false) {
-        Ok(t) => t,
-        Err(t) => t,
-    }
-}
-
-fn impl_enter_fmap(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult + 'static> {
-    match impl_enter_res(cx, sp, args, true) {
+fn impl_enter(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree], fmap: bool, unbox: bool) -> Box<MacResult + 'static> {
+    match impl_enter_res(cx, sp, args, fmap, unbox) {
         Ok(t) => t,
         Err(t) => t,
     }
@@ -170,6 +165,8 @@ fn impl_enter_fmap(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacRes
 
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
-    reg.register_macro("impl_enter", impl_enter);
-    reg.register_macro("impl_enter_fmap", impl_enter_fmap);
+    reg.register_macro("impl_enter", |cx, sp, args| impl_enter(cx, sp, args, false, false));
+    reg.register_macro("impl_enter_fmap", |cx, sp, args| impl_enter(cx, sp, args, true, false));
+    reg.register_macro("impl_enter_unbox", |cx, sp, args| impl_enter(cx, sp, args, false, true));
+    reg.register_macro("impl_enter_unbox_fmap", |cx, sp, args| impl_enter(cx, sp, args, true, true));
 }
