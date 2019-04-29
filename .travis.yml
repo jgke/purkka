@@ -5,3 +5,4 @@ script:
   - cargo build --verbose --release --all
   - cargo build --test cparser_compiles
   - cargo test --verbose --all
+  - cargo bench --verbose --all
