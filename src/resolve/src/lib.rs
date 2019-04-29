@@ -1,4 +1,4 @@
-use purkkatypes::TypeSignature;
+use purkkasyntax::TypeSignature;
 
 #[derive(Clone, Debug)]
 pub struct ResolveResult {

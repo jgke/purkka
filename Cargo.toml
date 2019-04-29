@@ -11,8 +11,9 @@ members = [
     "src/purkka",
     "src/purkkaconverter",
     "src/purkkaparser",
-    "src/purkkaparser_procmacros",
-    "src/purkkatypes",
+    "src/purkkasyntax_procmacros",
+    "src/purkkasyntax",
+    "src/purkkatoken",
     "src/resolve",
     "src/shared"
 ]

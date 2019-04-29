@@ -1,9 +1,8 @@
 use crate::traits::TreeTransformer;
 use crate::Context;
 /// Convert [T] to *T
-use purkkaparser::parser::*;
+use purkkasyntax::*;
 use purkkaparser::visitor::*;
-use purkkatypes::TypeSignature;
 
 #[derive(Debug)]
 pub struct ArrayToPointer<'a> {

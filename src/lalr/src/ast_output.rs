@@ -922,6 +922,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
     }
     pub fn get_first_fn(&self, rules: &Vec<Rule>) -> P<ast::Item> {
         let header = r#"
+    #[macro_export]
     macro_rules! match_first {
         ($val:expr => $bind:ident, default $else:expr, $($body:tt)* ) => {
             match_first!(@rules $val, $bind, $else, {}, $($body)* )

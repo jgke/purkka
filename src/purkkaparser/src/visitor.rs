@@ -1,8 +1,6 @@
 use std::ops::DerefMut;
 
-use purkkatypes::{EnumField, Param, StructField, TypeSignature};
-
-use crate::parser::*;
+use purkkasyntax::*;
 
 pub trait ASTVisitor {
     fn visit_s(&mut self, s: &mut S) {
@@ -110,6 +108,10 @@ pub fn walk_ty<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut TypeSignature) {
         TypeSignature::Tuple(ref mut fields) => fields.iter_mut().for_each(|f| visitor.visit_ty(f)),
         TypeSignature::Array(ref mut ty, _) => {
             visitor.visit_ty(ty.deref_mut());
+        }
+        TypeSignature::DynamicArray(ref mut ty, ref mut expr) => {
+            visitor.visit_ty(ty.deref_mut());
+            expr.iter_mut().for_each(|e| visitor.visit_expression(e.deref_mut()));
         }
         TypeSignature::Function(ref mut params, ref mut return_type) => {
             params

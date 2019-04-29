@@ -1,13 +1,10 @@
 [package]
-name = "purkkaparser"
+name = "purkkasyntax"
 version = "0.1.0"
 authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 edition = "2018"
 
 [dependencies]
-fragment = { path="../fragment" }
 lalr = { path="../lalr" }
-purkkasyntax = { path="../purkkasyntax" }
+purkkasyntax_procmacros = { path="../purkkasyntax_procmacros" }
 purkkatoken = { path="../purkkatoken" }
-shared = { path="../shared" }
-regex = "1.1.6"

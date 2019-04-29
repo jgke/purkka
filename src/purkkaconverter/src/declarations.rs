@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use purkkaparser::parser::*;
+use purkkasyntax::*;
 use purkkaparser::visitor::*;
 
 #[derive(Debug)]

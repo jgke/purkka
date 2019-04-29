@@ -5,5 +5,5 @@ authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 edition = "2018"
 
 [dependencies]
-purkkatypes = { path="../purkkatypes" }
+purkkasyntax = { path="../purkkasyntax" }
 

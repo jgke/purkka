@@ -1,7 +1,9 @@
 [package]
-name = "purkkatypes"
+name = "purkkatoken"
 version = "0.1.0"
 authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 edition = "2018"
 
 [dependencies]
+fragment = { path="../fragment" }
+shared = { path="../shared" }

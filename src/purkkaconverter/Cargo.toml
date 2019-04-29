@@ -8,4 +8,5 @@ edition = "2018"
 cparser = { path="../cparser" }
 ctoken = { path="../ctoken" }
 purkkaparser = { path="../purkkaparser" }
-purkkatypes = { path="../purkkatypes" }
+purkkasyntax = { path="../purkkasyntax" }
+purkkatoken = { path="../purkkatoken" }

@@ -1,9 +1,8 @@
-use purkkaparser::parse_file;
-use purkkaparser::parser::*;
-use purkkaparser::token::Token;
-
 use fragment::fragment::{FragmentIterator};
-use purkkatypes::{Param, TypeSignature};
+use purkkaparser::parse_file;
+use purkkaparser::parser::parse;
+use purkkatoken::token::Token;
+use purkkasyntax::*;
 
 fn test_parse_file(s: &str) -> S {
     parse_file("file.prk", s)

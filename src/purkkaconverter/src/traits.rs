@@ -1,5 +1,5 @@
 use crate::Context;
-use purkkaparser::parser::S;
+use purkkasyntax::S;
 
 pub trait TreeTransformer<'a> {
     fn new(context: &'a mut Context) -> Self;

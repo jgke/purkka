@@ -5,8 +5,9 @@ use std::rc::Rc;
 
 use cparser::parser as cp;
 use ctoken::token as ct;
-use purkkaparser::{parser as pp, token as pt};
-use purkkatypes::{Param, TypeSignature};
+use purkkasyntax as pp;
+use purkkasyntax::{Param, TypeSignature};
+use purkkatoken::token as pt;
 
 mod traits;
 
