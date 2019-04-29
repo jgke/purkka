@@ -257,9 +257,10 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                     .iter()
                     .flat_map(|(_, rule)| {
                         let index = self.tm.indices[&rule.identifier];
-                        rule.data.iter().enumerate().map(move |(i, data)| {
-                            (index, i, data.real_name.clone(), rule.span)
-                        })
+                        rule.data
+                            .iter()
+                            .enumerate()
+                            .map(move |(i, data)| (index, i, data.real_name.clone(), rule.span))
                     })
                     .map(|(index, subindex, name, span)| {
                         self.cx.arm(
@@ -430,16 +431,19 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             self.cx.meta_list(
                 self.span,
                 symbol::Symbol::intern("allow"),
-                vec![self.cx.meta_list_item_word(
-                    self.span,
-                    symbol::Symbol::intern("unreachable_patterns"),
-                    ), self.cx.meta_list_item_word(
+                vec![
+                    self.cx.meta_list_item_word(
                         self.span,
-                        symbol::Symbol::intern("clippy::collapsible_if")
-                    ), self.cx.meta_list_item_word(
+                        symbol::Symbol::intern("unreachable_patterns"),
+                    ),
+                    self.cx.meta_list_item_word(
                         self.span,
-                        symbol::Symbol::intern("clippy::cognitive_complexity")
-                    )
+                        symbol::Symbol::intern("clippy::collapsible_if"),
+                    ),
+                    self.cx.meta_list_item_word(
+                        self.span,
+                        symbol::Symbol::intern("clippy::cognitive_complexity"),
+                    ),
                 ],
             ),
         );
@@ -905,18 +909,23 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
             ty_return,
             body,
         );
-        item.attrs = vec![self.cx.attribute(self.span,
-                                            self.cx.meta_list(self.span,
-                                                              symbol::Symbol::intern("allow"),
-                                                              vec![self.cx.meta_list_item_word(self.span,
-                                                              symbol::Symbol::intern("clippy::collapsible_if")
-                                                              ),
-                                                              self.cx.meta_list_item_word(
-                                                                  self.span,
-                                                                  symbol::Symbol::intern("clippy::cognitive_complexity")
-                                                                  )
-
-                                                              ]))];
+        item.attrs = vec![self.cx.attribute(
+            self.span,
+            self.cx.meta_list(
+                self.span,
+                symbol::Symbol::intern("allow"),
+                vec![
+                    self.cx.meta_list_item_word(
+                        self.span,
+                        symbol::Symbol::intern("clippy::collapsible_if"),
+                    ),
+                    self.cx.meta_list_item_word(
+                        self.span,
+                        symbol::Symbol::intern("clippy::cognitive_complexity"),
+                    ),
+                ],
+            ),
+        )];
         item
     }
     pub fn get_first_fn(&self, rules: &[Rule]) -> P<ast::Item> {

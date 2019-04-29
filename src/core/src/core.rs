@@ -137,7 +137,7 @@ pub fn real_main() {
                 (
                     split[0].to_string(),
                     split.get(1).unwrap_or(&"1").to_string(),
-                    )
+                )
             })
             .collect()
         })

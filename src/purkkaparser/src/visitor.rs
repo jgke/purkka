@@ -111,7 +111,8 @@ pub fn walk_ty<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut TypeSignature) {
         }
         TypeSignature::DynamicArray(ref mut ty, ref mut expr) => {
             visitor.visit_ty(ty.deref_mut());
-            expr.iter_mut().for_each(|e| visitor.visit_expression(e.deref_mut()));
+            expr.iter_mut()
+                .for_each(|e| visitor.visit_expression(e.deref_mut()));
         }
         TypeSignature::Function(ref mut params, ref mut return_type) => {
             params
@@ -202,11 +203,9 @@ pub fn walk_block_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Bl
                 .for_each(|b| visitor.visit_block(b.deref_mut()));
         }
         BlockExpression::For(init, cond, postloop, block, otherwise) => {
-            init
-                .iter_mut()
+            init.iter_mut()
                 .for_each(|b| visitor.visit_statement(b.deref_mut()));
-            cond
-                .iter_mut()
+            cond.iter_mut()
                 .for_each(|b| visitor.visit_statement(b.deref_mut()));
             postloop
                 .iter_mut()

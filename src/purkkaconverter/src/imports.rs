@@ -1,8 +1,8 @@
 use crate::traits::TreeTransformer;
 use crate::Context;
+use purkkaparser::visitor::*;
 /// Strip imports
 use purkkasyntax::*;
-use purkkaparser::visitor::*;
 
 #[derive(Debug)]
 pub struct StripImports<'a> {

@@ -235,22 +235,24 @@ impl Context {
             pp::Declaration::Declaration(false, _mutable, name, Some(ty), Some(expr)) => {
                 cp::Declaration::List(
                     Box::new(self.type_to_declaration_specifiers(*ty.clone())),
-                    Box::new(cp::InitDeclaratorList::InitDeclarator(Box::new(cp::InitDeclarator::Assign(
-                        Box::new(self.format_decl(name, *ty)),
-                        ct::Token::Assign(0),
-                        Box::new(cp::AssignmentOrInitializerList::AssignmentExpression(
-                            self.assignment_expression(*expr),
-                        )),
-                    )))),
+                    Box::new(cp::InitDeclaratorList::InitDeclarator(Box::new(
+                        cp::InitDeclarator::Assign(
+                            Box::new(self.format_decl(name, *ty)),
+                            ct::Token::Assign(0),
+                            Box::new(cp::AssignmentOrInitializerList::AssignmentExpression(
+                                self.assignment_expression(*expr),
+                            )),
+                        ),
+                    ))),
                     ct::Token::Semicolon(0),
                 )
             }
             pp::Declaration::Declaration(false, _mutable, name, Some(ty), None) => {
                 cp::Declaration::List(
                     Box::new(self.type_to_declaration_specifiers(*ty.clone())),
-                    Box::new(cp::InitDeclaratorList::InitDeclarator(Box::new(cp::InitDeclarator::Declarator(
-                        Box::new(self.format_decl(name, *ty)),
-                    )))),
+                    Box::new(cp::InitDeclaratorList::InitDeclarator(Box::new(
+                        cp::InitDeclarator::Declarator(Box::new(self.format_decl(name, *ty))),
+                    ))),
                     ct::Token::Semicolon(0),
                 )
             }
@@ -271,9 +273,9 @@ impl Context {
                 };
                 cp::DeclarationSpecifiers::Neither(Box::new(c_ty))
             }
-            TypeSignature::Infer => {
-                cp::DeclarationSpecifiers::Neither(Box::new(cp::TypeSpecifier::Int(ct::Token::Int(0))))
-            }
+            TypeSignature::Infer => cp::DeclarationSpecifiers::Neither(Box::new(
+                cp::TypeSpecifier::Int(ct::Token::Int(0)),
+            )),
             TypeSignature::Array(ty, _) => self.type_to_declaration_specifiers(*ty),
             TypeSignature::Pointer { ty, .. } => self.type_to_declaration_specifiers(*ty),
             other => panic!("Not implemented: {:?}", other),
@@ -304,11 +306,11 @@ impl Context {
             pp::Expression::PrimaryExpression(primary_expr) => {
                 cp::TernaryExpression::GeneralExpression(cp::GeneralExpression::CastExpression(
                     Box::new(cp::CastExpression::UnaryExpression(
-                        cp::UnaryExpression::PostfixExpression(
-                            Box::new(cp::PostfixExpression::PrimaryExpression(
+                        cp::UnaryExpression::PostfixExpression(Box::new(
+                            cp::PostfixExpression::PrimaryExpression(
                                 self.primary_expr(primary_expr),
-                            )),
-                        ),
+                            ),
+                        )),
                     )),
                 ))
             }

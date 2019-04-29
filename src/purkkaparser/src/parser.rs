@@ -26,7 +26,11 @@ macro_rules! unexpected_token {
             Some(t) => {
                 let as_s = format!("{:?}", t);
                 let num = t.get_num();
-                panic!("Unexpected token: {}\n{}", as_s, $iter.fragment.source_to_str(&$iter.sources[num]));
+                panic!(
+                    "Unexpected token: {}\n{}",
+                    as_s,
+                    $iter.fragment.source_to_str(&$iter.sources[num])
+                );
             }
         }
     };
@@ -40,7 +44,12 @@ macro_rules! unexpected_token_expected_one {
                 let as_s = format!("{:?}", t);
                 let expected = stringify!($expected);
                 let num = t.get_num();
-                panic!("Unexpected token: {}, expected {}\n{}", as_s, expected, $iter.fragment.source_to_str(&$iter.sources[num]));
+                panic!(
+                    "Unexpected token: {}, expected {}\n{}",
+                    as_s,
+                    expected,
+                    $iter.fragment.source_to_str(&$iter.sources[num])
+                );
             }
         }
     };
@@ -132,7 +141,7 @@ pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator) -
         precedence: default_bin_ops(),
         iter,
         fragment: fragment_iter,
-        sources
+        sources,
     };
     S::TranslationUnit(context.parse_translation_unit())
 }
@@ -231,11 +240,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     false,
                     ident,
                     None,
-                    Some(Box::new(self.fun_to_expr(
-                        params,
-                        return_type,
-                        block,
-                    ))),
+                    Some(Box::new(self.fun_to_expr(params, return_type, block))),
                 );
             }
             t => unexpected_token!(t, self),
@@ -309,11 +314,8 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 TypeSignature::Function(params, Box::new(return_type))
             }
             t => {
-                let ty_list: Result<Vec<TypeSignature>, ()> = params
-                    .clone()
-                    .into_iter()
-                    .map(TryFrom::try_from)
-                    .collect();
+                let ty_list: Result<Vec<TypeSignature>, ()> =
+                    params.clone().into_iter().map(TryFrom::try_from).collect();
                 if ty_list.is_ok() {
                     TypeSignature::Tuple(ty_list.unwrap())
                 } else {
@@ -349,9 +351,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::SemiColon);
                 let lit = self.parse_literal();
                 match lit {
-                    Literal::Integer(Token::Integer(_, i)) => {
-                        Some(TryFrom::try_from(i).unwrap())
-                    }
+                    Literal::Integer(Token::Integer(_, i)) => Some(TryFrom::try_from(i).unwrap()),
                     _ => panic!("Not implemented: compile-time expr parsing"),
                 }
             }
@@ -555,15 +555,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     expr = Expression::Op(op, ExprList::List(left));
                 }
                 Some(_) => break,
-                None => {
-                    match self.postfix_precedence.get(p) {
-                        Some(_) => {
-                            let op = self.next().unwrap().clone();
-                            expr = Expression::PostFix(Box::new(expr), op);
-                        }
-                        _ => panic!("Unknown operator: {}", p),
+                None => match self.postfix_precedence.get(p) {
+                    Some(_) => {
+                        let op = self.next().unwrap().clone();
+                        expr = Expression::PostFix(Box::new(expr), op);
                     }
-                }
+                    _ => panic!("Unknown operator: {}", p),
+                },
             }
         }
         expr
@@ -620,9 +618,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::Operator);
                 let expr = self.parse_expression();
                 read_token!(self, Token::SemiColon);
-                BlockExpression::Block(Block::Statements(vec![Statement::Return(Some(
-                    Box::new(expr),
-                ))]))
+                BlockExpression::Block(Block::Statements(vec![Statement::Return(Some(Box::new(
+                    expr,
+                )))]))
             }
             _ => self.parse_block_expression(),
         };
@@ -662,7 +660,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::Else);
                 Some(Box::new(self.parse_block()))
             }
-            _ => None
+            _ => None,
         };
         BlockExpression::While(Box::new(expr), Box::new(block), else_block)
     }
@@ -675,19 +673,19 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
         let init = match self.peek() {
             Some(Token::SemiColon(..)) => None,
-            _ => Some(Box::new(self.parse_statement(false)))
+            _ => Some(Box::new(self.parse_statement(false))),
         };
         read_token!(self, Token::SemiColon);
 
         let cond = match self.peek() {
             Some(Token::SemiColon(..)) => None,
-            _ => Some(Box::new(self.parse_statement(false)))
+            _ => Some(Box::new(self.parse_statement(false))),
         };
         read_token!(self, Token::SemiColon);
 
         let post_loop = match self.peek() {
             Some(Token::CloseParen(..)) => None,
-            _ => Some(Box::new(self.parse_statement(false)))
+            _ => Some(Box::new(self.parse_statement(false))),
         };
 
         read_token!(self, Token::CloseParen);
@@ -698,11 +696,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::Else);
                 Some(Box::new(self.parse_block()))
             }
-            _ => None
+            _ => None,
         };
         BlockExpression::For(init, cond, post_loop, Box::new(block), else_block)
     }
-
 
     fn parse_literal(&mut self) -> Literal {
         match self.peek() {
@@ -965,17 +962,15 @@ mod tests {
 
     #[test]
     fn parse_fn_empty() {
-        let s = test_parse(
-            vec![
-                Token::Let(0),
-                Token::Identifier(1, From::from("bar")),
-                Token::Operator(2, From::from("=")),
-                Token::Identifier(3, From::from("foo")),
-                Token::OpenParen(4),
-                Token::CloseParen(5),
-                Token::SemiColon(6),
-            ]
-        );
+        let s = test_parse(vec![
+            Token::Let(0),
+            Token::Identifier(1, From::from("bar")),
+            Token::Operator(2, From::from("=")),
+            Token::Identifier(3, From::from("foo")),
+            Token::OpenParen(4),
+            Token::CloseParen(5),
+            Token::SemiColon(6),
+        ]);
         assert_eq!(
             Some(&s)
                 .translation_unit()
@@ -1003,18 +998,16 @@ mod tests {
 
     #[test]
     fn parse_fn_one_arg() {
-        let s = test_parse(
-            vec![
-                Token::Let(0),
-                Token::Identifier(1, From::from("bar")),
-                Token::Operator(2, From::from("=")),
-                Token::Identifier(3, From::from("foo")),
-                Token::OpenParen(4),
-                Token::Identifier(5, From::from("asd")),
-                Token::CloseParen(6),
-                Token::SemiColon(7),
-            ]
-        );
+        let s = test_parse(vec![
+            Token::Let(0),
+            Token::Identifier(1, From::from("bar")),
+            Token::Operator(2, From::from("=")),
+            Token::Identifier(3, From::from("foo")),
+            Token::OpenParen(4),
+            Token::Identifier(5, From::from("asd")),
+            Token::CloseParen(6),
+            Token::SemiColon(7),
+        ]);
         assert_eq!(
             Some(&s)
                 .translation_unit()
@@ -1044,20 +1037,18 @@ mod tests {
 
     #[test]
     fn parse_fn_two_args() {
-        let s = test_parse(
-            vec![
-                Token::Let(0),
-                Token::Identifier(1, From::from("bar")),
-                Token::Operator(2, From::from("=")),
-                Token::Identifier(3, From::from("foo")),
-                Token::OpenParen(4),
-                Token::Identifier(5, From::from("asd")),
-                Token::Comma(6),
-                Token::Identifier(7, From::from("qwe")),
-                Token::CloseParen(8),
-                Token::SemiColon(9),
-            ]
-        );
+        let s = test_parse(vec![
+            Token::Let(0),
+            Token::Identifier(1, From::from("bar")),
+            Token::Operator(2, From::from("=")),
+            Token::Identifier(3, From::from("foo")),
+            Token::OpenParen(4),
+            Token::Identifier(5, From::from("asd")),
+            Token::Comma(6),
+            Token::Identifier(7, From::from("qwe")),
+            Token::CloseParen(8),
+            Token::SemiColon(9),
+        ]);
         assert_eq!(
             Some(&s)
                 .translation_unit()
@@ -1088,22 +1079,20 @@ mod tests {
 
     #[test]
     fn parse_fn_three_args() {
-        let s = test_parse(
-            vec![
-                Token::Let(1),
-                Token::Identifier(2, From::from("bar")),
-                Token::Operator(3, From::from("=")),
-                Token::Identifier(4, From::from("foo")),
-                Token::OpenParen(5),
-                Token::Identifier(6, From::from("asd")),
-                Token::Comma(7),
-                Token::Identifier(8, From::from("qwe")),
-                Token::Comma(9),
-                Token::Identifier(10, From::from("aoeu")),
-                Token::CloseParen(11),
-                Token::SemiColon(12),
-            ]
-        );
+        let s = test_parse(vec![
+            Token::Let(1),
+            Token::Identifier(2, From::from("bar")),
+            Token::Operator(3, From::from("=")),
+            Token::Identifier(4, From::from("foo")),
+            Token::OpenParen(5),
+            Token::Identifier(6, From::from("asd")),
+            Token::Comma(7),
+            Token::Identifier(8, From::from("qwe")),
+            Token::Comma(9),
+            Token::Identifier(10, From::from("aoeu")),
+            Token::CloseParen(11),
+            Token::SemiColon(12),
+        ]);
         assert_eq!(
             Some(&s)
                 .translation_unit()

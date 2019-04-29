@@ -4,7 +4,10 @@ use fragment::fragment::{FragmentIterator, Source};
 use shared::intern::StringInterner;
 use shared::utils::*;
 
-pub fn tokenize(content: &str, filename: &str) -> (Vec<Token>, StringInterner, FragmentIterator, Vec<Source>) {
+pub fn tokenize(
+    content: &str,
+    filename: &str,
+) -> (Vec<Token>, StringInterner, FragmentIterator, Vec<Source>) {
     let mut iter = FragmentIterator::new(filename, content);
     let mut intern = StringInterner::new();
     let mut res = Vec::new();
@@ -36,7 +39,9 @@ fn flush_comment(iter: &mut FragmentIterator) {
     iter.next();
     iter.next();
     match ty.as_ref() {
-        "//" => { iter.collect_while(|x| x != '\n'); }
+        "//" => {
+            iter.collect_while(|x| x != '\n');
+        }
         "/*" => {
             let mut prev_star = false;
             let mut stop_next = false;
@@ -54,11 +59,15 @@ fn flush_comment(iter: &mut FragmentIterator) {
                 true
             });
         }
-        t => panic!("Unexpected start of comment: {}", t)
+        t => panic!("Unexpected start of comment: {}", t),
     }
 }
 
-fn read_number(iter: &mut FragmentIterator, intern: &mut StringInterner, num: usize) -> (Token, Source) {
+fn read_number(
+    iter: &mut FragmentIterator,
+    intern: &mut StringInterner,
+    num: usize,
+) -> (Token, Source) {
     let radix_str = iter.peek_n(2);
     let radix = match radix_str.as_ref() {
         "0b" => {
@@ -77,15 +86,25 @@ fn read_number(iter: &mut FragmentIterator, intern: &mut StringInterner, num: us
         '0'...'9' | 'a'...'f' | 'A'...'F' | '_' | '.' => true,
         _ => false,
     });
-    let content = content_str.chars().filter(|c| *c != '_').collect::<String>();
+    let content = content_str
+        .chars()
+        .filter(|c| *c != '_')
+        .collect::<String>();
     if !content.contains('.') {
-        (Token::Integer(num, i128::from_str_radix(&content, radix).unwrap()), source)
+        (
+            Token::Integer(num, i128::from_str_radix(&content, radix).unwrap()),
+            source,
+        )
     } else {
         (Token::Float(num, intern.get_ref(&content)), source)
     }
 }
 
-fn read_string(iter: &mut FragmentIterator, intern: &mut StringInterner, num: usize) -> (Token, Source) {
+fn read_string(
+    iter: &mut FragmentIterator,
+    intern: &mut StringInterner,
+    num: usize,
+) -> (Token, Source) {
     let mut end = false;
     let (content, source) = iter.collect_while_flatmap(|c, iter| match c {
         '"' => {
@@ -173,10 +192,10 @@ fn get_octal(iter: &mut FragmentIterator, c: char) -> char {
                     iter.next();
                     char_from_octal(c, second, third)
                 }
-                _ => char_from_octal('0', c, second)
+                _ => char_from_octal('0', c, second),
             }
         }
-        _ => char_from_octal('0', '0', c)
+        _ => char_from_octal('0', '0', c),
     }
 }
 
@@ -209,7 +228,11 @@ fn get_hex(iter: &mut FragmentIterator) -> char {
     num as char
 }
 
-fn read_identifier(iter: &mut FragmentIterator, intern: &mut StringInterner, num: usize) -> (Token, Source) {
+fn read_identifier(
+    iter: &mut FragmentIterator,
+    intern: &mut StringInterner,
+    num: usize,
+) -> (Token, Source) {
     let (content, source) = iter.collect_while(|c| match c {
         '0'...'9' | 'a'...'z' | 'A'...'Z' | '_' => true,
         _ => false,
@@ -224,7 +247,11 @@ fn read_identifier(iter: &mut FragmentIterator, intern: &mut StringInterner, num
     (Token::Identifier(num, intern.get_ref(&content)), source)
 }
 
-fn read_other(iter: &mut FragmentIterator, intern: &mut StringInterner, num: usize) -> (Token, Source) {
+fn read_other(
+    iter: &mut FragmentIterator,
+    intern: &mut StringInterner,
+    num: usize,
+) -> (Token, Source) {
     for (punctuation, p) in TOKEN_TYPES.iter() {
         if iter.starts_with(punctuation) {
             iter.next_new_span();

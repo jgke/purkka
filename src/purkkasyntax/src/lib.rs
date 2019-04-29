@@ -347,9 +347,7 @@ impl Declaration {
             false,
             _,
             _,
-            Some(box Expression::PrimaryExpression(PrimaryExpression::Lambda(
-                ..
-            ))),
+            Some(box Expression::PrimaryExpression(PrimaryExpression::Lambda(..))),
         ) = self
         {
             true

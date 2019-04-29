@@ -512,10 +512,10 @@ where
                         iter.next();
                         char_from_octal(c, second, third)
                     }
-                    _ => char_from_octal('0', c, second)
+                    _ => char_from_octal('0', c, second),
                 }
             }
-            _ => char_from_octal('0', '0', c)
+            _ => char_from_octal('0', '0', c),
         }
     }
 
@@ -943,10 +943,10 @@ where
                         return;
                     }
                     (_, _, (MacroType::If, _, _))
-                        | (_, _, (MacroType::Ifdef, _, _))
-                        | (_, _, (MacroType::Ifndef, _, _)) => {
-                            skip_to += 1;
-                        }
+                    | (_, _, (MacroType::Ifdef, _, _))
+                    | (_, _, (MacroType::Ifndef, _, _)) => {
+                        skip_to += 1;
+                    }
                     (_, _, (MacroType::Endif, _, _)) => {
                         skip_to -= 1;
                     }
@@ -1307,7 +1307,10 @@ where
 
     fn parse_builtin(&mut self, iter: &mut MacroParseIter, expected: &str, ty: MacroTokenType) {
         let start = self.get_next_token_mut(iter).map(|(t, _)| t);
-        let ident = start.as_ref().and_then(MacroToken::get_identifier_str).unwrap();
+        let ident = start
+            .as_ref()
+            .and_then(MacroToken::get_identifier_str)
+            .unwrap();
 
         assert!(expected == ident.as_ref());
         let mut source = start.unwrap().source;

@@ -1,8 +1,8 @@
-use fragment::fragment::{FragmentIterator};
+use fragment::fragment::FragmentIterator;
 use purkkaparser::parse_file;
 use purkkaparser::parser::parse;
-use purkkatoken::token::Token;
 use purkkasyntax::*;
+use purkkatoken::token::Token;
 
 fn test_parse_file(s: &str) -> S {
     parse_file("file.prk", s)
@@ -19,7 +19,7 @@ fn parse_simple() {
         .iter()
         .peekable(),
         &vec![],
-        &FragmentIterator::new("", "")
+        &FragmentIterator::new("", ""),
     );
 }
 

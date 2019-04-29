@@ -2,8 +2,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use purkkasyntax::*;
 use purkkaparser::visitor::*;
+use purkkasyntax::*;
 
 #[derive(Debug)]
 pub struct FetchDeclarations {

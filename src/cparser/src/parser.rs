@@ -124,7 +124,10 @@ fn is_type(state: &State, token: &Token) -> bool {
 
 fn is_label(state: &State, token: &Token) -> bool {
     match token {
-        Token::Identifier(_, i) => state.scope.iter().any(|s| s.labels.contains(&i.to_string())),
+        Token::Identifier(_, i) => state
+            .scope
+            .iter()
+            .any(|s| s.labels.contains(&i.to_string())),
         _ => panic!(),
     }
 }

@@ -1,8 +1,8 @@
 use crate::traits::TreeTransformer;
 use crate::Context;
+use purkkaparser::visitor::*;
 /// Convert lambdas to global functions, replacing them in expressions with identifiers
 use purkkasyntax::*;
-use purkkaparser::visitor::*;
 
 #[derive(Debug)]
 pub struct StripLambda<'a> {
@@ -36,9 +36,9 @@ impl ASTVisitor for StripLambda<'_> {
                             _,
                             name,
                             _,
-                            Some(box Expression::PrimaryExpression(
-                                PrimaryExpression::Lambda(mut lambda),
-                            )),
+                            Some(box Expression::PrimaryExpression(PrimaryExpression::Lambda(
+                                mut lambda,
+                            ))),
                         )) = t
                         {
                             self.visit_lambda(&mut lambda);
