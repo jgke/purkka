@@ -111,8 +111,7 @@ pub fn walk_ty<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut TypeSignature) {
         }
         TypeSignature::DynamicArray(ref mut ty, ref mut expr) => {
             visitor.visit_ty(ty.deref_mut());
-            expr.iter_mut()
-                .for_each(|e| visitor.visit_expression(e.deref_mut()));
+            visitor.visit_expression(expr.deref_mut());
         }
         TypeSignature::Function(ref mut params, ref mut return_type) => {
             params
@@ -152,6 +151,10 @@ pub fn walk_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Expressi
         Expression::PostFix(expr, _op) => {
             visitor.visit_expression(expr);
         }
+        Expression::Cast(expr, _as, ty) => {
+            visitor.visit_expression(expr);
+            visitor.visit_ty(ty);
+        }
     }
 }
 
@@ -177,6 +180,10 @@ pub fn walk_primary_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut 
         PrimaryExpression::ArrayAccess(primary_expr, expr) => {
             visitor.visit_primary_expression(primary_expr.deref_mut());
             visitor.visit_expression(expr.deref_mut());
+        }
+        PrimaryExpression::StructInitialization(_ident, list) => {
+            list.iter_mut().for_each(|StructInitializationField::StructInitializationField(_, e)|
+                                     visitor.visit_expression(e.deref_mut()));
         }
     }
 }

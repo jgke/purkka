@@ -5,8 +5,11 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::rc::Rc;
+
+use std::ops::{Add, Div};
 
 use purkkatoken::token::Token;
 
@@ -170,6 +173,7 @@ grammar! {
        -> #Token::Identifier
         | Call. #Token::Identifier ArgList
         | Literal
+        | StructInitialization. #Token::Identifier /* ident:typename */ #Token::OpenBrace InitializationFields #Token::CloseBrace
         | ArrayAccess. PrimaryExpression #Token::OpenBracket Expression #Token::CloseBracket
         | BlockExpression
         | Expression. #Token::OpenParen Expression #Token::CloseParen
@@ -177,6 +181,7 @@ grammar! {
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum PrimaryExpression {
             Identifier(Rc<str>),
+            StructInitialization(Rc<str>, Vec<StructInitializationField>),
             Call(Rc<str>, ArgList),
             Literal(Literal),
             BlockExpression(Box<BlockExpression>),
@@ -186,8 +191,23 @@ grammar! {
         }
         ;
 
+    InitializationFields
+       -> Epsilon
+        | StructInitializationField TrailingComma
+        | More. StructInitializationField #Token::Comma InitializationFields
+        ;
+
+    StructInitializationField
+       -> Expression
+        | #Token::Identifier Token::Operator Expression
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum StructInitializationField {
+            StructInitializationField(Option<Rc<str>>, Box<Expression>)
+        }
+        ;
+
     Lambda
-        -> #Token::Fun ParamList #Token::Operator Block
+       -> #Token::Fun ParamList #Token::Operator Block
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Lambda {
             Lambda(Vec<Param>, TypeSignature, BlockExpression),
@@ -235,6 +255,7 @@ grammar! {
         | Op. #Token::Operator ExprList
         | Unary. #Token::Operator ExprList
         | PostFix. Expression #Token::Operator
+        | Cast. Expression #Token::As TypeSignature
         ;
 
     ExprList -> Expression | Expression ExprList
@@ -300,7 +321,7 @@ pub enum TypeSignature {
     Enum(Option<Rc<str>>, Vec<EnumField>),
     Tuple(Vec<TypeSignature>),
     Array(Box<TypeSignature>, Option<usize>),
-    DynamicArray(Box<TypeSignature>, Option<Box<Expression>>),
+    DynamicArray(Box<TypeSignature>, Box<Expression>),
 
     Function(Vec<Param>, Box<TypeSignature>),
     Infer,
@@ -353,6 +374,56 @@ impl Declaration {
             true
         } else {
             false
+        }
+    }
+}
+
+impl Add for Literal {
+    type Output = Literal;
+
+    fn add(self, other: Literal) -> Literal {
+        match (self, other) {
+            (Literal::Integer(Token::Integer(i, left)), Literal::Integer(Token::Integer(_, right)))
+                => Literal::Integer(Token::Integer(i, left + right)),
+            otherwise => panic!("Not implemented: {:?}", otherwise)
+        }
+    }
+}
+
+impl Div for Literal {
+    type Output = Literal;
+
+    fn div(self, other: Literal) -> Literal {
+        match (self, other) {
+            (Literal::Integer(Token::Integer(i, left)), Literal::Integer(Token::Integer(_, right)))
+                => Literal::Integer(Token::Integer(i, left / right)),
+            otherwise => panic!("Not implemented: {:?}", otherwise)
+        }
+    }
+}
+
+impl Expression {
+    pub fn eval(&self, constants: &HashMap<Rc<str>, Literal>) -> Result<Literal, Rc<str>> {
+        match self {
+            Expression::PrimaryExpression(e) => e.eval(constants),
+            Expression::Op(Token::Operator(_, op), ExprList::List(list)) => {
+                match op.as_ref() {
+                    "+" => Ok(list[0].eval(constants)? + list[1].eval(constants)?),
+                    "/" => Ok(list[0].eval(constants)? / list[1].eval(constants)?),
+                    otherwise => panic!("Not implemented: {:?}", otherwise)
+                }
+            }
+            otherwise => panic!("Not implemented: {:?}", otherwise)
+        }
+    }
+}
+
+impl PrimaryExpression {
+    pub fn eval(&self, constants: &HashMap<Rc<str>, Literal>) -> Result<Literal, Rc<str>> {
+        match self {
+            PrimaryExpression::Literal(lit@Literal::Integer(Token::Integer(..))) => Ok(lit.clone()),
+            PrimaryExpression::Identifier(s) => constants.get(s).cloned().ok_or(s.clone()),
+            otherwise => panic!("Not implemented: {:?}", otherwise)
         }
     }
 }

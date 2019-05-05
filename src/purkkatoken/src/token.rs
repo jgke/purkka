@@ -36,6 +36,7 @@ pub enum Token {
     Enum(usize),
     Return(usize),
     NewOperator(usize),
+    As(usize),
 
     Import(usize),
 }
@@ -72,6 +73,7 @@ pub static KEYWORDS: &[(&str, TokenConstructor)] = &[
     ("return", Return),
     ("import", Import),
     ("operator", NewOperator),
+    ("as", As),
 ];
 
 impl Token {
@@ -106,6 +108,7 @@ impl Token {
             Enum(i, ..) => i,
             Return(i, ..) => i,
             NewOperator(i, ..) => i,
+            As(i, ..) => i,
             Import(i, ..) => i,
         }
     }

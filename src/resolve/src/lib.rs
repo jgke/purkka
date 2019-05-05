@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use purkkasyntax::TypeSignature;
 
 #[derive(Clone, Debug)]
@@ -6,7 +8,7 @@ pub struct ResolveResult {
     pub c_content: String,
     pub h_content: Option<String>,
     pub dependencies: Option<Vec<String>>,
-    pub declarations: Option<Vec<(String, TypeSignature)>>,
+    pub declarations: Option<Vec<(Rc<str>, TypeSignature)>>,
 }
 
 #[derive(Clone, Debug)]

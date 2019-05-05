@@ -73,6 +73,7 @@ fn default_bin_ops() -> PrecedenceMap {
     // Assignment
     precedence.insert(From::from("="), Precedence::binop_right(1));
     precedence.insert(From::from("&="), Precedence::binop_right(1));
+    precedence.insert(From::from("+="), Precedence::binop_right(1));
 
     // Ternary
     precedence.insert(From::from("?"), Precedence::binop_right(2));
@@ -134,6 +135,14 @@ fn default_postfix_ops() -> PrecedenceMap {
     precedence
 }
 
+fn default_types() -> HashMap<Rc<str>, TypeSignature> {
+    let mut types = HashMap::new();
+
+    types.insert(From::from("__m128d"), TypeSignature::Plain(From::from("__m128d")));
+
+    types
+}
+
 pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator) -> S {
     let mut context = ParseContext {
         unary_precedence: default_unary_ops(),
@@ -142,6 +151,7 @@ pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator) -
         iter,
         fragment: fragment_iter,
         sources,
+        types: default_types()
     };
     S::TranslationUnit(context.parse_translation_unit())
 }
@@ -193,6 +203,7 @@ struct ParseContext<'a, 'b> {
     iter: Iter<'a, 'b>,
     fragment: &'a FragmentIterator,
     sources: &'a [Source],
+    types: HashMap<Rc<str>, TypeSignature>,
 }
 
 impl<'a, 'b> ParseContext<'a, 'b> {
@@ -210,6 +221,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             while maybe_read_token!(self, Token::SemiColon).is_some() {}
         }
         TranslationUnit::Units(units)
+    }
+
+    fn is_ty(&self, s: &str) -> bool {
+        self.types.contains_key(s)
     }
 
     fn parse_unit(&mut self) -> Unit {
@@ -349,16 +364,21 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         let expr = match self.peek() {
             Some(Token::SemiColon(..)) => {
                 read_token!(self, Token::SemiColon);
-                let lit = self.parse_literal();
-                match lit {
-                    Literal::Integer(Token::Integer(_, i)) => Some(TryFrom::try_from(i).unwrap()),
-                    _ => panic!("Not implemented: compile-time expr parsing"),
-                }
+                Some(self.parse_expression())
             }
             _ => None,
         };
+        let val = match expr.as_ref().map(|e| e.eval(&HashMap::new())) {
+            Some(Ok(Literal::Integer(Token::Integer(_, i)))) => Some(TryFrom::try_from(i).unwrap()),
+            Some(Err(_)) => None,
+            Some(otherwise) => panic!("Not implemented: {:?}", otherwise),
+            None => None,
+        };
         read_token!(self, Token::CloseBracket);
-        TypeSignature::Array(Box::new(ty), expr)
+
+        val.map(|i| TypeSignature::Array(Box::new(ty.clone()), Some(i)))
+            .or_else(|| expr.map(|e| TypeSignature::DynamicArray(Box::new(ty.clone()), Box::new(e))))
+            .unwrap_or(TypeSignature::Array(Box::new(ty), None))
     }
 
     fn parse_ptr(&mut self, op: &str) -> TypeSignature {
@@ -423,10 +443,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 }
             }
             Some(_) => match_first!(
-                    self.peek() => _t,
-                    default None,
+                self.peek() => _t,
+                default None,
 
-                    TypeSignature => Some(Param::Anon(Box::new(self.parse_type()))),),
+                TypeSignature => Some(Param::Anon(Box::new(self.parse_type()))),),
             None => None,
         }
     }
@@ -543,25 +563,35 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
         }
         let mut expr = Expression::PrimaryExpression(self.parse_primary_expression());
-        while let Some(Token::Operator(_, p)) = self.peek() {
-            match self.precedence.get(p).copied() {
-                Some(n) if precedence <= n.precedence => {
-                    let mut left = vec![expr];
-                    let op = self.next().unwrap().clone();
-                    let mut tail = (1..n.param_count)
-                        .map(|_| self.parse_expression_(n.precedence))
-                        .collect();
-                    left.append(&mut tail);
-                    expr = Expression::Op(op, ExprList::List(left));
+        loop {
+            match self.peek() {
+                Some(Token::As(..)) => {
+                    let as_tok = read_token!(self, Token::As);
+                    let ty = self.parse_type();
+                    expr = Expression::Cast(Box::new(expr), as_tok, ty);
                 }
-                Some(_) => break,
-                None => match self.postfix_precedence.get(p) {
-                    Some(_) => {
-                        let op = self.next().unwrap().clone();
-                        expr = Expression::PostFix(Box::new(expr), op);
+                Some(Token::Operator(_, p)) => {
+                    match self.precedence.get(p).copied() {
+                        Some(n) if precedence <= n.precedence => {
+                            let mut left = vec![expr];
+                            let op = self.next().unwrap().clone();
+                            let mut tail = (1..n.param_count)
+                                .map(|_| self.parse_expression_(n.precedence))
+                                .collect();
+                            left.append(&mut tail);
+                            expr = Expression::Op(op, ExprList::List(left));
+                        }
+                        Some(_) => break,
+                        None => match self.postfix_precedence.get(p) {
+                            Some(_) => {
+                                let op = self.next().unwrap().clone();
+                                expr = Expression::PostFix(Box::new(expr), op);
+                            }
+                            _ => panic!("Unknown operator: {}", p),
+                        },
                     }
-                    _ => panic!("Unknown operator: {}", p),
-                },
+                }
+                _ => break
             }
         }
         expr
@@ -571,8 +601,11 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         let mut expr = match self.peek() {
             Some(Token::Identifier(..)) => {
                 let t = self.next().identifier_s().unwrap().clone();
+                let is_ty = self.is_ty(&t);
                 match self.peek() {
                     Some(Token::OpenParen(..)) => PrimaryExpression::Call(t, self.parse_args()),
+                    Some(Token::OpenBrace(..)) if is_ty =>
+                        PrimaryExpression::StructInitialization(t, self.parse_initialization_fields()),
                     _ => PrimaryExpression::Identifier(t),
                 }
             }
@@ -818,6 +851,46 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
         ArgList::Args(args)
     }
+
+    fn parse_initialization_fields(&mut self) -> Vec<StructInitializationField> {
+        let mut fields = Vec::new();
+
+        read_token!(self, Token::OpenBrace);
+        loop {
+            match self.peek() {
+                Some(Token::CloseBrace(..)) => {
+                    read_token!(self, Token::CloseBrace);
+                    break;
+                }
+                Some(_) => {
+                    let expr = self.parse_expression();
+                    match self.peek() {
+                        Some(Token::Operator(i, p)) if &**p == ":" => {
+                            if let Expression::PrimaryExpression(PrimaryExpression::Identifier(ident)) = expr {
+                                read_token!(self, Token::Operator);
+                                let expr = self.parse_expression();
+                                fields.push(StructInitializationField::StructInitializationField(Some(ident), Box::new(expr)));
+                            } else {
+                                unexpected_token!(Some(&Token::Operator(*i, p.clone())), self);
+                            }
+                        }
+                        Some(Token::Comma(..)) => {
+                            fields.push(StructInitializationField::StructInitializationField(None, Box::new(expr)));
+                            read_token!(self, Token::Comma);
+                        }
+                        Some(Token::CloseBrace(..)) => {
+                            read_token!(self, Token::CloseBrace);
+                            break;
+                        }
+                        t => unexpected_token!(t, self),
+                    }
+                }
+                t => unexpected_token!(t, self),
+            }
+        }
+
+        fields
+    }
 }
 
 #[cfg(test)]
@@ -843,6 +916,7 @@ mod tests {
                 Token::Integer(0, e),
             ))) => *e,
             Expression::PrimaryExpression(_) => unreachable!(),
+            Expression::Cast(..) => unreachable!(),
             Expression::Op(op, ExprList::List(list)) => {
                 let op_s: &str = if let Token::Operator(_, s) = op {
                     &*s
@@ -920,6 +994,7 @@ mod tests {
             iter: &mut vec.iter().peekable(),
             fragment: &FragmentIterator::new("", ""),
             sources: &Vec::new(),
+            types: default_types(),
         };
         let result = eval_tree(&context.parse_expression());
         println!("{} = {} (expected: {})", expr, result, expected);

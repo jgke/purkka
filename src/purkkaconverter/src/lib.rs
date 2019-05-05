@@ -15,12 +15,14 @@ mod array;
 mod declarations;
 mod imports;
 mod lambda;
+mod inference;
 
 use traits::TreeTransformer;
 
 use array::ArrayToPointer;
 use declarations::FetchDeclarations;
 use imports::StripImports;
+use inference::TypeInferrer;
 use lambda::StripLambda;
 
 #[derive(Clone, Debug)]
@@ -32,6 +34,7 @@ pub struct Context {
 
 pub fn convert(mut purkka_tree: pp::S) -> (cp::S, Context) {
     let mut context = Context::new();
+    TypeInferrer::new(&mut context).transform(&mut purkka_tree);
     ArrayToPointer::new(&mut context).transform(&mut purkka_tree);
     StripLambda::new(&mut context).transform(&mut purkka_tree);
     StripImports::new(&mut context).transform(&mut purkka_tree);
@@ -113,15 +116,74 @@ impl Context {
         )))
     }
 
+    pub fn cond_and_block_to_selection_statement(&mut self, cond: pp::Expression, block: pp::Block,
+                                                 otherwise: cp::MaybeElse) -> cp::SelectionStatement {
+        cp::SelectionStatement::If(
+            ct::Token::If(0),
+            ct::Token::OpenParen(0),
+            Box::new(self.expression(cond)),
+            ct::Token::CloseParen(0),
+            cp::Statement::CompoundStatement(Box::new(cp::CompoundStatement::PushScope(
+                cp::PushScope::OpenBrace(ct::Token::OpenBrace(0)),
+                Box::new(self.block_to_statement_list(block)),
+                ct::Token::CloseBrace(0)))),
+            Box::new(otherwise))
+    }
+
     pub fn block_expression_to_compound_statement(
         &mut self,
         block: pp::BlockExpression,
     ) -> cp::CompoundStatement {
         match block {
-            pp::BlockExpression::If(_arms, _otherwise) => unimplemented!(),
+            pp::BlockExpression::If(arms, otherwise) => {
+                let mut iter = arms.into_iter();
+                let first = iter.next().unwrap();
+
+                let else_block = otherwise.map(|block| cp::MaybeElse::Else(
+                        ct::Token::Else(0),
+                            cp::Statement::CompoundStatement(Box::new(cp::CompoundStatement::PushScope(
+                                cp::PushScope::OpenBrace(ct::Token::OpenBrace(0)),
+                                Box::new(self.block_to_statement_list(*block)),
+                                ct::Token::CloseBrace(0),
+                            ))),
+                        )).unwrap_or(cp::MaybeElse::Epsilon());
+
+                let tail = iter.rev().fold(else_block, |prev, next| {
+                    cp::MaybeElse::Else(
+                        ct::Token::Else(0),
+                            cp::Statement::SelectionStatement(Box::new(
+                                    self.cond_and_block_to_selection_statement(*next.0, *next.1, prev),
+                            )),
+                        )
+                });
+
+                cp::CompoundStatement::PushScope(
+                    cp::PushScope::OpenBrace(ct::Token::OpenBrace(0)),
+                    Box::new(cp::StatementList::StatementOrDeclaration(
+                        cp::StatementOrDeclaration::Statement(
+                            cp::Statement::SelectionStatement(Box::new(
+                                self.cond_and_block_to_selection_statement(*first.0, *first.1, tail)
+                            ))
+                        )
+                    )),
+                    ct::Token::CloseBrace(0),
+                )
+            }
             pp::BlockExpression::Block(block) => cp::CompoundStatement::PushScope(
                 cp::PushScope::OpenBrace(ct::Token::OpenBrace(0)),
                 Box::new(self.block_to_statement_list(block)),
+                ct::Token::CloseBrace(0),
+            ),
+            pp::BlockExpression::For(first, second, third, block, None) => cp::CompoundStatement::PushScope(
+                cp::PushScope::OpenBrace(ct::Token::OpenBrace(0)),
+                Box::new(cp::StatementList::StatementOrDeclaration(cp::StatementOrDeclaration::Statement(cp::Statement::IterationStatement(
+                Box::new(cp::IterationStatement::For(
+                    ct::Token::For(0),
+                    ct::Token::OpenParen(0),
+                    Box::new(self.expressions_to_for_expr(first.map(|t| *t), second.map(|t| *t), third.map(|t| *t))),
+                    ct::Token::CloseParen(0),
+                    Box::new(self.block_to_statement(*block)),
+                )))))),
                 ct::Token::CloseBrace(0),
             ),
             other => panic!("Not implemented: {:?}", other),
@@ -140,6 +202,46 @@ impl Context {
                         )
                     })
             }
+        }
+    }
+
+    pub fn block_to_statement(&mut self, block: pp::Block) -> cp::Statement {
+        cp::Statement::CompoundStatement(Box::new(cp::CompoundStatement::PushScope(
+            cp::PushScope::OpenBrace(ct::Token::OpenBrace(0)),
+            Box::new(self.block_to_statement_list(block)),
+            ct::Token::CloseBrace(0),
+        )))
+    }
+
+    pub fn expressions_to_for_expr(&mut self, first: Option<pp::Statement>,
+                                   second: Option<pp::Statement>,
+                                   third: Option<pp::Statement>) -> cp::ForExpr {
+        match third {
+            Some(expr) => cp::ForExpr::ExpressionStatement(
+                self.statement_to_expression_statement(first),
+                Box::new(self.statement_to_expression_statement(second)),
+                Box::new(self.statement_to_expression(expr)),
+            ),
+            None => cp::ForExpr::EmptyLast(
+                Box::new(self.statement_to_expression_statement(first)),
+                Box::new(self.statement_to_expression_statement(second)),
+            )
+        }
+    }
+
+    pub fn statement_to_expression_statement(&mut self, expr: Option<pp::Statement>) -> cp::ExpressionStatement {
+        match expr {
+            None => cp::ExpressionStatement::Semicolon(ct::Token::Semicolon(0)),
+            Some(e) => cp::ExpressionStatement::Expression(
+                Box::new(self.statement_to_expression(e)),
+                ct::Token::Semicolon(0)),
+        }
+    }
+
+    pub fn statement_to_expression(&mut self, expr: pp::Statement) -> cp::Expression {
+        match expr {
+            pp::Statement::Expression(e) => self.expression(*e),
+            other => panic!("Not implemented: {:?}", other),
         }
     }
 
@@ -269,7 +371,7 @@ impl Context {
                 let c_ty = match ty.as_ref() {
                     "int" => cp::TypeSpecifier::Int(ct::Token::Int(0)),
                     "char" => cp::TypeSpecifier::Char(ct::Token::Char(0)),
-                    other => panic!("Not implemented: {:?}", other),
+                    _ => cp::TypeSpecifier::TypeNameStr(ct::Token::Identifier(0, ty)),
                 };
                 cp::DeclarationSpecifiers::Neither(Box::new(c_ty))
             }
