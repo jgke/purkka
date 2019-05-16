@@ -164,7 +164,7 @@ fn parse_enumdef(
             Some(t @ TokenTree::Token(_, token::Ident(..))) => {
                 res.push(t.clone());
                 if let TokenTree::Token(_, token::Ident(ident, _)) = t {
-                    if ident.name == "enum" || ident.name == "struct" {
+                    if ident.name.to_string() == "enum" || ident.name.to_string() == "struct" {
                         break_next = true;
                     }
                 }
