@@ -4,26 +4,13 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
-extern crate ctoken;
-
 pub mod parser;
-
-use std::collections::HashSet;
+#[macro_use]
+pub mod grammar;
 
 use ctoken::token::Token;
-use parser::{driver, ScopedState, State};
+use fragment::fragment::{FragmentIterator, Source};
 
-pub fn parse(input: Vec<Token>) -> Result<parser::S, Option<Token>> {
-    let mut state = State { scope: Vec::new() };
-    state.scope.push(ScopedState {
-        types: HashSet::new(),
-        labels: HashSet::new(),
-    });
-    state.scope[0].types.insert("va_list".to_string());
-    state.scope[0].types.insert("__builtin_va_list".to_string());
-    state.scope[0].types.insert("size_t".to_string());
-    state.scope[0].types.insert("_Bool".to_string());
-    state.scope[0].types.insert("_Complex".to_string());
-    state.scope[0].types.insert("__label__".to_string());
-    driver(&mut input.iter(), &mut state)
+pub fn parse(input: Vec<Token>, sources: &[Source], fragment_iter: &FragmentIterator) -> Result<grammar::S, Option<Token>> {
+    parser::parse(&mut input.iter().peekable(), sources, fragment_iter)
 }

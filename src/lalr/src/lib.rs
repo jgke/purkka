@@ -158,11 +158,15 @@ fn parse_enumdef(
                 if break_next {
                     break;
                 }
+                if let Some(t @ TokenTree::Token(_, token::Semi)) = iter.peek() {
+                    res.push((*t).clone());
+                    break;
+                }
             }
             Some(t @ TokenTree::Token(_, token::Ident(..))) => {
                 res.push(t.clone());
                 if let TokenTree::Token(_, token::Ident(ident, _)) = t {
-                    if ident.name == "enum" {
+                    if ident.name == "enum" || ident.name == "struct" {
                         break_next = true;
                     }
                 }

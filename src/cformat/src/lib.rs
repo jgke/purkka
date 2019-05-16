@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use cparser::parser::*;
+use cparser::grammar::*;
 use ctoken::token::Token;
 
 struct Context {
@@ -200,12 +200,11 @@ impl Context {
 
     fn translation_unit(&mut self, tree: &TranslationUnit) {
         match tree {
-            TranslationUnit::ExternalDeclaration(decl) => self.external_declaration(decl),
-            TranslationUnit::TranslationUnit(more, decl) => {
-                self.translation_unit(more);
-                self.external_declaration(decl);
+            TranslationUnit::Units(units) => {
+                for unit in units {
+                    self.external_declaration(unit);
+                }
             }
-            TranslationUnit::Epsilon() => {}
         }
     }
 
@@ -219,8 +218,7 @@ impl Context {
 
     fn declaration(&mut self, tree: &Declaration) {
         match tree {
-            Declaration::DeclarationSpecifiers(decl, _) => self.declaration_specifiers(decl),
-            Declaration::List(decl, list, _) => {
+            Declaration::Declaration(decl, list) => {
                 self.declaration_specifiers(decl);
                 self.init_declarator_list(list);
                 self.whitespace = false;
@@ -244,30 +242,19 @@ impl Context {
 
     fn compound_statement(&mut self, tree: &CompoundStatement) {
         match tree {
-            CompoundStatement::PushScope(PushScope::OpenBrace(open), statements, close) => {
-                self.push_token(open);
-                self.statement_list(&*statements);
-                self.push_token(close);
+            CompoundStatement::Statements(statements) => {
+                self.push_token(&Token::OpenBrace(0));
+                self.statement_list(statements);
+                self.push_token(&Token::CloseBrace(0));
             }
         }
     }
 
-    fn statement_list(&mut self, tree: &StatementList) {
-        match tree {
-            StatementList::Epsilon() => {}
-            StatementList::StatementOrDeclaration(StatementOrDeclaration::Statement(statement)) => {
-                self.statement(statement)
-            }
-            StatementList::StatementOrDeclaration(StatementOrDeclaration::Declaration(decl)) => {
-                self.declaration(decl)
-            }
-            StatementList::More(list, StatementOrDeclaration::Statement(statement)) => {
-                self.statement_list(list);
-                self.statement(statement);
-            }
-            StatementList::More(list, StatementOrDeclaration::Declaration(decl)) => {
-                self.statement_list(list);
-                self.declaration(decl);
+    fn statement_list(&mut self, tree: &Vec<StatementOrDeclaration>) {
+        for stat_or_decl in tree {
+            match stat_or_decl {
+                StatementOrDeclaration::Statement(statement) => self.statement(statement),
+                StatementOrDeclaration::Declaration(decl) => self.declaration(decl),
             }
         }
     }
@@ -275,12 +262,9 @@ impl Context {
     fn statement(&mut self, tree: &Statement) {
         match tree {
             Statement::CompoundStatement(compound) => self.compound_statement(compound),
-            Statement::ExpressionStatement(box ExpressionStatement::Semicolon(t)) => {
-                self.push_token(t)
-            }
-            Statement::ExpressionStatement(box ExpressionStatement::Expression(e, t)) => {
-                self.expression(e);
-                self.push_token(t);
+            Statement::ExpressionStatement(box ExpressionStatement::Expression(e)) => {
+                e.as_ref().map(|e| self.expression(&**e));
+                self.push_token(&Token::Semicolon(0));
             }
             Statement::JumpStatement(box JumpStatement::ReturnVoid(r, t)) => {
                 self.push_token(r);
@@ -297,11 +281,14 @@ impl Context {
 
     fn expression(&mut self, tree: &Expression) {
         match tree {
-            Expression::AssignmentExpression(e) => self.assignment_expression(e),
-            Expression::Comma(list, c, e) => {
-                self.expression(list);
-                self.push_token(c);
-                self.assignment_expression(e);
+            Expression::Expression(exprs) => {
+                if let Some((last, rest)) = exprs.split_last() {
+                    for decl in rest {
+                        self.assignment_expression(decl);
+                        self.push_token(&Token::Comma(0));
+                    }
+                    self.assignment_expression(last);
+                }
             }
         }
     }
@@ -367,16 +354,13 @@ impl Context {
         }
     }
 
-    fn init_declarator_list(&mut self, tree: &InitDeclaratorList) {
-        match tree {
-            InitDeclaratorList::InitDeclarator(decl) => {
+    fn init_declarator_list(&mut self, tree: &Vec<InitDeclarator>) {
+        if let Some((last, rest)) = tree.split_last() {
+            for decl in rest {
                 self.init_declarator(decl);
+                self.push_token(&Token::Comma(0));
             }
-            InitDeclaratorList::Comma(more, comma, decl) => {
-                self.init_declarator_list(more);
-                self.push_token(comma);
-                self.init_declarator(decl);
-            }
+            self.init_declarator(last);
         }
     }
 
@@ -447,50 +431,41 @@ impl Context {
 
     fn direct_declarator(&mut self, tree: &DirectDeclarator) {
         match tree {
-            DirectDeclarator::Epsilon() => {}
-            DirectDeclarator::Array(ty_of, op, e, cb) => {
-                self.direct_declarator(&*ty_of);
-                self.push_token(op);
-                self.maybe_general_expression(e);
-                self.push_token(cb);
+            DirectDeclarator::Nothing => {}
+            DirectDeclarator::ArrayOf(direct_decl, e) => {
+                self.direct_declarator(&*direct_decl);
+                self.push_token(&Token::OpenBracket(0));
+                self.maybe_general_expression(&e.as_ref().map(|t| &**t));
+                self.push_token(&Token::CloseBracket(0));
             }
-            DirectDeclarator::FunctionParams(ty_of, op, fp, cb) => {
-                self.direct_declarator(&*ty_of);
-                self.push_token(op);
-                self.function_params(fp);
-                self.push_token(cb);
-            }
-            DirectDeclarator::Function(ty_of, op, cb) => {
-                self.direct_declarator(&*ty_of);
-                self.push_token(op);
-                self.push_token(cb);
-            }
-        }
-    }
-
-    fn maybe_general_expression(&mut self, tree: &MaybeGeneralExpression) {
-        match tree {
-            MaybeGeneralExpression::Epsilon() => {}
-            f => panic!("Not implemented.: {:?}", f),
-        }
-    }
-
-    fn function_params(&mut self, tree: &FunctionParams) {
-        match tree {
-            FunctionParams::ParameterTypeList(params) => {
+            DirectDeclarator::Function(direct_decl, params) => {
+                self.direct_declarator(&*direct_decl);
+                self.push_token(&Token::OpenParen(0));
                 self.parameter_type_list(params);
+                self.push_token(&Token::OpenBracket(0));
             }
+        }
+    }
+
+    fn maybe_general_expression(&mut self, tree: &Option<&GeneralExpression>) {
+        match tree {
+            None => {}
             f => panic!("Not implemented.: {:?}", f),
         }
     }
 
-    fn parameter_type_list(&mut self, tree: &ParameterTypeList) {
-        match tree {
-            ParameterTypeList::ParameterList(params) => {
-                self.parameter_list(params);
+    fn parameter_type_list(&mut self, tree: &Vec<FunctionParam>) {
+        if let Some((last, rest)) = tree.split_last() {
+            for decl in rest {
+                self.function_param(decl);
+                self.push_token(&Token::Comma(0));
             }
-            f => panic!("Not implemented.: {:?}", f),
+            self.function_param(last);
         }
+    }
+
+    fn function_param(&mut self, tree: &FunctionParam) {
+        panic!("Not implemented.: {:?}", tree);
     }
 
     fn parameter_list(&mut self, tree: &ParameterList) {
@@ -518,111 +493,84 @@ impl Context {
 
     fn declarator(&mut self, tree: &Declarator) {
         match tree {
-            Declarator::Identifier(ident, direct_decl) => {
-                self.push_token(ident);
+            Declarator::Declarator(ptr, name, direct_decl) => {
+                ptr.as_ref().map(|t| self.pointer(&**t));
+                self.push_token(&Token::Identifier(0, name.clone()));
                 self.direct_declarator(direct_decl);
             }
-            Declarator::Pointer(p, IdentifierOrType::Identifier(ident), direct_decl) => {
-                self.pointer(p);
-                self.push_token(ident);
+            Declarator::FunctionPointer(ptr, decl, direct_decl) => {
+                ptr.as_ref().map(|t| self.pointer(&**t));
+                self.declarator(decl);
                 self.direct_declarator(direct_decl);
             }
-            f => panic!("Not implemented.: {:?}", f),
         }
     }
 
     fn pointer(&mut self, tree: &Pointer) {
         match tree {
-            Pointer::Times(t) => {
+            Pointer::Ptr(qualifiers, ptr) => {
                 self.whitespace = false;
-                self.push_token(t);
+                self.type_qualifiers(qualifiers);
+                self.push_token(&Token::Times(0));
+                ptr.as_ref().map(|t| self.pointer(&**t));
             }
-            Pointer::Pointer(t, p) => {
-                self.push_token(t);
-                self.pointer(p);
-            }
-            f => panic!("Not implemented.: {:?}", f),
         }
     }
 
     fn declaration_specifiers(&mut self, tree: &DeclarationSpecifiers) {
         match tree {
-            DeclarationSpecifiers::Neither(ty) => {
-                self.type_specifier(ty);
-            }
-            DeclarationSpecifiers::Left(spec, ty) => {
-                self.specifiers(spec);
-                self.type_specifier(ty);
-            }
-            DeclarationSpecifiers::Right(ty, spec) => {
-                self.type_specifier(ty);
-                self.specifiers(spec);
-            }
-            DeclarationSpecifiers::Both(spec_1, ty, spec_2) => {
-                self.specifiers(spec_1);
-                self.type_specifier(ty);
-                self.specifiers(spec_2);
+            DeclarationSpecifiers::DeclarationSpecifiers(spec, ty) => {
+                spec.iter().for_each(|s| self.specifiers(s));
+                ty.iter().for_each(|t| self.type_specifier(t));
             }
         }
     }
 
     fn specifiers(&mut self, tree: &Specifiers) {
-        match tree {
-            Specifiers::TypeQualifier(t) => self.push_token(self.token_from_qualifier(t)),
-            Specifiers::StorageClassSpecifier(t) => self.push_token(self.token_from_storage(t)),
-            Specifiers::TypeQualifierList(t, more) => {
-                self.push_token(self.token_from_qualifier(t));
-                self.specifiers(more);
-            }
-            Specifiers::StorageClassSpecifierList(t, more) => {
-                self.push_token(self.token_from_storage(t));
-                self.specifiers(more);
-            }
+        self.storage_specifiers(&tree.0);
+        self.type_qualifiers(&tree.1);
+    }
+
+    fn sign_to_token<'a>(&self, sign: Option<bool>) -> Option<Token> {
+        match sign {
+            None => None,
+            Some(true) => Some(Token::Signed(0)),
+            Some(false) => Some(Token::Unsigned(0)),
         }
     }
 
-    fn sign_to_token<'a>(&self, sign: &'a Sign) -> &'a Token {
-        match sign {
-            Sign::Signed(t) => t,
-            Sign::Unsigned(t) => t,
+    fn ty_to_token<'a>(&self, ty: PrimitiveType) -> Token {
+        match ty {
+            PrimitiveType::Char => Token::Char(0),
+            PrimitiveType::Int => Token::Int(0),
+            PrimitiveType::Long => Token::Long(0),
+            PrimitiveType::LongLong => unimplemented!()
         }
     }
 
     fn type_specifier(&mut self, spec: &TypeSpecifier) {
         let (sign, token) = match spec {
-            TypeSpecifier::Void(t) => (None, t),
-            TypeSpecifier::Char(t) => (None, t),
-            TypeSpecifier::SignedChar(sign, t) => (Some(self.sign_to_token(sign)), t),
-            TypeSpecifier::Short(t, MaybeInt::Epsilon()) => (None, t),
-            TypeSpecifier::SignedShort(sign, t, MaybeInt::Epsilon()) => {
-                (Some(self.sign_to_token(sign)), t)
-            }
-            TypeSpecifier::Int(t) => (None, t),
-            TypeSpecifier::SignedInt(sign, t) => (Some(self.sign_to_token(sign)), t),
-            TypeSpecifier::Signed(sign) => (None, self.sign_to_token(sign)),
-            TypeSpecifier::TypeNameStr(t) => (None, t),
+            CType::Void => (None, Token::Void(0)),
+            CType::Primitive(sign, ty) => (self.sign_to_token(*sign), self.ty_to_token(*ty)),
+            CType::Custom(ident) => (None, Token::Identifier(0, ident.clone())),
             f => panic!("Not implemented: {:?}", f),
         };
         if let Some(token) = sign {
-            self.push_token(token);
+            self.push_token(&token);
         }
-        self.push_token(token);
+        self.push_token(&token);
     }
 
-    fn token_from_storage<'a>(&self, spec: &'a StorageClassSpecifier) -> &'a Token {
-        match spec {
-            StorageClassSpecifier::Extern(t) => t,
-            StorageClassSpecifier::Static(t) => t,
-            StorageClassSpecifier::Inline(t) => t,
-            StorageClassSpecifier::Auto(t) => t,
-            StorageClassSpecifier::Register(t) => t,
-        }
+    fn storage_specifiers(&mut self, storage: &StorageClassSpecifiers) {
+        if storage.extern_ { self.push_token(&Token::Extern(0)); }
+        if storage.static_ { self.push_token(&Token::Static(0)); }
+        if storage.inline { self.push_token(&Token::Inline(0)); }
+        if storage.auto { self.push_token(&Token::Auto(0)); }
+        if storage.register { self.push_token(&Token::Register(0)); }
     }
 
-    fn token_from_qualifier<'a>(&self, spec: &'a TypeQualifier) -> &'a Token {
-        match spec {
-            TypeQualifier::Const(t) => t,
-            TypeQualifier::Volatile(t) => t,
-        }
+    fn type_qualifiers(&mut self, ty: &TypeQualifiers) {
+        if ty.const_ { self.push_token(&Token::Const(0)); }
+        if ty.volatile { self.push_token(&Token::Volatile(0)); }
     }
 }

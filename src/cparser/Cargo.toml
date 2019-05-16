@@ -9,4 +9,6 @@ doctest = false
 
 [dependencies]
 ctoken = { path="../ctoken" }
+fragment = { path="../fragment" }
 lalr = { path="../lalr" }
+shared = { path="../shared" }

@@ -38,7 +38,7 @@ int main() {
 }
 
 #[test]
-fn typedef_with_complex_expression() {
+fn initialization_expression() {
     assert!(parse(
         "
 int a = (1);
