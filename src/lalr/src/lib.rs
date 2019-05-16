@@ -22,11 +22,9 @@ use std::iter::Peekable;
 use std::slice::Iter;
 
 mod ast_output;
-mod generator;
 mod types;
 
 use ast_output::output_parser;
-use generator::compute_lalr;
 use types::{Component, Rule, RuleData, RuleTranslationMap, Terminal};
 
 fn is_semi_r(tree: Option<&TokenTree>) -> bool {
@@ -366,11 +364,10 @@ fn parse_item(
     Ok(rule)
 }
 
-fn expand_lalr(
+fn expand_enums(
     cx: &mut ExtCtxt,
     sp: Span,
     args: &[TokenTree],
-    compute_lalr_table: bool,
 ) -> Box<MacResult + 'static> {
     let mut tm = RuleTranslationMap {
         ..Default::default()
@@ -425,24 +422,10 @@ fn expand_lalr(
         }
     }
 
-    if compute_lalr_table {
-        let lalr_table = compute_lalr(&tm, &terminals);
-        output_parser(cx, sp, &tm, &items, &terminals, Some(&lalr_table))
-    } else {
-        output_parser(cx, sp, &tm, &items, &terminals, None)
-    }
-}
-
-fn expand_full_lalr(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult + 'static> {
-    expand_lalr(cx, sp, args, true)
-}
-
-fn expand_only_enums(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult + 'static> {
-    expand_lalr(cx, sp, args, false)
+    output_parser(cx, sp, &tm, &items, &terminals)
 }
 
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
-    reg.register_macro("lalr", expand_full_lalr);
-    reg.register_macro("grammar", expand_only_enums);
+    reg.register_macro("grammar", expand_enums);
 }
