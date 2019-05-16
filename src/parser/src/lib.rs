@@ -115,9 +115,10 @@ pub fn parse(
     //    println!("{:?} {}", t, s.to_src());
     //}
     match cparser::parse(
-        tokens, &input.iter()
-        .map(|t| t.source.clone()).collect::<Vec<_>>(),
-        context) {
+        tokens,
+        &input.iter().map(|t| t.source.clone()).collect::<Vec<_>>(),
+        context,
+    ) {
         Err(Some(token)) => {
             let index = get_source_index(&token);
             println!(

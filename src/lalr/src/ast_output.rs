@@ -4,7 +4,7 @@ use syntax::ext::base::{ExtCtxt, MacEager, MacResult};
 use syntax::ext::build::AstBuilder;
 use syntax::parse;
 use syntax::ptr::P;
-use syntax::source_map::{respan};
+use syntax::source_map::respan;
 use syntax_pos::symbol;
 use syntax_pos::{FileName, Span};
 

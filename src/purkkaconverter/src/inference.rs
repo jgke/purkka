@@ -1,5 +1,4 @@
 /// Infer types
-
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::rc::Rc;
@@ -12,7 +11,7 @@ use purkkatoken::token::Token;
 
 #[derive(Debug)]
 pub struct TypeInferrer {
-    scope: Vec<HashMap<Rc<str>, TypeSignature>>
+    scope: Vec<HashMap<Rc<str>, TypeSignature>>,
 }
 
 fn get_std_lib() -> HashMap<Rc<str>, TypeSignature> {
@@ -25,17 +24,31 @@ fn get_std_lib() -> HashMap<Rc<str>, TypeSignature> {
     let void = TypeSignature::Plain(From::from("void"));
     let ulong = TypeSignature::Plain(From::from("ulong"));
     let int = TypeSignature::Plain(From::from("int"));
-    let void_ptr = TypeSignature::Pointer { ty: Box::new(void), nullable: true };
+    let void_ptr = TypeSignature::Pointer {
+        ty: Box::new(void),
+        nullable: true,
+    };
 
-    map.insert(From::from("malloc"), TypeSignature::Function(vec![param(&ulong)], Box::new(void_ptr.clone())));
-    map.insert(From::from("write"), TypeSignature::Function(vec![param(&int), param(&void_ptr), param(&ulong)], Box::new(ulong.clone())));
+    map.insert(
+        From::from("malloc"),
+        TypeSignature::Function(vec![param(&ulong)], Box::new(void_ptr.clone())),
+    );
+    map.insert(
+        From::from("write"),
+        TypeSignature::Function(
+            vec![param(&int), param(&void_ptr), param(&ulong)],
+            Box::new(ulong.clone()),
+        ),
+    );
 
     map
 }
 
 impl<'a> TreeTransformer<'a> for TypeInferrer {
     fn new(_context: &'a mut Context) -> TypeInferrer {
-        TypeInferrer { scope: vec![get_std_lib()] }
+        TypeInferrer {
+            scope: vec![get_std_lib()],
+        }
     }
     fn transform(&mut self, s: &mut S) {
         self.visit_s(s);
@@ -47,13 +60,18 @@ impl ASTVisitor for TypeInferrer {
         match tree {
             Declaration::Declaration(visibility, mutability, name, None, Some(e)) => {
                 let ty = Box::new(self.get_type(Some(name.clone()), e));
-                *tree = Declaration::Declaration(*visibility, *mutability, name.clone(), Some(ty), Some(e.clone()));
+                *tree = Declaration::Declaration(
+                    *visibility,
+                    *mutability,
+                    name.clone(),
+                    Some(ty),
+                    Some(e.clone()),
+                );
             }
             Declaration::Declaration(_, _, _, Some(_), _) => {}
             Declaration::Declaration(_, _, _, None, None) => {
                 panic!("Proper type inference not yet implemented");
             }
-
         }
         walk_declaration(self, tree);
     }
@@ -64,7 +82,7 @@ impl ASTVisitor for TypeInferrer {
         for param in params {
             match param {
                 Param::Anon(_) => panic!("Inferred types for parameters is not supported"),
-                Param::Param(name, ty) => self.push_type(name.clone(), *ty.clone())
+                Param::Param(name, ty) => self.push_type(name.clone(), *ty.clone()),
             }
         }
         walk_block_expression(self, e);
@@ -82,16 +100,17 @@ impl TypeInferrer {
     fn get_type(&mut self, name: Option<Rc<str>>, expression: &Expression) -> TypeSignature {
         let ty = match expression {
             Expression::PrimaryExpression(expr) => self.get_primary_expr_type(expr),
-            Expression::Op(Token::Operator(_, t), ExprList::List(list)) => {
-                match t.as_ref() {
-                    "+" | "-" | "*" | "%" => self.get_type(None, &list[0]),
-                    "&" => TypeSignature::Pointer { ty: Box::new(self.get_type(None, &list[0])), nullable: false },
-                    otherwise => panic!("Not implemented: {:?}", otherwise)
-                }
-            }
-            otherwise => panic!("Not implemented: {:?}", otherwise)
+            Expression::Op(Token::Operator(_, t), ExprList::List(list)) => match t.as_ref() {
+                "+" | "-" | "*" | "%" => self.get_type(None, &list[0]),
+                "&" => TypeSignature::Pointer {
+                    ty: Box::new(self.get_type(None, &list[0])),
+                    nullable: false,
+                },
+                otherwise => panic!("Not implemented: {:?}", otherwise),
+            },
+            otherwise => panic!("Not implemented: {:?}", otherwise),
         };
-        for n in name {
+        if let Some(n) = name {
             self.push_type(n, ty.clone());
         }
         ty
@@ -100,38 +119,49 @@ impl TypeInferrer {
     fn get_primary_expr_type(&mut self, expr: &PrimaryExpression) -> TypeSignature {
         match expr {
             PrimaryExpression::Identifier(t) => self.get_ident_ty(t.as_ref()),
-            PrimaryExpression::Literal(Literal::Integer(..)) => TypeSignature::Plain(From::from("int")),
+            PrimaryExpression::Literal(Literal::Integer(..)) => {
+                TypeSignature::Plain(From::from("int"))
+            }
             PrimaryExpression::ArrayAccess(expr, _index) => {
                 match self.get_primary_expr_type(expr) {
                     TypeSignature::Tuple(list) => {
-                        let lit = expr.eval(&HashMap::new()).expect("Tuple index must be a constant expression");
+                        let lit = expr
+                            .eval(&HashMap::new())
+                            .expect("Tuple index must be a constant expression");
                         let index = match lit {
                             Literal::Integer(Token::Integer(_, i)) => i,
-                            otherwise => panic!("Tuple index must be a integer constant expression (got {:?})", otherwise)
+                            otherwise => panic!(
+                                "Tuple index must be a integer constant expression (got {:?})",
+                                otherwise
+                            ),
                         };
                         list[usize::try_from(index).unwrap()].clone()
                     }
-                    TypeSignature::Pointer { ty, .. } | TypeSignature::Array(ty, _) | TypeSignature::DynamicArray(ty, _) =>
-                        *ty.clone(),
-                    otherwise => panic!("Not implemented: {:?}", otherwise)
+                    TypeSignature::Pointer { ty, .. }
+                    | TypeSignature::Array(ty, _)
+                    | TypeSignature::DynamicArray(ty, _) => *ty.clone(),
+                    otherwise => panic!("Not implemented: {:?}", otherwise),
                 }
             }
             PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block)) => {
-                if let  TypeSignature::Infer = return_type {
-                    TypeSignature::Function(params.to_vec(), Box::new(self.get_block_expr_type(&*block)))
+                if let TypeSignature::Infer = return_type {
+                    TypeSignature::Function(
+                        params.to_vec(),
+                        Box::new(self.get_block_expr_type(&*block)),
+                    )
                 } else {
                     TypeSignature::Function(params.to_vec(), Box::new(return_type.clone()))
                 }
             }
-            PrimaryExpression::Call(name, _args) => {
-                match self.get_ident_ty(name) {
-                    TypeSignature::Function(_, return_type) => *return_type.clone(),
-                    otherwise => panic!("Not implemented: {:?}", otherwise)
-                }
-            }
+            PrimaryExpression::Call(name, _args) => match self.get_ident_ty(name) {
+                TypeSignature::Function(_, return_type) => *return_type.clone(),
+                otherwise => panic!("Not implemented: {:?}", otherwise),
+            },
             PrimaryExpression::Expression(expr) => self.get_type(None, expr),
-            PrimaryExpression::StructInitialization(ident, _) => TypeSignature::Plain(ident.clone()),
-            otherwise => panic!("Not implemented: {:?}", otherwise)
+            PrimaryExpression::StructInitialization(ident, _) => {
+                TypeSignature::Plain(ident.clone())
+            }
+            otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
 
@@ -151,9 +181,9 @@ impl TypeInferrer {
                 if let Some(otherwise) = otherwise {
                     arms.iter()
                         .map(|(_, b)| self.get_block_type(b))
-                        .collect::<Vec<_>>().iter()
-                        .fold(self.get_block_type(otherwise),
-                            |prev, this| {
+                        .collect::<Vec<_>>()
+                        .iter()
+                        .fold(self.get_block_type(otherwise), |prev, this| {
                             assert_eq!(prev, *this);
                             prev
                         })
@@ -161,29 +191,29 @@ impl TypeInferrer {
                     TypeSignature::Plain(From::from("void"))
                 }
             }
-            BlockExpression::While(..) | BlockExpression::For(..) =>
-                    TypeSignature::Plain(From::from("void"))
+            BlockExpression::While(..) | BlockExpression::For(..) => {
+                TypeSignature::Plain(From::from("void"))
+            }
         }
     }
 
     fn get_block_type(&mut self, expr: &Block) -> TypeSignature {
         match expr {
             Block::Statements(stmts) => {
-                let tys = stmts.iter()
+                let tys = stmts
+                    .iter()
                     .flat_map(|e| self.get_statement_type(e))
                     .collect::<Vec<TypeSignature>>();
                 if tys.is_empty() {
                     TypeSignature::Plain(From::from("void"))
                 } else {
-                    tys.iter()
-                        .fold(tys[0].clone(),
-                            |prev, this| {
-                            if prev != *this {
-                                TypeSignature::Plain(From::from("void"))
-                            } else {
-                                prev
-                            }
-                        })
+                    tys.iter().fold(tys[0].clone(), |prev, this| {
+                        if prev != *this {
+                            TypeSignature::Plain(From::from("void"))
+                        } else {
+                            prev
+                        }
+                    })
                 }
             }
         }

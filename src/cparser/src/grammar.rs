@@ -528,7 +528,7 @@ pub enum CType {
     Float,
     Double,
     Compound(CompoundType),
-    Custom(Rc<str>)
+    Custom(Rc<str>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -549,12 +549,12 @@ pub enum CompoundType {
 
 impl StorageClassSpecifiers {
     pub fn any(&self) -> bool {
-            self.extern_ | self.static_ | self.inline | self.auto | self.register
+        self.extern_ | self.static_ | self.inline | self.auto | self.register
     }
 }
 
 impl TypeQualifiers {
     pub fn any(&self) -> bool {
-            self.const_ | self.volatile
+        self.const_ | self.volatile
     }
 }

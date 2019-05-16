@@ -182,8 +182,11 @@ pub fn walk_primary_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut 
             visitor.visit_expression(expr.deref_mut());
         }
         PrimaryExpression::StructInitialization(_ident, list) => {
-            list.iter_mut().for_each(|StructInitializationField::StructInitializationField(_, e)|
-                                     visitor.visit_expression(e.deref_mut()));
+            list.iter_mut().for_each(
+                |StructInitializationField::StructInitializationField(_, e)| {
+                    visitor.visit_expression(e.deref_mut())
+                },
+            );
         }
     }
 }

@@ -364,11 +364,7 @@ fn parse_item(
     Ok(rule)
 }
 
-fn expand_enums(
-    cx: &mut ExtCtxt,
-    sp: Span,
-    args: &[TokenTree],
-) -> Box<MacResult + 'static> {
+fn expand_enums(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult + 'static> {
     let mut tm = RuleTranslationMap {
         ..Default::default()
     };

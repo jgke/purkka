@@ -383,9 +383,11 @@ impl Add for Literal {
 
     fn add(self, other: Literal) -> Literal {
         match (self, other) {
-            (Literal::Integer(Token::Integer(i, left)), Literal::Integer(Token::Integer(_, right)))
-                => Literal::Integer(Token::Integer(i, left + right)),
-            otherwise => panic!("Not implemented: {:?}", otherwise)
+            (
+                Literal::Integer(Token::Integer(i, left)),
+                Literal::Integer(Token::Integer(_, right)),
+            ) => Literal::Integer(Token::Integer(i, left + right)),
+            otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
 }
@@ -395,9 +397,11 @@ impl Div for Literal {
 
     fn div(self, other: Literal) -> Literal {
         match (self, other) {
-            (Literal::Integer(Token::Integer(i, left)), Literal::Integer(Token::Integer(_, right)))
-                => Literal::Integer(Token::Integer(i, left / right)),
-            otherwise => panic!("Not implemented: {:?}", otherwise)
+            (
+                Literal::Integer(Token::Integer(i, left)),
+                Literal::Integer(Token::Integer(_, right)),
+            ) => Literal::Integer(Token::Integer(i, left / right)),
+            otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
 }
@@ -406,14 +410,12 @@ impl Expression {
     pub fn eval(&self, constants: &HashMap<Rc<str>, Literal>) -> Result<Literal, Rc<str>> {
         match self {
             Expression::PrimaryExpression(e) => e.eval(constants),
-            Expression::Op(Token::Operator(_, op), ExprList::List(list)) => {
-                match op.as_ref() {
-                    "+" => Ok(list[0].eval(constants)? + list[1].eval(constants)?),
-                    "/" => Ok(list[0].eval(constants)? / list[1].eval(constants)?),
-                    otherwise => panic!("Not implemented: {:?}", otherwise)
-                }
-            }
-            otherwise => panic!("Not implemented: {:?}", otherwise)
+            Expression::Op(Token::Operator(_, op), ExprList::List(list)) => match op.as_ref() {
+                "+" => Ok(list[0].eval(constants)? + list[1].eval(constants)?),
+                "/" => Ok(list[0].eval(constants)? / list[1].eval(constants)?),
+                otherwise => panic!("Not implemented: {:?}", otherwise),
+            },
+            otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
 }
@@ -421,9 +423,11 @@ impl Expression {
 impl PrimaryExpression {
     pub fn eval(&self, constants: &HashMap<Rc<str>, Literal>) -> Result<Literal, Rc<str>> {
         match self {
-            PrimaryExpression::Literal(lit@Literal::Integer(Token::Integer(..))) => Ok(lit.clone()),
-            PrimaryExpression::Identifier(s) => constants.get(s).cloned().ok_or(s.clone()),
-            otherwise => panic!("Not implemented: {:?}", otherwise)
+            PrimaryExpression::Literal(lit @ Literal::Integer(Token::Integer(..))) => {
+                Ok(lit.clone())
+            }
+            PrimaryExpression::Identifier(s) => constants.get(s).cloned().ok_or_else(|| s.clone()),
+            otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
 }

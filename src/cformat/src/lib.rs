@@ -232,7 +232,9 @@ impl Context {
     fn function_definition(&mut self, tree: &FunctionDefinition) {
         match tree {
             FunctionDefinition::FunctionDefinition(decl_spec, decls, compound) => {
-                decl_spec.iter().for_each(|d| self.declaration_specifiers(d));
+                decl_spec
+                    .iter()
+                    .for_each(|d| self.declaration_specifiers(d));
                 for decl in decls {
                     self.declarator(decl);
                 }
@@ -251,7 +253,7 @@ impl Context {
         }
     }
 
-    fn statement_list(&mut self, tree: &Vec<StatementOrDeclaration>) {
+    fn statement_list(&mut self, tree: &[StatementOrDeclaration]) {
         for stat_or_decl in tree {
             match stat_or_decl {
                 StatementOrDeclaration::Statement(statement) => self.statement(statement),
@@ -264,7 +266,9 @@ impl Context {
         match tree {
             Statement::CompoundStatement(compound) => self.compound_statement(compound),
             Statement::ExpressionStatement(box ExpressionStatement::Expression(e)) => {
-                e.as_ref().map(|e| self.expression(&**e));
+                if let Some(e) = e.as_ref() {
+                    self.expression(&**e)
+                }
                 self.push_token(&Token::Semicolon(0));
             }
             Statement::JumpStatement(box JumpStatement::ReturnVoid(r, t)) => {
@@ -355,7 +359,7 @@ impl Context {
         }
     }
 
-    fn init_declarator_list(&mut self, tree: &Vec<InitDeclarator>) {
+    fn init_declarator_list(&mut self, tree: &[InitDeclarator]) {
         if let Some((last, rest)) = tree.split_last() {
             for decl in rest {
                 self.init_declarator(decl);
@@ -388,7 +392,7 @@ impl Context {
         }
     }
 
-    fn initializer_list(&mut self, tree: &Vec<Initializer>) {
+    fn initializer_list(&mut self, tree: &[Initializer]) {
         for initializer in tree {
             self.initializer(initializer);
             self.push_token(&Token::Comma(0));
@@ -414,7 +418,7 @@ impl Context {
             DirectDeclarator::ArrayOf(direct_decl, e) => {
                 self.direct_declarator(&*direct_decl);
                 self.push_token(&Token::OpenBracket(0));
-                self.maybe_general_expression(&e.as_ref().map(|t| &**t));
+                self.maybe_general_expression(e.as_ref().map(|t| &**t));
                 self.push_token(&Token::CloseBracket(0));
             }
             DirectDeclarator::Function(direct_decl, params) => {
@@ -426,14 +430,14 @@ impl Context {
         }
     }
 
-    fn maybe_general_expression(&mut self, tree: &Option<&GeneralExpression>) {
+    fn maybe_general_expression(&mut self, tree: Option<&GeneralExpression>) {
         match tree {
             None => {}
             f => panic!("Not implemented.: {:?}", f),
         }
     }
 
-    fn parameter_type_list(&mut self, tree: &Vec<FunctionParam>) {
+    fn parameter_type_list(&mut self, tree: &[FunctionParam]) {
         if let Some((last, rest)) = tree.split_last() {
             for decl in rest {
                 self.function_param(decl);
@@ -445,7 +449,9 @@ impl Context {
 
     fn function_param(&mut self, tree: &FunctionParam) {
         match tree {
-            FunctionParam::Identifier(ident) => self.push_token(&Token::Identifier(0, ident.clone())),
+            FunctionParam::Identifier(ident) => {
+                self.push_token(&Token::Identifier(0, ident.clone()))
+            }
             FunctionParam::Parameter(param) => self.parameter_declaration(param),
             FunctionParam::Varargs => self.push_token(&Token::Varargs(0)),
         }
@@ -464,12 +470,16 @@ impl Context {
     fn declarator(&mut self, tree: &Declarator) {
         match tree {
             Declarator::Declarator(ptr, name, direct_decl) => {
-                ptr.as_ref().map(|t| self.pointer(&**t));
+                if let Some(t) = ptr.as_ref() {
+                    self.pointer(&**t)
+                }
                 self.push_token(&Token::Identifier(0, name.clone()));
                 self.direct_declarator(direct_decl);
             }
             Declarator::FunctionPointer(ptr, decl, direct_decl) => {
-                ptr.as_ref().map(|t| self.pointer(&**t));
+                if let Some(t) = ptr.as_ref() {
+                    self.pointer(&**t)
+                }
                 self.declarator(decl);
                 self.direct_declarator(direct_decl);
             }
@@ -485,7 +495,9 @@ impl Context {
                 }
                 self.push_token(&Token::Times(0));
                 self.whitespace = false;
-                ptr.as_ref().map(|t| self.pointer(&**t));
+                if let Some(t) = ptr.as_ref() {
+                    self.pointer(&**t)
+                }
             }
         }
     }
@@ -504,7 +516,7 @@ impl Context {
         self.type_qualifiers(&tree.1);
     }
 
-    fn sign_to_token<'a>(&self, sign: Option<bool>) -> Option<Token> {
+    fn sign_to_token(&self, sign: Option<bool>) -> Option<Token> {
         match sign {
             None => None,
             Some(true) => Some(Token::Signed(0)),
@@ -512,12 +524,12 @@ impl Context {
         }
     }
 
-    fn ty_to_token<'a>(&self, ty: PrimitiveType) -> Token {
+    fn ty_to_token(&self, ty: PrimitiveType) -> Token {
         match ty {
             PrimitiveType::Char => Token::Char(0),
             PrimitiveType::Int => Token::Int(0),
             PrimitiveType::Long => Token::Long(0),
-            PrimitiveType::LongLong => unimplemented!()
+            PrimitiveType::LongLong => unimplemented!(),
         }
     }
 
@@ -535,15 +547,29 @@ impl Context {
     }
 
     fn storage_specifiers(&mut self, storage: &StorageClassSpecifiers) {
-        if storage.extern_ { self.push_token(&Token::Extern(0)); }
-        if storage.static_ { self.push_token(&Token::Static(0)); }
-        if storage.inline { self.push_token(&Token::Inline(0)); }
-        if storage.auto { self.push_token(&Token::Auto(0)); }
-        if storage.register { self.push_token(&Token::Register(0)); }
+        if storage.extern_ {
+            self.push_token(&Token::Extern(0));
+        }
+        if storage.static_ {
+            self.push_token(&Token::Static(0));
+        }
+        if storage.inline {
+            self.push_token(&Token::Inline(0));
+        }
+        if storage.auto {
+            self.push_token(&Token::Auto(0));
+        }
+        if storage.register {
+            self.push_token(&Token::Register(0));
+        }
     }
 
     fn type_qualifiers(&mut self, ty: &TypeQualifiers) {
-        if ty.const_ { self.push_token(&Token::Const(0)); }
-        if ty.volatile { self.push_token(&Token::Volatile(0)); }
+        if ty.const_ {
+            self.push_token(&Token::Const(0));
+        }
+        if ty.volatile {
+            self.push_token(&Token::Volatile(0));
+        }
     }
 }

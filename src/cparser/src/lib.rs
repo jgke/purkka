@@ -11,6 +11,10 @@ pub mod grammar;
 use ctoken::token::Token;
 use fragment::fragment::{FragmentIterator, Source};
 
-pub fn parse(input: Vec<Token>, sources: &[Source], fragment_iter: &FragmentIterator) -> Result<grammar::S, Option<Token>> {
+pub fn parse(
+    input: Vec<Token>,
+    sources: &[Source],
+    fragment_iter: &FragmentIterator,
+) -> Result<grammar::S, Option<Token>> {
     parser::parse(&mut input.iter().peekable(), sources, fragment_iter)
 }
