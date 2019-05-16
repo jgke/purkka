@@ -201,4 +201,8 @@ impl Token {
             Number(i, ..) => i,
         }
     }
+
+    pub fn get_ident_str(&self) -> &Rc<str> {
+        if let Token::Identifier(_, i) = self { i } else { panic!() }
+    }
 }

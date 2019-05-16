@@ -529,7 +529,10 @@ impl Context {
             PrimitiveType::Char => Token::Char(0),
             PrimitiveType::Int => Token::Int(0),
             PrimitiveType::Long => Token::Long(0),
+            PrimitiveType::Float => Token::Float(0),
+            PrimitiveType::Double => Token::Double(0),
             PrimitiveType::LongLong => unimplemented!(),
+            PrimitiveType::LongDouble => unimplemented!(),
         }
     }
 

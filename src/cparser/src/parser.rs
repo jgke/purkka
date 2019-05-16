@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::iter::Peekable;
+use std::rc::Rc;
 
 use ctoken::token::Token;
 
@@ -141,7 +142,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     ),
                 ))
             }
-            Some(Token::Semicolon(..)) => unimplemented!(),
+            Some(Token::Semicolon(..)) =>
+                ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
+                    specifiers, vec![InitDeclarator::Declarator(Box::new(declarator))]
+                ))),
             _ => ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
                 specifiers,
                 self.parse_init_declarator_list(declarator),
@@ -181,24 +185,133 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_type_specifier(&mut self) -> Option<TypeSpecifier> {
-        match self.peek().cloned() {
-            Some(Token::Void(..)) => {
-                self.next();
-                Some(CType::Void)
+        let mut longs = vec![];
+        let mut sign = None;
+        let mut data = None;
+        let mut ty = None;
+
+        loop {
+            match self.peek().cloned() {
+                Some(Token::Void(..)) => {
+                    read_token!(self, Token::Void);
+                    ty.replace_if_empty(CType::Void, "Conflicting type specifiers");
+                }
+                Some(Token::Int(..)) => {
+                    read_token!(self, Token::Int);
+                    data.replace_if_empty(PrimitiveType::Int, "Conflicting type specifiers");
+                }
+                Some(Token::Signed(..)) =>
+                    sign.replace_if_empty(true, "Conflicting type specifiers"),
+                Some(Token::Unsigned(..)) =>
+                    sign.replace_if_empty(false, "Conflicting type specifiers"),
+                Some(Token::Float(..)) => {
+                    read_token!(self, Token::Float);
+                    data.replace_if_empty(PrimitiveType::Float, "Conflicting type specifiers");
+                }
+                Some(Token::Double(..)) => {
+                    read_token!(self, Token::Double);
+                    data.replace_if_empty(PrimitiveType::Double, "Conflicting type specifiers");
+                }
+                Some(Token::Long(..)) => {
+                    read_token!(self, Token::Long);
+                    longs.push(());
+                }
+                Some(Token::Enum(..)) | Some(Token::Struct(..)) => {
+                    ty.replace_if_empty(CType::Compound(self.parse_compound_type()), "Conflicting type specifiers");
+                }
+                Some(Token::Identifier(_, ident)) if self.is_type(ident) => {
+                    read_token!(self, Token::Identifier);
+                    self.next();
+                    ty.replace_if_empty(CType::Custom(ident.clone()), "Conflicting type specifiers");
+                }
+                _ => break
             }
-            Some(Token::Int(..)) => {
-                self.next();
-                Some(CType::Primitive(None, PrimitiveType::Int))
-            }
-            Some(Token::Signed(..)) | Some(Token::Unsigned(..)) => unimplemented!(),
-            Some(Token::Enum(..)) | Some(Token::Struct(..)) => unimplemented!(),
-            Some(Token::Float(..)) | Some(Token::Double(..)) => unimplemented!(),
-            Some(Token::Identifier(_, ident)) if self.is_type(ident) => {
-                self.next();
-                Some(CType::Custom(ident.clone()))
-            }
-            t => unexpected_token!(t, self),
         }
+
+        if longs.is_empty() && sign.is_none() && data.is_none() && ty.is_none() {
+            None
+        } else {
+            match (longs.len(), sign, data, ty) {
+                (0, None, None, Some(ty)) => Some(ty),
+                (_, _, _, Some(_)) => panic!("Conflicting type specifiers"),
+
+                (0, sign, Some(primitive), None) => Some(CType::Primitive(sign, primitive)),
+
+                (1, sign, Some(PrimitiveType::Int), None) | (1, sign, None, None)
+                    => Some(CType::Primitive(sign, PrimitiveType::Long)),
+                (2, sign, Some(PrimitiveType::Int), None) | (2, sign, None, None)
+                    => Some(CType::Primitive(sign, PrimitiveType::LongLong)),
+
+                (_, Some(_), Some(PrimitiveType::Float), _) | (_, Some(_), Some(PrimitiveType::Double), _)
+                    => panic!("Signed floats are not supported"),
+                (1, None, Some(PrimitiveType::Double), None) 
+                    => Some(CType::Primitive(None, PrimitiveType::LongDouble)),
+
+                /* t > 2 */
+                (_t, _, _, None) => panic!("Type is too long"),
+            }
+        }
+    }
+
+    fn parse_compound_type(&mut self) -> CompoundType {
+        if let Some(Token::Enum(..)) = self.peek() {
+            read_token!(self, Token::Enum);
+            let ident = maybe_read_token!(self, Token::Identifier);
+            match self.peek() {
+                Some(Token::OpenBrace(..)) => {
+                    read_token!(self, Token::OpenBrace);
+                    let mut fields = vec![self.parse_enum_field()];
+                    while let Some(Token::Comma(..)) = self.peek() {
+                        read_token!(self, Token::Comma);
+                        if let Some(Token::CloseBrace(..)) = self.peek() { break; }
+                        fields.push(self.parse_enum_field());
+                    }
+                    read_token!(self, Token::CloseBrace);
+                    match ident {
+                        Some(t) => CompoundType::Enum(t.get_ident_str().clone(), Some(fields)),
+                        None => CompoundType::AnonymousEnum(fields),
+                    }
+                }
+                _ => match ident {
+                    Some(t) => CompoundType::Enum(t.get_ident_str().clone(), None),
+                    None => unexpected_token!(self.peek(), self)
+                }
+            }
+        } else {
+            read_token!(self, Token::Struct);
+            let ident = maybe_read_token!(self, Token::Identifier);
+            match self.peek() {
+                Some(Token::OpenBrace(..)) => {
+                    read_token!(self, Token::OpenBrace);
+                    let mut fields = vec![];
+                    loop {
+                        match self.peek() {
+                            Some(Token::Semicolon(..)) => { read_token!(self, Token::Semicolon); }
+                            Some(Token::CloseBrace(..)) => break,
+                            _ => fields.push(self.parse_struct_field()),
+                        }
+                    }
+                    read_token!(self, Token::CloseBrace);
+
+                    match ident {
+                        Some(t) => CompoundType::Struct(t.get_ident_str().clone(), Some(fields)),
+                        None => CompoundType::AnonymousStruct(fields),
+                    }
+                }
+                _ => match ident {
+                    Some(t) => CompoundType::Struct(t.get_ident_str().clone(), None),
+                    None => unexpected_token!(self.peek(), self)
+                }
+            }
+        }
+    }
+
+    fn parse_enum_field(&mut self) -> (Rc<str>, Option<Expression>) {
+        (From::from("foo"), None)
+    }
+
+    fn parse_struct_field(&mut self) -> (Rc<str>, CType) {
+        (From::from("foo"), CType::Void)
     }
 
     fn parse_declarator(&mut self) -> Declarator {
@@ -820,6 +933,18 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Token::BitNot(..) => UnaryOperator::BitNot(token),
             Token::Not(..) => UnaryOperator::Not(token),
             _ => unreachable!(),
+        }
+    }
+}
+
+trait ReplaceEmpty<T> {
+    fn replace_if_empty(&mut self, t: T, e: &str);
+}
+
+impl<T> ReplaceEmpty<T> for Option<T> {
+    fn replace_if_empty(&mut self, t: T, e: &str) {
+        if self.replace(t).is_some() {
+            panic!("{}", e);
         }
     }
 }

@@ -537,14 +537,17 @@ pub enum PrimitiveType {
     Int,
     Long,
     LongLong,
+    Float,
+    Double,
+    LongDouble,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CompoundType {
     Struct(Rc<str>, Option<Vec<(Rc<str>, CType)>>),
     AnonymousStruct(Vec<(Rc<str>, CType)>),
-    Enum(Rc<str>, Option<Vec<(Rc<str>, Expression)>>),
-    AnonymousEnum(Vec<(Rc<str>, Expression)>),
+    Enum(Rc<str>, Option<Vec<(Rc<str>, Option<Expression>)>>),
+    AnonymousEnum(Vec<(Rc<str>, Option<Expression>)>),
 }
 
 impl StorageClassSpecifiers {
