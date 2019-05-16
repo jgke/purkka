@@ -231,12 +231,13 @@ impl Context {
 
     fn function_definition(&mut self, tree: &FunctionDefinition) {
         match tree {
-            FunctionDefinition::Specifiers(decl_spec, decl, compound) => {
-                self.declaration_specifiers(decl_spec);
-                self.declarator(decl);
+            FunctionDefinition::FunctionDefinition(decl_spec, decls, compound) => {
+                decl_spec.iter().for_each(|d| self.declaration_specifiers(d));
+                for decl in decls {
+                    self.declarator(decl);
+                }
                 self.compound_statement(compound);
             }
-            f => panic!("Not implemented.: {:?}", f),
         }
     }
 
@@ -379,53 +380,31 @@ impl Context {
     fn assignment_or_initializer_list(&mut self, tree: &AssignmentOrInitializerList) {
         match tree {
             AssignmentOrInitializerList::AssignmentExpression(e) => self.assignment_expression(e),
-            AssignmentOrInitializerList::OpenBrace(ob, list, cb) => {
-                self.push_token(ob);
+            AssignmentOrInitializerList::Initializers(list) => {
+                self.push_token(&Token::OpenBrace(0));
                 self.initializer_list(list);
-                self.push_token(cb);
+                self.push_token(&Token::CloseBrace(0));
             }
         }
     }
 
-    fn initializer_list(&mut self, tree: &InitializerList) {
-        match tree {
-            InitializerList::Epsilon() => {}
-            InitializerList::InitializerListContent(list, tc) => {
-                self.initializer_list_content(list);
-                self.trailing_comma(tc);
-            }
-        }
-    }
-
-    fn initializer_list_content(&mut self, tree: &InitializerListContent) {
-        match tree {
-            InitializerListContent::Initializer(init) => self.initializer(init),
-            InitializerListContent::InitializerListContent(list, comma, init) => {
-                self.initializer_list_content(list);
-                self.push_token(comma);
-                self.initializer(init);
-            }
+    fn initializer_list(&mut self, tree: &Vec<Initializer>) {
+        for initializer in tree {
+            self.initializer(initializer);
+            self.push_token(&Token::Comma(0));
         }
     }
 
     fn initializer(&mut self, tree: &Initializer) {
         match tree {
-            Initializer::AssignmentOrInitializerList(list) => {
-                self.assignment_or_initializer_list(list)
-            }
-            Initializer::Dot(dot, ident, assign, list) => {
-                self.push_token(dot);
-                self.push_token(ident);
-                self.push_token(assign);
+            Initializer::Initializer(name, list) => {
+                if let Some(ident) = name {
+                    self.push_token(&Token::Dot(0));
+                    self.push_token(&Token::Identifier(0, ident.clone()));
+                    self.push_token(&Token::Assign(0));
+                }
                 self.assignment_or_initializer_list(list);
             }
-        }
-    }
-
-    fn trailing_comma(&mut self, tree: &TrailingComma) {
-        match tree {
-            TrailingComma::Epsilon() => {}
-            TrailingComma::Comma(t) => self.push_token(t),
         }
     }
 
@@ -442,7 +421,7 @@ impl Context {
                 self.direct_declarator(&*direct_decl);
                 self.push_token(&Token::OpenParen(0));
                 self.parameter_type_list(params);
-                self.push_token(&Token::OpenBracket(0));
+                self.push_token(&Token::CloseParen(0));
             }
         }
     }
@@ -465,19 +444,10 @@ impl Context {
     }
 
     fn function_param(&mut self, tree: &FunctionParam) {
-        panic!("Not implemented.: {:?}", tree);
-    }
-
-    fn parameter_list(&mut self, tree: &ParameterList) {
         match tree {
-            ParameterList::ParameterDeclaration(param) => {
-                self.parameter_declaration(param);
-            }
-            ParameterList::ParameterList(params, t, param) => {
-                self.parameter_list(params);
-                self.push_token(t);
-                self.parameter_declaration(param);
-            }
+            FunctionParam::Identifier(ident) => self.push_token(&Token::Identifier(0, ident.clone())),
+            FunctionParam::Parameter(param) => self.parameter_declaration(param),
+            FunctionParam::Varargs => self.push_token(&Token::Varargs(0)),
         }
     }
 
@@ -509,9 +479,12 @@ impl Context {
     fn pointer(&mut self, tree: &Pointer) {
         match tree {
             Pointer::Ptr(qualifiers, ptr) => {
-                self.whitespace = false;
                 self.type_qualifiers(qualifiers);
+                if qualifiers.any() {
+                    self.whitespace = false;
+                }
                 self.push_token(&Token::Times(0));
+                self.whitespace = false;
                 ptr.as_ref().map(|t| self.pointer(&**t));
             }
         }

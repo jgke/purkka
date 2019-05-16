@@ -79,13 +79,14 @@ pub struct ParseContext<'a, 'b> {
 fn default_types() -> ScopedState {
     let mut types = HashSet::new();
     
-    types.insert("va_list");
-    types.insert("size_t");
-    types.insert("_Bool");
-    types.insert("_Complex");
+    types.insert("va_list".to_string());
+    types.insert("__builtin_va_list".to_string());
+    types.insert("size_t".to_string());
+    types.insert("_Bool".to_string());
+    types.insert("_Complex".to_string());
 
     ScopedState {
-        types: HashSet::new(),
+        types,
         labels: HashSet::new(),
     }
 }
@@ -128,7 +129,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         match self.peek() {
             Some(Token::OpenBrace(..)) => {
                 let block = Box::new(self.parse_compound_statement());
-                ExternalDeclaration::FunctionDefinition(Box::new(FunctionDefinition::Declarator(Box::new(declarator), block)))
+                ExternalDeclaration::FunctionDefinition(Box::new(FunctionDefinition::FunctionDefinition(Some(specifiers), vec![declarator], block)))
             }
             Some(Token::Semicolon(..)) => unimplemented!(),
             _ => ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(specifiers, self.parse_init_declarator_list(declarator))))
@@ -167,7 +168,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_type_specifier(&mut self) -> Option<TypeSpecifier> {
-        match self.peek() {
+        match self.peek().cloned() {
             Some(Token::Void(..)) => {
                 self.next();
                 Some(CType::Void)
@@ -176,25 +177,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 self.next();
                 Some(CType::Primitive(None, PrimitiveType::Int))
             }
-    //TypeSpecifier
-    //   -> #Token::Void
-    //    | Char. #Token::Char
-    //    | SignedChar. Sign #Token::Char
-    //    | Short. #Token::Short MaybeInt
-    //    | SignedShort. Sign #Token::Short MaybeInt
-    //    | Int. #Token::Int
-    //    | SignedInt. Sign #Token::Int
-    //    | Long. #Token::Long MaybeInt
-    //    | SignedLong. Sign #Token::Long MaybeInt
-    //    | LongLong. #Token::Long #Token::Long MaybeInt
-    //    | SignedLongLong. Sign #Token::Long #Token::Long MaybeInt
-    //    | Signed. Sign
-    //    | #Token::Float
-    //    | #Token::Double
-    //    | &StructOrUnionSpecifier
-    //    | &EnumSpecifier
-    //    | #TypeNameStr
-    //    ;
+            Some(Token::Signed(..)) | Some(Token::Unsigned(..)) => unimplemented!(),
+            Some(Token::Enum(..)) | Some(Token::Struct(..)) => unimplemented!(),
+            Some(Token::Float(..)) | Some(Token::Double(..)) => unimplemented!(),
+            Some(Token::Identifier(_, ident)) if self.is_type(ident) => {
+                self.next();
+                Some(CType::Custom(ident.clone()))
+            }
             t => unexpected_token!(t, self),
         }
     }
@@ -299,8 +288,55 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_assignment_or_initializer_list(&mut self) -> AssignmentOrInitializerList {
         match self.peek() {
-            Some(Token::OpenBrace(..)) => unimplemented!(),
+            Some(Token::OpenBrace(..)) => {
+                read_token!(self, Token::OpenBrace);
+
+                if let Some(Token::CloseBrace(..)) = self.peek() {
+                    read_token!(self, Token::CloseBrace);
+                    return AssignmentOrInitializerList::Initializers(vec![]);
+                }
+
+                let mut initializers = vec![self.parse_initializer()];
+
+                loop {
+                    match self.peek() {
+                        Some(Token::Comma(..)) => {
+                            read_token!(self, Token::Comma);
+
+                            if let Some(Token::CloseBrace(..)) = self.peek() {
+                                break
+                            }
+
+                            initializers.push(self.parse_initializer());
+                        }
+                        _ => break
+                    }
+                }
+                dbg!("wat");
+
+                read_token!(self, Token::CloseBrace);
+
+                AssignmentOrInitializerList::Initializers(initializers)
+            }
+
             _ => AssignmentOrInitializerList::AssignmentExpression(self.parse_assignment_expression())
+        }
+    }
+
+    fn parse_initializer(&mut self) -> Initializer {
+        match self.peek() {
+            Some(Token::Dot(..)) => {
+                read_token!(self, Token::Dot);
+                let ident = read_token!(self, Token::Identifier);
+                read_token!(self, Token::Assign);
+                let list = self.parse_assignment_or_initializer_list();
+                if let Token::Identifier(_, ident) = ident {
+                    Initializer::Initializer(Some(ident.clone()), Box::new(list))
+                } else {
+                    unreachable!()
+                }
+            }
+            _ => Initializer::Initializer(None, Box::new(self.parse_assignment_or_initializer_list()))
         }
     }
 
@@ -538,9 +574,15 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::And(..)) => unimplemented!(),
             Some(Token::OpenParen(..)) => {
                 let op = read_token!(self, Token::OpenParen);
-                let e = Box::new(self.parse_expression());
-                let cp = read_token!(self, Token::CloseParen);
-                PrimaryExpression::Expression(op, e, cp)
+                if let Some(Token::OpenBrace(..)) = self.peek() {
+                    let compound = self.parse_compound_statement();
+                    let cp = read_token!(self, Token::CloseParen);
+                    PrimaryExpression::Statement(op, Box::new(compound), cp)
+                } else {
+                    let e = Box::new(self.parse_expression());
+                    let cp = read_token!(self, Token::CloseParen);
+                    PrimaryExpression::Expression(op, e, cp)
+                }
             }
             t => unexpected_token!(t, self),
         }

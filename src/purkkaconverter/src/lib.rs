@@ -104,13 +104,13 @@ impl Context {
         name: Rc<str>,
         pp::Lambda::Lambda(params, ty, block): pp::Lambda,
     ) -> cp::ExternalDeclaration {
-        cp::ExternalDeclaration::FunctionDefinition(Box::new(cp::FunctionDefinition::Specifiers(
-            Box::new(self.type_to_declaration_specifiers(ty.clone())),
-            Box::new(cp::Declarator::Declarator(
+        cp::ExternalDeclaration::FunctionDefinition(Box::new(cp::FunctionDefinition::FunctionDefinition(
+            Some(Box::new(self.type_to_declaration_specifiers(ty.clone()))),
+            vec![cp::Declarator::Declarator(
                 None,
                 name.clone(),
                 Box::new(self.function_params_from_params(params)),
-            )),
+            )],
             Box::new(self.block_expression_to_compound_statement(block)),
         )))
     }

@@ -114,7 +114,6 @@ pub fn parse(
     //for (t, s) in tokens.iter().zip(input.iter()) {
     //    println!("{:?} {}", t, s.to_src());
     //}
-    println!("{:?}", tokens.last());
     match cparser::parse(
         tokens, &input.iter()
         .map(|t| t.source.clone()).collect::<Vec<_>>(),

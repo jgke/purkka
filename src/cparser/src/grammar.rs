@@ -277,11 +277,20 @@ grammar! {
     AssignmentOrInitializerList
        -> AssignmentExpression
         | #Token::OpenBrace InitializerList #Token::CloseBrace
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum AssignmentOrInitializerList {
+            AssignmentExpression(AssignmentExpression),
+            Initializers(Vec<Initializer>)
+        }
         ;
 
     Initializer
        -> &AssignmentOrInitializerList
         | #Token::Dot #Token::Identifier #Token::Assign &AssignmentOrInitializerList
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum Initializer {
+            Initializer(Option<Rc<str>>, Box<AssignmentOrInitializerList>),
+        }
         ;
 
     InitializerListContent
@@ -394,6 +403,8 @@ grammar! {
         | Specifiers. &DeclarationSpecifiers &Declarator &CompoundStatement
         | Declarations. &Declarator &DeclarationList &CompoundStatement
         | Declarator. &Declarator &CompoundStatement
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum FunctionDefinition { FunctionDefinition(Option<Box<DeclarationSpecifiers>>, Vec<Declarator>, Box<CompoundStatement>) }
         ;
 
     DeclarationSpecifiers
