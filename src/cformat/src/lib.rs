@@ -315,6 +315,11 @@ impl Context {
     fn general_expression(&mut self, tree: &GeneralExpression) {
         match tree {
             GeneralExpression::CastExpression(e) => self.cast_expression(e),
+            GeneralExpression::Plus(left, op, right) => {
+                self.general_expression(left);
+                self.push_token(op);
+                self.general_expression(right);
+            }
             f => panic!("Not implemented.: {:?}", f),
         }
     }
@@ -463,6 +468,9 @@ impl Context {
                 self.declaration_specifiers(decl_spec);
                 self.declarator(decl);
             }
+            ParameterDeclaration::DeclarationSpecifiers(decl_spec) => {
+                self.declaration_specifiers(decl_spec);
+            }
             f => panic!("Not implemented.: {:?}", f),
         }
     }
@@ -480,7 +488,11 @@ impl Context {
                 if let Some(t) = ptr.as_ref() {
                     self.pointer(&**t)
                 }
+                self.whitespace = false;
+                self.push(" ");
+                self.push_token(&Token::OpenParen(0));
                 self.declarator(decl);
+                self.push_token(&Token::CloseParen(0));
                 self.direct_declarator(direct_decl);
             }
         }
@@ -524,32 +536,109 @@ impl Context {
         }
     }
 
-    fn ty_to_token(&self, ty: PrimitiveType) -> Token {
+    fn ty_to_token(&self, ty: PrimitiveType) -> (bool, Token) {
         match ty {
-            PrimitiveType::Char => Token::Char(0),
-            PrimitiveType::Int => Token::Int(0),
-            PrimitiveType::Long => Token::Long(0),
-            PrimitiveType::Float => Token::Float(0),
-            PrimitiveType::Double => Token::Double(0),
-            PrimitiveType::LongLong => unimplemented!(),
-            PrimitiveType::LongDouble => unimplemented!(),
+            PrimitiveType::Char => (false, Token::Char(0)),
+            PrimitiveType::Short => (false, Token::Short(0)),
+            PrimitiveType::Int => (false, Token::Int(0)),
+            PrimitiveType::Long => (false, Token::Long(0)),
+            PrimitiveType::Float => (false, Token::Float(0)),
+            PrimitiveType::Double => (false, Token::Double(0)),
+            PrimitiveType::LongLong => (true, Token::Long(0)),
+            PrimitiveType::LongDouble => (true, Token::Double(0)),
         }
     }
 
     fn type_specifier(&mut self, spec: &TypeSpecifier) {
-        let (sign, token) = match spec {
-            CType::Void => (None, Token::Void(0)),
-            CType::Primitive(sign, ty) => (self.sign_to_token(*sign), self.ty_to_token(*ty)),
-            CType::Custom(ident) => (None, Token::Identifier(0, ident.clone())),
-            f => panic!("Not implemented: {:?}", f),
+        let token = match spec {
+            CType::Primitive(sign, ty) => {
+                if let Some(token) = self.sign_to_token(*sign) {
+                    self.push_token(&token);
+                }
+                let (long, t) = self.ty_to_token(*ty);
+                if long {
+                    self.push_token(&Token::Long(0));
+                }
+                self.push_token(&t);
+                return;
+            }
+
+            CType::Void => Token::Void(0),
+            CType::Custom(ident) => Token::Identifier(0, ident.clone()),
+
+            CType::Compound(compound) => return self.compound_type(compound),
         };
-        if let Some(token) = sign {
-            self.push_token(&token);
-        }
         self.push_token(&token);
     }
 
+    fn compound_type(&mut self, ty: &CompoundType) {
+        match ty {
+            CompoundType::Enum(name, enum_fields) => {
+                self.enum_ty(Some(name), enum_fields.as_ref().map(|t| t.as_slice()))
+            }
+            CompoundType::AnonymousEnum(enum_fields) => self.enum_ty(None, Some(enum_fields)),
+            CompoundType::Struct(name, struct_fields) => {
+                self.struct_ty(Some(name), struct_fields.as_ref().map(|t| t.as_slice()))
+            }
+            CompoundType::AnonymousStruct(struct_fields) => {
+                self.struct_ty(None, Some(struct_fields))
+            }
+        }
+    }
+
+    fn enum_ty(&mut self, name: Option<&Rc<str>>, fields: Option<&[EnumField]>) {
+        self.push_token(&Token::Enum(0));
+        if let Some(n) = name {
+            self.push_token(&Token::Identifier(0, n.clone()));
+        }
+        if let Some(fields) = fields {
+            self.push_token(&Token::OpenBrace(0));
+            if let Some((last, rest)) = fields.split_last() {
+                for field in rest {
+                    self.enum_field(field);
+                    self.whitespace = false;
+                    self.push(",");
+                    self.newline = true;
+                }
+                self.enum_field(last);
+            }
+            self.push_token(&Token::CloseBrace(0));
+        }
+    }
+
+    fn enum_field(&mut self, field: &EnumField) {
+        self.push_token(&Token::Identifier(0, field.0.clone()));
+        if let Some(e) = &field.1 {
+            self.push_token(&Token::Assign(0));
+            self.ternary_expression(e);
+        }
+    }
+
+    fn struct_ty(&mut self, name: Option<&Rc<str>>, fields: Option<&[StructField]>) {
+        self.push_token(&Token::Struct(0));
+        if let Some(n) = name {
+            self.push_token(&Token::Identifier(0, n.clone()));
+        }
+        if let Some(fields) = fields {
+            self.push_token(&Token::OpenBrace(0));
+            for field in fields {
+                self.declaration_specifiers(&*field.0);
+                if let Some(declarator) = &field.1 {
+                    self.declarator(&**declarator);
+                }
+                self.whitespace = false;
+                self.newline = false;
+                self.push(";");
+                self.newline = true;
+            }
+            self.push_token(&Token::CloseBrace(0));
+        }
+    }
+
     fn storage_specifiers(&mut self, storage: &StorageClassSpecifiers) {
+        if storage.typedef {
+            self.push_token(&Token::Typedef(0));
+        }
         if storage.extern_ {
             self.push_token(&Token::Extern(0));
         }

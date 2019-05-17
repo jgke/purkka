@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::iter::Peekable;
 use std::rc::Rc;
 
@@ -63,6 +64,24 @@ macro_rules! read_token {
     };
 }
 
+macro_rules! operation_left {
+    ($left:ident $this:ident $target:ident) => {{
+        $left = Box::new(GeneralExpression::$target(
+            $left,
+            $this.next().cloned().unwrap(),
+            Box::new(GeneralExpression::CastExpression(Box::new(
+                $this.parse_cast_expression(),
+            ))),
+        ));
+    }};
+}
+
+macro_rules! operation_right {
+    ($left:ident $this:ident $prio:literal) => {{
+        $left = $this.parse_general_expression_($prio, $left);
+    }};
+}
+
 #[derive(Debug)]
 pub struct ScopedState {
     pub types: HashSet<String>,
@@ -99,14 +118,21 @@ pub fn parse(
     sources: &[Source],
     fragment_iter: &FragmentIterator,
 ) -> Result<S, Option<Token>> {
-    let mut context = ParseContext {
+    let context = ParseContext {
         scope: vec![default_types()],
         iter,
         fragment: fragment_iter,
         sources,
     };
+    let context_mut = std::sync::Mutex::new(context);
 
-    Ok(S::TranslationUnit(context.parse_translation_unit()))
+    std::panic::catch_unwind(|| {
+        S::TranslationUnit(context_mut.lock().unwrap().parse_translation_unit())
+    })
+    .map_err(|_| match context_mut.lock() {
+        Ok(mut context) => context.iter.peek().cloned().cloned(),
+        Err(context) => context.into_inner().iter.peek().cloned().cloned(),
+    })
 }
 
 impl<'a, 'b> ParseContext<'a, 'b> {
@@ -128,8 +154,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_external_declaration(&mut self) -> ExternalDeclaration {
-        let _typedef = maybe_read_token!(self, Token::Typedef).is_some();
         let specifiers = Box::new(self.parse_declaration_specifiers());
+        if let Some(Token::Semicolon(..)) = self.peek() {
+            return ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
+                specifiers,
+                vec![],
+            )));
+        }
         let declarator = self.parse_declarator();
         match self.peek() {
             Some(Token::OpenBrace(..)) => {
@@ -142,10 +173,12 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     ),
                 ))
             }
-            Some(Token::Semicolon(..)) =>
+            Some(Token::Semicolon(..)) => {
                 ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
-                    specifiers, vec![InitDeclarator::Declarator(Box::new(declarator))]
-                ))),
+                    specifiers,
+                    vec![InitDeclarator::Declarator(Box::new(declarator))],
+                )))
+            }
             _ => ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
                 specifiers,
                 self.parse_init_declarator_list(declarator),
@@ -171,6 +204,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn parse_specifiers(&mut self, spec: &mut Specifiers) {
         loop {
             match self.peek() {
+                Some(Token::Typedef(..)) => spec.0.typedef = true,
                 Some(Token::Extern(..)) => spec.0.extern_ = true,
                 Some(Token::Static(..)) => spec.0.static_ = true,
                 Some(Token::Inline(..)) => spec.0.inline = true,
@@ -185,7 +219,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_type_specifier(&mut self) -> Option<TypeSpecifier> {
-        let mut longs = vec![];
+        let mut longs = 0;
         let mut sign = None;
         let mut data = None;
         let mut ty = None;
@@ -196,14 +230,26 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     read_token!(self, Token::Void);
                     ty.replace_if_empty(CType::Void, "Conflicting type specifiers");
                 }
+                Some(Token::Short(..)) => {
+                    read_token!(self, Token::Short);
+                    data.replace_if_empty(PrimitiveType::Short, "Conflicting type specifiers");
+                }
                 Some(Token::Int(..)) => {
                     read_token!(self, Token::Int);
                     data.replace_if_empty(PrimitiveType::Int, "Conflicting type specifiers");
                 }
-                Some(Token::Signed(..)) =>
-                    sign.replace_if_empty(true, "Conflicting type specifiers"),
-                Some(Token::Unsigned(..)) =>
-                    sign.replace_if_empty(false, "Conflicting type specifiers"),
+                Some(Token::Char(..)) => {
+                    read_token!(self, Token::Char);
+                    data.replace_if_empty(PrimitiveType::Char, "Conflicting type specifiers");
+                }
+                Some(Token::Signed(..)) => {
+                    read_token!(self, Token::Signed);
+                    sign.replace_if_empty(true, "Conflicting type specifiers")
+                }
+                Some(Token::Unsigned(..)) => {
+                    read_token!(self, Token::Unsigned);
+                    sign.replace_if_empty(false, "Conflicting type specifiers")
+                }
                 Some(Token::Float(..)) => {
                     read_token!(self, Token::Float);
                     data.replace_if_empty(PrimitiveType::Float, "Conflicting type specifiers");
@@ -214,41 +260,53 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 }
                 Some(Token::Long(..)) => {
                     read_token!(self, Token::Long);
-                    longs.push(());
+                    longs += 1;
                 }
                 Some(Token::Enum(..)) | Some(Token::Struct(..)) => {
-                    ty.replace_if_empty(CType::Compound(self.parse_compound_type()), "Conflicting type specifiers");
+                    ty.replace_if_empty(
+                        CType::Compound(self.parse_compound_type()),
+                        "Conflicting type specifiers",
+                    );
                 }
                 Some(Token::Identifier(_, ident)) if self.is_type(ident) => {
                     read_token!(self, Token::Identifier);
-                    self.next();
-                    ty.replace_if_empty(CType::Custom(ident.clone()), "Conflicting type specifiers");
+                    ty.replace_if_empty(
+                        CType::Custom(ident.clone()),
+                        "Conflicting type specifiers",
+                    );
                 }
-                _ => break
+                _ => break,
             }
         }
 
-        if longs.is_empty() && sign.is_none() && data.is_none() && ty.is_none() {
+        if longs == 0 && sign.is_none() && data.is_none() && ty.is_none() {
             None
         } else {
-            match (longs.len(), sign, data, ty) {
+            match (longs, sign, data, ty) {
                 (0, None, None, Some(ty)) => Some(ty),
                 (_, _, _, Some(_)) => panic!("Conflicting type specifiers"),
 
                 (0, sign, Some(primitive), None) => Some(CType::Primitive(sign, primitive)),
+                (0, sign, None, None) => Some(CType::Primitive(sign, PrimitiveType::Int)),
 
-                (1, sign, Some(PrimitiveType::Int), None) | (1, sign, None, None)
-                    => Some(CType::Primitive(sign, PrimitiveType::Long)),
-                (2, sign, Some(PrimitiveType::Int), None) | (2, sign, None, None)
-                    => Some(CType::Primitive(sign, PrimitiveType::LongLong)),
+                (1, sign, Some(PrimitiveType::Int), None) | (1, sign, None, None) => {
+                    Some(CType::Primitive(sign, PrimitiveType::Long))
+                }
+                (2, sign, Some(PrimitiveType::Int), None) | (2, sign, None, None) => {
+                    Some(CType::Primitive(sign, PrimitiveType::LongLong))
+                }
 
-                (_, Some(_), Some(PrimitiveType::Float), _) | (_, Some(_), Some(PrimitiveType::Double), _)
-                    => panic!("Signed floats are not supported"),
-                (1, None, Some(PrimitiveType::Double), None) 
-                    => Some(CType::Primitive(None, PrimitiveType::LongDouble)),
+                (_, Some(_), Some(PrimitiveType::Float), _)
+                | (_, Some(_), Some(PrimitiveType::Double), _) => {
+                    panic!("Signed floats are not supported")
+                }
+                (1, None, Some(PrimitiveType::Double), None) => {
+                    Some(CType::Primitive(None, PrimitiveType::LongDouble))
+                }
 
                 /* t > 2 */
-                (_t, _, _, None) => panic!("Type is too long"),
+                (t, _, _, _) if t > 2 => panic!("Type is too long! ({})", t),
+                _ => unreachable!(),
             }
         }
     }
@@ -263,7 +321,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     let mut fields = vec![self.parse_enum_field()];
                     while let Some(Token::Comma(..)) = self.peek() {
                         read_token!(self, Token::Comma);
-                        if let Some(Token::CloseBrace(..)) = self.peek() { break; }
+                        if let Some(Token::CloseBrace(..)) = self.peek() {
+                            break;
+                        }
                         fields.push(self.parse_enum_field());
                     }
                     read_token!(self, Token::CloseBrace);
@@ -274,8 +334,8 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 }
                 _ => match ident {
                     Some(t) => CompoundType::Enum(t.get_ident_str().clone(), None),
-                    None => unexpected_token!(self.peek(), self)
-                }
+                    None => unexpected_token!(self.peek(), self),
+                },
             }
         } else {
             read_token!(self, Token::Struct);
@@ -286,7 +346,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     let mut fields = vec![];
                     loop {
                         match self.peek() {
-                            Some(Token::Semicolon(..)) => { read_token!(self, Token::Semicolon); }
+                            Some(Token::Semicolon(..)) => {
+                                read_token!(self, Token::Semicolon);
+                            }
                             Some(Token::CloseBrace(..)) => break,
                             _ => fields.push(self.parse_struct_field()),
                         }
@@ -300,18 +362,29 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 }
                 _ => match ident {
                     Some(t) => CompoundType::Struct(t.get_ident_str().clone(), None),
-                    None => unexpected_token!(self.peek(), self)
-                }
+                    None => unexpected_token!(self.peek(), self),
+                },
             }
         }
     }
 
-    fn parse_enum_field(&mut self) -> (Rc<str>, Option<Expression>) {
-        (From::from("foo"), None)
+    fn parse_enum_field(&mut self) -> (Rc<str>, Option<TernaryExpression>) {
+        let ident = read_token!(self, Token::Identifier).get_ident_str().clone();
+        if let Some(Token::Assign(..)) = self.peek() {
+            read_token!(self, Token::Assign);
+            let expr = self.parse_ternary_expression();
+            (ident, Some(expr))
+        } else {
+            (ident, None)
+        }
     }
 
-    fn parse_struct_field(&mut self) -> (Rc<str>, CType) {
-        (From::from("foo"), CType::Void)
+    fn parse_struct_field(&mut self) -> (Box<DeclarationSpecifiers>, Option<Box<Declarator>>) {
+        let specifiers = Box::new(self.parse_declaration_specifiers());
+        match self.peek() {
+            Some(Token::Semicolon(..)) => (specifiers, None),
+            _ => (specifiers, Some(Box::new(self.parse_declarator()))),
+        }
     }
 
     fn parse_declarator(&mut self) -> Declarator {
@@ -334,6 +407,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn parse_ptr(&mut self) -> Option<Box<Pointer>> {
         match self.peek() {
             Some(Token::Times(..)) => {
+                read_token!(self, Token::Times);
                 let mut spec = TypeQualifiers::default();
                 loop {
                     match self.peek() {
@@ -356,7 +430,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     read_token!(self, Token::OpenBracket);
                     let expr = match self.peek() {
                         Some(Token::CloseBracket(..)) => None,
-                        _ => Some(Box::new(self.parse_general_expr())),
+                        _ => Some(self.parse_general_expression()),
                     };
                     read_token!(self, Token::CloseBracket);
                     decl = Box::new(DirectDeclarator::ArrayOf(decl, expr));
@@ -373,17 +447,28 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         decl
     }
 
-    fn parse_general_expr(&mut self) -> GeneralExpression {
-        panic!()
-    }
-
     fn parse_params(&mut self) -> Vec<FunctionParam> {
-        let params = Vec::new();
+        let mut params = Vec::new();
 
         loop {
             match self.peek() {
                 Some(Token::CloseParen(..)) => break,
-                t => unexpected_token!(t, self),
+                _ => {
+                    let spec = Box::new(self.parse_declaration_specifiers());
+                    match self.peek() {
+                        Some(Token::Comma(..)) | Some(Token::CloseParen(..))
+                            => params.push(FunctionParam::Parameter(ParameterDeclaration::DeclarationSpecifiers(spec))),
+                        _ => {
+                            let declarator = Box::new(self.parse_declarator());
+                            params.push(FunctionParam::Parameter(ParameterDeclaration::Declarator(spec, declarator)));
+                        }
+                    };
+                    match self.peek() {
+                        Some(Token::Comma(..)) => read_token!(self, Token::Comma),
+                        Some(Token::CloseParen(..)) => break,
+                        t => unexpected_token!(t, self),
+                    };
+                }
             }
         }
 
@@ -603,6 +688,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     #[allow(clippy::cognitive_complexity)]
+    #[rustfmt::skip]
     fn parse_general_expression_(
         &mut self,
         priority: usize,
@@ -610,222 +696,42 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     ) -> Box<GeneralExpression> {
         loop {
             match self.peek() {
-                Some(Token::Times(..)) if priority == 12 => {
-                    left = Box::new(GeneralExpression::Times(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::Times(..)) if priority < 12 => {
-                    left = self.parse_general_expression_(12, left);
-                }
-                Some(Token::Divide(..)) if priority == 12 => {
-                    left = Box::new(GeneralExpression::Divide(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::Divide(..)) if priority < 12 => {
-                    left = self.parse_general_expression_(12, left);
-                }
-                Some(Token::Mod(..)) if priority == 12 => {
-                    left = Box::new(GeneralExpression::Mod(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::Mod(..)) if priority < 12 => {
-                    left = self.parse_general_expression_(12, left);
-                }
-                Some(Token::Plus(..)) if priority == 11 => {
-                    left = Box::new(GeneralExpression::Plus(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::Plus(..)) if priority < 11 => {
-                    left = self.parse_general_expression_(11, left);
-                }
-                Some(Token::Minus(..)) if priority == 11 => {
-                    left = Box::new(GeneralExpression::Minus(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::Minus(..)) if priority < 11 => {
-                    left = self.parse_general_expression_(11, left);
-                }
-                Some(Token::BitShiftLeft(..)) if priority == 10 => {
-                    left = Box::new(GeneralExpression::BitShiftLeft(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::BitShiftLeft(..)) if priority < 10 => {
-                    left = self.parse_general_expression_(10, left);
-                }
-                Some(Token::BitShiftRight(..)) if priority == 10 => {
-                    left = Box::new(GeneralExpression::BitShiftRight(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::BitShiftRight(..)) if priority < 10 => {
-                    left = self.parse_general_expression_(10, left);
-                }
-                Some(Token::LessThan(..)) if priority == 9 => {
-                    left = Box::new(GeneralExpression::LessThan(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::LessThan(..)) if priority < 9 => {
-                    left = self.parse_general_expression_(9, left);
-                }
-                Some(Token::MoreThan(..)) if priority == 9 => {
-                    left = Box::new(GeneralExpression::MoreThan(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::MoreThan(..)) if priority < 9 => {
-                    left = self.parse_general_expression_(9, left);
-                }
-                Some(Token::LessEqThan(..)) if priority == 9 => {
-                    left = Box::new(GeneralExpression::LessEqThan(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::LessEqThan(..)) if priority < 9 => {
-                    left = self.parse_general_expression_(9, left);
-                }
-                Some(Token::MoreEqThan(..)) if priority == 9 => {
-                    left = Box::new(GeneralExpression::MoreEqThan(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::MoreEqThan(..)) if priority < 9 => {
-                    left = self.parse_general_expression_(9, left);
-                }
-                Some(Token::Equals(..)) if priority == 8 => {
-                    left = Box::new(GeneralExpression::Equals(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::Equals(..)) if priority < 8 => {
-                    left = self.parse_general_expression_(8, left);
-                }
-                Some(Token::NotEquals(..)) if priority == 8 => {
-                    left = Box::new(GeneralExpression::NotEquals(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::NotEquals(..)) if priority < 8 => {
-                    left = self.parse_general_expression_(8, left);
-                }
-                Some(Token::BitAnd(..)) if priority == 7 => {
-                    left = Box::new(GeneralExpression::BitAnd(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::BitAnd(..)) if priority < 7 => {
-                    left = self.parse_general_expression_(7, left);
-                }
-                Some(Token::BitXor(..)) if priority == 6 => {
-                    left = Box::new(GeneralExpression::BitXor(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::BitXor(..)) if priority < 6 => {
-                    left = self.parse_general_expression_(6, left);
-                }
-                Some(Token::BitOr(..)) if priority == 5 => {
-                    left = Box::new(GeneralExpression::BitOr(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::BitOr(..)) if priority < 5 => {
-                    left = self.parse_general_expression_(5, left);
-                }
-                Some(Token::And(..)) if priority == 4 => {
-                    left = Box::new(GeneralExpression::And(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::And(..)) if priority < 4 => {
-                    left = self.parse_general_expression_(4, left);
-                }
-                Some(Token::Or(..)) if priority == 3 => {
-                    left = Box::new(GeneralExpression::Or(
-                        left,
-                        self.next().cloned().unwrap(),
-                        Box::new(GeneralExpression::CastExpression(Box::new(
-                            self.parse_cast_expression(),
-                        ))),
-                    ));
-                }
-                Some(Token::Or(..)) if priority < 3 => {
-                    left = self.parse_general_expression_(3, left);
-                }
+                Some(Token::Times(..)) if priority == 12 => operation_left!(left self Times),
+                Some(Token::Times(..)) if priority < 12 => operation_right!(left self 12),
+                Some(Token::Divide(..)) if priority == 12 => operation_left!(left self Divide),
+                Some(Token::Divide(..)) if priority < 12 => operation_right!(left self 12),
+                Some(Token::Mod(..)) if priority == 12 => operation_left!(left self Mod),
+                Some(Token::Mod(..)) if priority < 12 => operation_right!(left self 12),
+                Some(Token::Plus(..)) if priority == 11 => operation_left!(left self Plus),
+                Some(Token::Plus(..)) if priority < 11 => operation_right!(left self 11),
+                Some(Token::Minus(..)) if priority == 11 => operation_left!(left self Minus),
+                Some(Token::Minus(..)) if priority < 11 => operation_right!(left self 11),
+                Some(Token::BitShiftLeft(..)) if priority == 10 => operation_left!(left self BitShiftLeft),
+                Some(Token::BitShiftLeft(..)) if priority < 10 => operation_right!(left self 10),
+                Some(Token::BitShiftRight(..)) if priority == 10 => operation_left!(left self BitShiftRight),
+                Some(Token::BitShiftRight(..)) if priority < 10 => operation_right!(left self 10),
+                Some(Token::LessThan(..)) if priority == 9 => operation_left!(left self LessThan),
+                Some(Token::LessThan(..)) if priority < 9 => operation_right!(left self 9),
+                Some(Token::MoreThan(..)) if priority == 9 => operation_left!(left self MoreThan),
+                Some(Token::MoreThan(..)) if priority < 9 => operation_right!(left self 9),
+                Some(Token::LessEqThan(..)) if priority == 9 => operation_left!(left self LessEqThan),
+                Some(Token::LessEqThan(..)) if priority < 9 => operation_right!(left self 9),
+                Some(Token::MoreEqThan(..)) if priority == 9 => operation_left!(left self MoreEqThan),
+                Some(Token::MoreEqThan(..)) if priority < 9 => operation_right!(left self 9),
+                Some(Token::Equals(..)) if priority == 8 => operation_left!(left self Equals),
+                Some(Token::Equals(..)) if priority < 8 => operation_right!(left self 8),
+                Some(Token::NotEquals(..)) if priority == 8 => operation_left!(left self NotEquals),
+                Some(Token::NotEquals(..)) if priority < 8 => operation_right!(left self 8),
+                Some(Token::BitAnd(..)) if priority == 7 => operation_left!(left self BitAnd),
+                Some(Token::BitAnd(..)) if priority < 7 => operation_right!(left self 7),
+                Some(Token::BitXor(..)) if priority == 6 => operation_left!(left self BitXor),
+                Some(Token::BitXor(..)) if priority < 6 => operation_right!(left self 6),
+                Some(Token::BitOr(..)) if priority == 5 => operation_left!(left self BitOr),
+                Some(Token::BitOr(..)) if priority < 5 => operation_right!(left self 5),
+                Some(Token::And(..)) if priority == 4 => operation_left!(left self And),
+                Some(Token::And(..)) if priority < 4 => operation_right!(left self 4),
+                Some(Token::Or(..)) if priority == 3 => operation_left!(left self Or),
+                Some(Token::Or(..)) if priority < 3 => operation_right!(left self 3),
                 _ => break,
             }
         }
@@ -941,10 +847,20 @@ trait ReplaceEmpty<T> {
     fn replace_if_empty(&mut self, t: T, e: &str);
 }
 
-impl<T> ReplaceEmpty<T> for Option<T> {
+impl<T> ReplaceEmpty<T> for Option<T>
+where
+    T: Debug,
+{
     fn replace_if_empty(&mut self, t: T, e: &str) {
-        if self.replace(t).is_some() {
-            panic!("{}", e);
+        if self.is_some() {
+            panic!(
+                "{} (tried to replace {:?} with {:?})",
+                e,
+                self.as_ref().unwrap(),
+                t
+            );
         }
+
+        self.replace(t);
     }
 }

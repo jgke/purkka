@@ -120,7 +120,7 @@ grammar! {
         ;
 
     TypeDeclaration
-       -> #Token::Typedef &DeclarationSpecifiers #Token::Semicolon
+       -> &DeclarationSpecifiers #Token::Semicolon
         | List. #Token::Typedef &DeclarationSpecifiers &InitDeclaratorList #Token::Semicolon
         ;
 
@@ -422,8 +422,10 @@ grammar! {
         | #Token::Inline
         | #Token::Auto
         | #Token::Register
+        | #Token::Typedef
         @ #[derive(Clone, Debug, Default, PartialEq)]
         pub struct StorageClassSpecifiers {
+            pub typedef: bool,
             pub extern_: bool,
             pub static_: bool,
             pub inline: bool,
@@ -525,8 +527,6 @@ pub type TypeSign = Option<bool>;
 pub enum CType {
     Void,
     Primitive(TypeSign, PrimitiveType),
-    Float,
-    Double,
     Compound(CompoundType),
     Custom(Rc<str>),
 }
@@ -534,6 +534,7 @@ pub enum CType {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PrimitiveType {
     Char,
+    Short,
     Int,
     Long,
     LongLong,
@@ -542,17 +543,20 @@ pub enum PrimitiveType {
     LongDouble,
 }
 
+pub type StructField = (Box<DeclarationSpecifiers>, Option<Box<Declarator>>);
+pub type EnumField = (Rc<str>, Option<TernaryExpression>);
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum CompoundType {
-    Struct(Rc<str>, Option<Vec<(Rc<str>, CType)>>),
-    AnonymousStruct(Vec<(Rc<str>, CType)>),
-    Enum(Rc<str>, Option<Vec<(Rc<str>, Option<Expression>)>>),
-    AnonymousEnum(Vec<(Rc<str>, Option<Expression>)>),
+    Struct(Rc<str>, Option<Vec<StructField>>),
+    AnonymousStruct(Vec<StructField>),
+    Enum(Rc<str>, Option<Vec<EnumField>>),
+    AnonymousEnum(Vec<EnumField>),
 }
 
 impl StorageClassSpecifiers {
     pub fn any(&self) -> bool {
-        self.extern_ | self.static_ | self.inline | self.auto | self.register
+        self.typedef | self.extern_ | self.static_ | self.inline | self.auto | self.register
     }
 }
 
