@@ -38,8 +38,6 @@ pub fn convert(mut purkka_tree: pp::S) -> (cp::S, Context) {
     ArrayToPointer::new(&mut context).transform(&mut purkka_tree);
     StripLambda::new(&mut context).transform(&mut purkka_tree);
     StripImports::new(&mut context).transform(&mut purkka_tree);
-    dbg!(&context);
-    dbg!(&purkka_tree);
     (context.s(purkka_tree), context)
 }
 
@@ -111,8 +109,7 @@ impl Context {
                 Some(Box::new(self.type_to_declaration_specifiers(ty.clone()))),
                 vec![cp::Declarator::Declarator(
                     None,
-                    name.clone(),
-                    Box::new(self.function_params_from_params(params)),
+                    Box::new(self.function_params_from_params(name.clone(), params)),
                 )],
                 Box::new(self.block_expression_to_compound_statement(block)),
             ),
@@ -123,17 +120,14 @@ impl Context {
         &mut self,
         cond: pp::Expression,
         block: pp::Block,
-        otherwise: cp::MaybeElse,
+        otherwise: Option<Box<cp::Statement>>,
     ) -> cp::SelectionStatement {
         cp::SelectionStatement::If(
-            ct::Token::If(0),
-            ct::Token::OpenParen(0),
             Box::new(self.expression(cond)),
-            ct::Token::CloseParen(0),
             cp::Statement::CompoundStatement(Box::new(cp::CompoundStatement::Statements(
                 self.block_to_statement_list(block),
             ))),
-            Box::new(otherwise),
+            otherwise,
         )
     }
 
@@ -148,29 +142,23 @@ impl Context {
 
                 let else_block = otherwise
                     .map(|block| {
-                        cp::MaybeElse::Else(
-                            ct::Token::Else(0),
-                            cp::Statement::CompoundStatement(Box::new(
-                                cp::CompoundStatement::Statements(
-                                    self.block_to_statement_list(*block),
-                                ),
-                            )),
-                        )
+                        Some(cp::Statement::CompoundStatement(Box::new(
+                            cp::CompoundStatement::Statements(
+                                self.block_to_statement_list(*block),
+                            ),
+                        )))
                     })
-                    .unwrap_or(cp::MaybeElse::Epsilon());
+                    .unwrap_or(None);
 
                 let tail = iter.rev().fold(else_block, |prev, next| {
-                    cp::MaybeElse::Else(
-                        ct::Token::Else(0),
-                        cp::Statement::SelectionStatement(Box::new(
-                            self.cond_and_block_to_selection_statement(*next.0, *next.1, prev),
-                        )),
-                    )
+                    Some(cp::Statement::SelectionStatement(Box::new(
+                        self.cond_and_block_to_selection_statement(*next.0, *next.1, prev.map(Box::new)),
+                    )))
                 });
 
                 cp::CompoundStatement::Statements(vec![cp::StatementOrDeclaration::Statement(
                     cp::Statement::SelectionStatement(Box::new(
-                        self.cond_and_block_to_selection_statement(*first.0, *first.1, tail),
+                        self.cond_and_block_to_selection_statement(*first.0, *first.1, tail.map(Box::new)),
                     )),
                 )])
             }
@@ -182,11 +170,11 @@ impl Context {
                     cp::Statement::IterationStatement(Box::new(cp::IterationStatement::For(
                         ct::Token::For(0),
                         ct::Token::OpenParen(0),
-                        Box::new(self.expressions_to_for_expr(
+                        self.expressions_to_for_expr(
                             first.map(|t| *t),
                             second.map(|t| *t),
                             third.map(|t| *t),
-                        )),
+                        ),
                         ct::Token::CloseParen(0),
                         Box::new(self.block_to_statement(*block)),
                     ))),
@@ -219,7 +207,7 @@ impl Context {
     ) -> cp::ForExpr {
         match third {
             Some(expr) => cp::ForExpr::ExpressionStatement(
-                self.statement_to_expression_statement(first),
+                Box::new(self.statement_to_expression_statement(first)),
                 Box::new(self.statement_to_expression_statement(second)),
                 Box::new(self.statement_to_expression(expr)),
             ),
@@ -277,8 +265,8 @@ impl Context {
         }
     }
 
-    pub fn function_params_from_params(&mut self, params: Vec<Param>) -> cp::DirectDeclarator {
-        let e = Box::new(cp::DirectDeclarator::Nothing);
+    pub fn function_params_from_params(&mut self, name: Rc<str>, params: Vec<Param>) -> cp::DirectDeclarator {
+        let e = Box::new(cp::DirectDeclarator::Identifier(name));
         cp::DirectDeclarator::Function(e, self.parameter_list_from_params(params))
     }
 
@@ -410,15 +398,14 @@ impl Context {
     pub fn format_decl(&mut self, name: Rc<str>, ty: TypeSignature) -> cp::Declarator {
         cp::Declarator::Declarator(
             self.ty_to_pointer(ty.clone()),
-            name,
-            Box::new(self.format_direct_decl(ty)),
+            Box::new(self.format_direct_decl(name, ty)),
         )
     }
 
-    pub fn format_direct_decl(&mut self, ty: TypeSignature) -> cp::DirectDeclarator {
+    pub fn format_direct_decl(&mut self, name: Rc<str>, ty: TypeSignature) -> cp::DirectDeclarator {
         match ty {
-            TypeSignature::Plain(_) => cp::DirectDeclarator::Nothing,
-            TypeSignature::Pointer { ty, .. } => self.format_direct_decl(*ty),
+            TypeSignature::Plain(_) => cp::DirectDeclarator::Identifier(name),
+            TypeSignature::Pointer { ty, .. } => self.format_direct_decl(name, *ty),
             other => panic!("Not implemented: {:?}", other),
         }
     }

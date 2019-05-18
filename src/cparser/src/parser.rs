@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 use std::fmt::Debug;
-use std::iter::Peekable;
 use std::rc::Rc;
+
+use shared::traits::{multipeek, MultiPeek};
 
 use ctoken::token::Token;
 
@@ -84,14 +85,16 @@ macro_rules! operation_right {
 
 #[derive(Debug)]
 pub struct ScopedState {
-    pub types: HashSet<String>,
-    pub labels: HashSet<String>,
+    pub types: HashSet<Rc<str>>,
+    pub labels: HashSet<Rc<str>>,
 }
 
 #[derive(Debug)]
-pub struct ParseContext<'a, 'b> {
+pub struct ParseContext<'a, I>
+where I: Iterator<Item=&'a Token>
+{
     pub scope: Vec<ScopedState>,
-    pub iter: Iter<'a, 'b>,
+    pub iter: MultiPeek<I>,
     pub fragment: &'a FragmentIterator,
     pub sources: &'a [Source],
 }
@@ -99,11 +102,11 @@ pub struct ParseContext<'a, 'b> {
 fn default_types() -> ScopedState {
     let mut types = HashSet::new();
 
-    types.insert("va_list".to_string());
-    types.insert("__builtin_va_list".to_string());
-    types.insert("size_t".to_string());
-    types.insert("_Bool".to_string());
-    types.insert("_Complex".to_string());
+    types.insert(From::from("va_list"));
+    types.insert(From::from("__builtin_va_list"));
+    types.insert(From::from("size_t"));
+    types.insert(From::from("_Bool"));
+    types.insert(From::from("_Complex"));
 
     ScopedState {
         types,
@@ -111,16 +114,17 @@ fn default_types() -> ScopedState {
     }
 }
 
-pub(crate) type Iter<'a, 'b> = &'a mut Peekable<std::slice::Iter<'b, Token>>;
-
-pub fn parse(
-    iter: Iter,
-    sources: &[Source],
-    fragment_iter: &FragmentIterator,
-) -> Result<S, Option<Token>> {
+pub fn parse<'a, I>(
+    iter: I,
+    sources: &'a [Source],
+    fragment_iter: &'a FragmentIterator,
+) -> Result<S, Option<Token>>
+where I: IntoIterator<Item=&'a Token>
+{
+    println!("Starting parsing");
     let context = ParseContext {
         scope: vec![default_types()],
-        iter,
+        iter: multipeek(iter),
         fragment: fragment_iter,
         sources,
     };
@@ -135,54 +139,107 @@ pub fn parse(
     })
 }
 
-impl<'a, 'b> ParseContext<'a, 'b> {
+impl<'a, I> ParseContext<'a, I>
+where I: Iterator<Item=&'a Token> {
     fn next(&mut self) -> Option<&'a Token> {
         self.iter.next()
     }
     fn peek(&mut self) -> Option<&&'a Token> {
         self.iter.peek()
     }
+    fn peek_n(&mut self, n: usize) -> Vec<&&'a Token> {
+        self.iter.peek_n(n)
+    }
 
     fn parse_translation_unit(&mut self) -> TranslationUnit {
         let mut units = Vec::new();
         while maybe_read_token!(self, Token::Semicolon).is_some() {}
         while self.peek().is_some() {
-            units.push(self.parse_external_declaration());
+            units.push(dbg!(self.parse_external_declaration()));
             while maybe_read_token!(self, Token::Semicolon).is_some() {}
         }
         TranslationUnit::Units(units)
     }
 
     fn parse_external_declaration(&mut self) -> ExternalDeclaration {
-        let specifiers = Box::new(self.parse_declaration_specifiers());
+        let spec = self.parse_declaration_specifiers();
+        let has_typedef = if let DeclarationSpecifiers::DeclarationSpecifiers(Some(spec), _) = &spec {
+            spec.0.typedef
+        } else {
+            false
+        };
         if let Some(Token::Semicolon(..)) = self.peek() {
             return ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
-                specifiers,
+                Box::new(spec),
                 vec![],
             )));
         }
         let declarator = self.parse_declarator();
-        match self.peek() {
+
+        let ext_decl = match self.peek() {
             Some(Token::OpenBrace(..)) => {
                 let block = Box::new(self.parse_compound_statement());
-                ExternalDeclaration::FunctionDefinition(Box::new(
+                return ExternalDeclaration::FunctionDefinition(Box::new(
                     FunctionDefinition::FunctionDefinition(
-                        Some(specifiers),
+                        Some(Box::new(spec)),
                         vec![declarator],
                         block,
                     ),
-                ))
+                ));
             }
             Some(Token::Semicolon(..)) => {
                 ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
-                    specifiers,
+                    Box::new(spec),
                     vec![InitDeclarator::Declarator(Box::new(declarator))],
                 )))
             }
             _ => ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
-                specifiers,
+                Box::new(spec),
                 self.parse_init_declarator_list(declarator),
             ))),
+        };
+
+        read_token!(self, Token::Semicolon);
+
+        if has_typedef {
+            for t in self.ext_decl_identifiers(&ext_decl) {
+                self.add_type(t);
+            }
+        }
+        ext_decl
+    }
+
+    fn add_type(&mut self, t: Rc<str>) {
+        self.scope.last_mut().unwrap().types.insert(t);
+    }
+
+    fn parse_type_name(&mut self) -> TypeName {
+        let specs = self.parse_declaration_specifiers();
+        let abs = self.parse_abstract_declarator();
+        TypeName::TypeName(Box::new(specs), Box::new(abs))
+    }
+
+    fn parse_abstract_declarator(&mut self) -> AbstractDeclarator {
+        let ptr = match_first!(
+            self.peek() => _t,
+            default None,
+
+            Pointer => self.parse_ptr(),
+        );
+        let abs = match_first!(
+            self.peek() => _t,
+            default DirectAbstractDeclarator::Epsilon(),
+
+            DirectAbstractDeclarator => self.parse_direct_abstract_declarator(),
+        );
+        AbstractDeclarator::AbstractDeclarator(ptr, Box::new(abs))
+    }
+
+    fn parse_direct_abstract_declarator(&mut self) -> DirectAbstractDeclarator {
+        match self.peek() {
+            Some(Token::OpenParen(..)) => unimplemented!(),
+            Some(Token::OpenBracket(..)) => unimplemented!(),
+            t => unexpected_token!(t, self),
         }
     }
 
@@ -350,7 +407,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                                 read_token!(self, Token::Semicolon);
                             }
                             Some(Token::CloseBrace(..)) => break,
-                            _ => fields.push(self.parse_struct_field()),
+                            _ => {
+                                fields.push(self.parse_struct_field());
+                                read_token!(self, Token::Semicolon);
+                            }
                         }
                     }
                     read_token!(self, Token::CloseBrace);
@@ -379,30 +439,71 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         }
     }
 
-    fn parse_struct_field(&mut self) -> (Box<DeclarationSpecifiers>, Option<Box<Declarator>>) {
+    fn parse_struct_field(&mut self) -> (Box<DeclarationSpecifiers>, Option<Vec<EitherDeclarator>>) {
         let specifiers = Box::new(self.parse_declaration_specifiers());
         match self.peek() {
             Some(Token::Semicolon(..)) => (specifiers, None),
-            _ => (specifiers, Some(Box::new(self.parse_declarator()))),
+            _ => {
+                let mut decls = vec![self.parse_declarator_or_abstract_declarator()];
+                loop {
+                    if let Some(Token::Comma(..)) = self.peek() {
+                        read_token!(self, Token::Comma);
+                        decls.push(self.parse_declarator_or_abstract_declarator());
+                    } else {
+                        break
+                    }
+                }
+                (specifiers, Some(decls))
+            }
         }
     }
 
     fn parse_declarator(&mut self) -> Declarator {
         let ptr = self.parse_ptr();
-        match self.peek() {
-            Some(Token::Identifier(_, s)) => {
-                read_token!(self, Token::Identifier);
-                Declarator::Declarator(ptr, s.clone(), self.parse_direct_declarator())
+        Declarator::Declarator(ptr, self.parse_direct_declarator())
+    }
+
+    /* Detect whether we should parse a declarator or an abstract declarator, using arbitrary
+     * lookahead. I think there's some method of doing this without n-lookahead, but this is a lot
+     * easier :) */
+    fn is_declarator_upcoming(&mut self) -> bool {
+        self.peek_pointer();
+        self.is_direct_declarator_upcoming()
+    }
+
+    /* Consume a pointer from the peek buf */
+    fn peek_pointer(&mut self) {
+        match self.iter.peek_buf() {
+            Some(Token::Times(..)) => {
+                self.iter.peek_and_advance();
+                loop {
+                    match self.iter.peek_buf() {
+                        Some(Token::Volatile(..)) | Some(Token::Const(..)) => self.iter.peek_and_advance(),
+                        _ => break,
+                    };
+                }
             }
-            Some(Token::OpenParen(..)) => {
-                read_token!(self, Token::OpenParen);
-                let decl = Box::new(self.parse_declarator());
-                read_token!(self, Token::CloseParen);
-                Declarator::FunctionPointer(ptr, decl, self.parse_direct_declarator())
-            }
-            t => unexpected_token!(t, self),
+            _ => {}
         }
     }
+
+    fn is_direct_declarator_upcoming(&mut self) -> bool {
+        match self.iter.peek_and_advance() {
+            Some(Token::Identifier(..)) => true,
+            Some(Token::OpenParen(..)) => self.is_declarator_upcoming(),
+            _ => false,
+        }
+    }
+
+    fn parse_declarator_or_abstract_declarator(&mut self) -> EitherDeclarator {
+        self.peek(); /* Clear out peek buf, just in case */
+        if self.is_declarator_upcoming() {
+            EitherDeclarator::Declarator(self.parse_declarator())
+        } else {
+            EitherDeclarator::Anonymous(self.parse_abstract_declarator())
+        }
+    }
+
 
     fn parse_ptr(&mut self) -> Option<Box<Pointer>> {
         match self.peek() {
@@ -415,6 +516,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                         Some(Token::Volatile(..)) => spec.volatile = true,
                         _ => break,
                     }
+                    self.next();
                 }
                 Some(Box::new(Pointer::Ptr(spec, self.parse_ptr())))
             }
@@ -423,7 +525,14 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_direct_declarator(&mut self) -> Box<DirectDeclarator> {
-        let mut decl = Box::new(DirectDeclarator::Nothing);
+        let mut decl = if let Some(Token::Identifier(..)) = self.peek() {
+            Box::new(DirectDeclarator::Identifier(read_token!(self, Token::Identifier).get_ident_str().clone()))
+        } else {
+            read_token!(self, Token::OpenParen);
+            let d = self.parse_declarator();
+            read_token!(self, Token::CloseParen);
+            Box::new(DirectDeclarator::Parens(Box::new(d)))
+        };
         loop {
             match self.peek() {
                 Some(Token::OpenBracket(..)) => {
@@ -433,7 +542,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                         _ => Some(self.parse_general_expression()),
                     };
                     read_token!(self, Token::CloseBracket);
-                    decl = Box::new(DirectDeclarator::ArrayOf(decl, expr));
+                    decl = Box::new(DirectDeclarator::Array(decl, expr));
                 }
                 Some(Token::OpenParen(..)) => {
                     read_token!(self, Token::OpenParen);
@@ -459,8 +568,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                         Some(Token::Comma(..)) | Some(Token::CloseParen(..))
                             => params.push(FunctionParam::Parameter(ParameterDeclaration::DeclarationSpecifiers(spec))),
                         _ => {
-                            let declarator = Box::new(self.parse_declarator());
-                            params.push(FunctionParam::Parameter(ParameterDeclaration::Declarator(spec, declarator)));
+                            let decl = match self.parse_declarator_or_abstract_declarator() {
+                                EitherDeclarator::Anonymous(declarator)
+                                    => ParameterDeclaration::AbstractDeclarator(spec, Box::new(declarator)),
+                                EitherDeclarator::Declarator(declarator)
+                                    => ParameterDeclaration::Declarator(spec, Box::new(declarator)),
+                            };
+                            params.push(FunctionParam::Parameter(decl));
                         }
                     };
                     match self.peek() {
@@ -487,7 +601,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_init_declarator(&mut self, decl: Declarator) -> InitDeclarator {
         match self.peek() {
-            Some(Token::Asm(..)) => unimplemented!(),
+            Some(Token::Asm(..)) => {
+                let asm = read_token!(self, Token::Asm);
+                InitDeclarator::Asm(Box::new(decl), asm)
+            }
             Some(Token::Assign(..)) => {
                 let t = read_token!(self, Token::Assign);
                 let list = self.parse_assignment_or_initializer_list();
@@ -593,6 +710,11 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_statement(&mut self) -> Statement {
+        match self.peek_n(2).as_slice() {
+            [Token::Identifier(..), Token::Colon(..)] | [Token::Case(..), _] | [Token::Default(..), _]
+                => return Statement::LabeledStatement(Box::new(self.parse_labeled_statement())),
+            _ => {}
+        }
         match_first!(
             self.peek() => _t,
             default unexpected_token!(_t, self),
@@ -601,28 +723,164 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             SelectionStatement => Statement::SelectionStatement(Box::new(self.parse_selection_statement())),
             IterationStatement => Statement::IterationStatement(Box::new(self.parse_iteration_statement())),
             JumpStatement => Statement::JumpStatement(Box::new(self.parse_jump_statement())),
-            ExpressionStatement => {
-                let e = Statement::ExpressionStatement(Box::new(ExpressionStatement::Expression(Some(Box::new(self.parse_expression())))));
-                read_token!(self, Token::Semicolon);
-                e
-            },
+            ExpressionStatement => Statement::ExpressionStatement(Box::new(self.parse_expression_statement())),
         )
     }
 
+    fn parse_expression_statement(&mut self) -> ExpressionStatement {
+        if let Some(Token::Semicolon(..)) = self.peek() {
+            read_token!(self, Token::Semicolon);
+            ExpressionStatement::Expression(None)
+        } else {
+            let e = ExpressionStatement::Expression(Some(Box::new(self.parse_expression())));
+            read_token!(self, Token::Semicolon);
+            e
+        }
+    }
+
+    fn parse_labeled_statement(&mut self) -> LabeledStatement {
+        match self.peek() {
+            Some(Token::Identifier(..)) => {
+                let ident = read_token!(self, Token::Identifier);
+                let c = read_token!(self, Token::Colon);
+                let s = self.parse_statement();
+                LabeledStatement::Identifier(ident, c, s)
+            }
+            Some(Token::Case(..)) => {
+                let case = read_token!(self, Token::Case);
+                let e = self.parse_general_expression();
+                if let Some(Token::Varargs(..)) = self.peek() {
+                    unimplemented!();
+                }
+                let c = read_token!(self, Token::Colon);
+                let s = self.parse_statement();
+                LabeledStatement::Case(case, e, c, s)
+            }
+            Some(Token::Default(..)) => {
+                let def = read_token!(self, Token::Default);
+                let c = read_token!(self, Token::Colon);
+                let s = self.parse_statement();
+                LabeledStatement::Default(def, c, s)
+            }
+            t => unexpected_token!(t, self),
+        }
+    }
+
     fn parse_selection_statement(&mut self) -> SelectionStatement {
-        unimplemented!();
+        match self.peek() {
+            Some(Token::If(..)) => {
+                read_token!(self, Token::If);
+                read_token!(self, Token::OpenParen);
+                let e = self.parse_expression();
+                read_token!(self, Token::CloseParen);
+                let s = self.parse_statement();
+                let otherwise = match self.peek() {
+                    Some(Token::Else(..)) => {
+                        read_token!(self, Token::Else);
+                        Some(Box::new(self.parse_statement()))
+                    }
+                    _ => None
+                };
+                SelectionStatement::If(Box::new(e), s, otherwise)
+            }
+            Some(Token::Switch(..)) => {
+                read_token!(self, Token::Switch);
+                read_token!(self, Token::OpenParen);
+                let e = self.parse_expression();
+                read_token!(self, Token::CloseParen);
+                let s = self.parse_statement();
+                SelectionStatement::Switch(Box::new(e), s)
+            }
+            t => unexpected_token!(t, self),
+        }
     }
 
     fn parse_iteration_statement(&mut self) -> IterationStatement {
-        unimplemented!();
+        match self.peek() {
+            Some(Token::While(..)) => {
+                let w = read_token!(self, Token::While);
+                let op = read_token!(self, Token::OpenParen);
+                let e = Box::new(self.parse_expression());
+                let cp = read_token!(self, Token::CloseParen);
+                let s = Box::new(self.parse_statement());
+                IterationStatement::While(w, op, e, cp, s)
+            }
+            Some(Token::Do(..)) => {
+                let d = read_token!(self, Token::Do);
+                let s = Box::new(self.parse_statement());
+                let w = read_token!(self, Token::While);
+                let op = read_token!(self, Token::OpenParen);
+                let e = Box::new(self.parse_expression());
+                let cp = read_token!(self, Token::CloseParen);
+                let semi = read_token!(self, Token::Semicolon);
+                IterationStatement::Do(d, s, w, op, e, cp, semi)
+            }
+            Some(Token::For(..)) => {
+                let f = read_token!(self, Token::For);
+                let op = read_token!(self, Token::OpenParen);
+                let e1 = Box::new(self.parse_expression_statement());
+                let e2 = Box::new(self.parse_expression_statement());
+                let f_expr = if let Some(Token::CloseParen(..)) = self.peek() {
+                    ForExpr::EmptyLast(e1, e2)
+                } else {
+                    let e3 = Box::new(self.parse_expression());
+                    ForExpr::ExpressionStatement(e1, e2, e3)
+                };
+                let cp = read_token!(self, Token::CloseParen);
+                let s = Box::new(self.parse_statement());
+                IterationStatement::For(f, op, f_expr, cp, s)
+            }
+            t => unexpected_token!(t, self),
+        }
     }
 
     fn parse_jump_statement(&mut self) -> JumpStatement {
-        unimplemented!();
+        match self.peek() {
+            Some(Token::Goto(..)) => {
+                let goto = read_token!(self, Token::Goto);
+                let ident = read_token!(self, Token::Identifier);
+                let semi = read_token!(self, Token::Semicolon);
+                JumpStatement::Goto(goto, ident, semi)
+            }
+            Some(Token::Continue(..)) => {
+                let cont = read_token!(self, Token::Continue);
+                let semi = read_token!(self, Token::Semicolon);
+                JumpStatement::Continue(cont, semi)
+            }
+            Some(Token::Break(..)) => {
+                let br = read_token!(self, Token::Break);
+                let semi = read_token!(self, Token::Semicolon);
+                JumpStatement::Break(br, semi)
+            }
+            Some(Token::Return(..)) => {
+                let r = read_token!(self, Token::Return);
+                if let Some(Token::Semicolon(..)) = self.peek() {
+                    let semi = read_token!(self, Token::Semicolon);
+                    JumpStatement::ReturnVoid(r, semi)
+                } else {
+                    let e = self.parse_expression();
+                    let semi = read_token!(self, Token::Semicolon);
+                    JumpStatement::Return(r, e, semi)
+                }
+            }
+            t => unexpected_token!(t, self),
+        }
     }
 
     fn is_type(&self, ident: &str) -> bool {
         self.scope.iter().any(|e| e.types.contains(ident))
+    }
+
+    fn starts_type(&self, t: &Token) -> bool {
+        if let Token::Identifier(_, i) = t {
+            return self.is_type(i);
+        }
+
+        match_first!(
+            Some(t) => _t,
+            default false,
+            DeclarationSpecifiers => true,
+        )
     }
 
     fn parse_expression(&mut self) -> Expression {
@@ -636,18 +894,18 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_assignment_expression(&mut self) -> AssignmentExpression {
         let left = self.parse_ternary_expression();
-        match self.peek().unwrap() {
-            Token::Assign(..)
-            | Token::TimesAssign(..)
-            | Token::DivAssign(..)
-            | Token::ModAssign(..)
-            | Token::PlusAssign(..)
-            | Token::MinusAssign(..)
-            | Token::BitShiftLeftAssign(..)
-            | Token::BitShiftRightAssign(..)
-            | Token::BitAndAssign(..)
-            | Token::BitXorAssign(..)
-            | Token::BitOrAssign(..) => {
+        match self.peek() {
+            Some(Token::Assign(..))
+            | Some(Token::TimesAssign(..))
+            | Some(Token::DivAssign(..))
+            | Some(Token::ModAssign(..))
+            | Some(Token::PlusAssign(..))
+            | Some(Token::MinusAssign(..))
+            | Some(Token::BitShiftLeftAssign(..))
+            | Some(Token::BitShiftRightAssign(..))
+            | Some(Token::BitAndAssign(..))
+            | Some(Token::BitXorAssign(..))
+            | Some(Token::BitOrAssign(..)) => {
                 if let TernaryExpression::GeneralExpression(GeneralExpression::CastExpression(
                     box CastExpression::UnaryExpression(u),
                 )) = left
@@ -671,7 +929,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         if let Some(Token::Ternary(..)) = self.peek() {
             let t1 = read_token!(self, Token::Ternary);
             let if_true = self.parse_expression();
-            let t2 = read_token!(self, Token::Ternary);
+            let t2 = read_token!(self, Token::Colon);
             let otherwise = self.parse_ternary_expression();
             TernaryExpression::Ternary(*e, t1, Box::new(if_true), t2, Box::new(otherwise))
         } else {
@@ -739,6 +997,16 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_cast_expression(&mut self) -> CastExpression {
+        if let [Token::OpenParen(..), t] = self.peek_n(2).as_slice() {
+            let tt = *t.clone();
+            if self.starts_type(&tt) {
+                let op = read_token!(self, Token::OpenParen);
+                let ty = self.parse_type_name();
+                let cp = read_token!(self, Token::CloseParen);
+                let e = self.parse_general_expression();
+                return CastExpression::OpenParen(op, Box::new(ty), cp, e);
+            }
+        }
         CastExpression::UnaryExpression(self.parse_unary_expression())
     }
 
@@ -764,13 +1032,50 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_postfix_expression(&mut self) -> PostfixExpression {
-        let e = self.parse_primary_expression();
-        match self.peek() {
-            Some(Token::OpenBracket(..)) => unimplemented!(),
-            Some(Token::OpenParen(..)) => unimplemented!(),
-            Some(Token::Dot(..)) | Some(Token::Arrow(..)) => unimplemented!(),
-            Some(Token::Increment(..)) | Some(Token::Decrement(..)) => unimplemented!(),
-            _ => PostfixExpression::PrimaryExpression(e),
+        let mut e = PostfixExpression::PrimaryExpression(self.parse_primary_expression());
+        loop {
+            match self.peek() {
+                Some(Token::OpenBracket(..)) => {
+                    let op = read_token!(self, Token::OpenBracket);
+                    let expr = self.parse_expression();
+                    let cp = read_token!(self, Token::CloseBracket);
+                    e = PostfixExpression::Index(Box::new(e), op, Box::new(expr), cp);
+                }
+                Some(Token::Dot(..)) => {
+                    let dot = read_token!(self, Token::Dot);
+                    let ident = read_token!(self, Token::Identifier);
+                    e = PostfixExpression::Member(Box::new(e), MemberAccess::Dot(dot), ident);
+                }
+                Some(Token::Arrow(..)) => {
+                    let arrow = read_token!(self, Token::Arrow);
+                    let ident = read_token!(self, Token::Identifier);
+                    e = PostfixExpression::Member(Box::new(e), MemberAccess::Arrow(arrow), ident);
+                }
+                Some(Token::OpenParen(..)) => {
+                    let op = read_token!(self, Token::OpenParen);
+                    let mut list = Vec::new();
+                    loop {
+                        if let Some(Token::CloseParen(..)) = self.peek() {
+                            break;
+                        } else {
+                            list.push(self.parse_assignment_expression());
+                            if let Some(Token::Comma(..)) = self.peek() {
+                                read_token!(self, Token::Comma);
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    let cp = read_token!(self, Token::CloseParen);
+                    e = PostfixExpression::Call(Box::new(e), op, ArgumentExpressionList::List(list), cp);
+                }
+                Some(Token::Increment(..)) | Some(Token::Decrement(..)) => {
+                    let t = self.next().cloned().unwrap();
+                    let inc = self.increment_or_decrement(t);
+                    e = PostfixExpression::Increment(Box::new(e), inc);
+                }
+                _ => return e
+            }
         }
     }
 
@@ -839,6 +1144,34 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Token::BitNot(..) => UnaryOperator::BitNot(token),
             Token::Not(..) => UnaryOperator::Not(token),
             _ => unreachable!(),
+        }
+    }
+
+    pub fn ext_decl_identifiers(&self, ext_decl: &ExternalDeclaration) -> Vec<Rc<str>> {
+        if let ExternalDeclaration::Declaration(box Declaration::Declaration(_, list)) = ext_decl {
+            list.iter().map(|e| {
+                match e {
+                    InitDeclarator::Declarator(decl) => self.get_decl_identifier(&**decl),
+                    _ => panic!()
+                }
+            }).collect()
+        } else {
+            vec![]
+        }
+    }
+
+    fn get_decl_identifier(&self, decl: &Declarator) -> Rc<str> {
+        match decl {
+            Declarator::Declarator(_, direct_decl) => self.get_direct_decl_identifier(direct_decl),
+        }
+    }
+
+    fn get_direct_decl_identifier(&self, direct_decl: &DirectDeclarator) -> Rc<str> {
+        match direct_decl {
+            DirectDeclarator::Identifier(ident) => ident.clone(),
+            DirectDeclarator::Parens(decl) => self.get_decl_identifier(decl),
+            DirectDeclarator::Array(direct_decl, _) => self.get_direct_decl_identifier(direct_decl),
+            DirectDeclarator::Function(direct_decl, _) => self.get_direct_decl_identifier(direct_decl),
         }
     }
 }

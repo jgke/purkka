@@ -39,6 +39,8 @@ grammar! {
     ArgumentExpressionList
        -> Epsilon
         | &NonemptyArgumentExpressionList
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum ArgumentExpressionList { List(Vec<AssignmentExpression>) }
         ;
 
     NonemptyArgumentExpressionList
@@ -208,7 +210,8 @@ grammar! {
         ;
 
     FunctionParams
-       -> &ParameterTypeList
+       -> Epsilon
+        | &ParameterTypeList
         | &IdentifierList
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum FunctionParam {
@@ -253,20 +256,10 @@ grammar! {
     TypeName
        -> &SpecifierQualifierList
         | AbstractDeclarator. &SpecifierQualifierList &AbstractDeclarator
-        ;
-
-    AbstractDeclarator
-       -> &Pointer
-        | &DirectAbstractDeclarator
-        | Both. &Pointer &DirectAbstractDeclarator
-        ;
-
-    DirectAbstractDeclarator
-       -> #Token::OpenParen &AbstractDeclarator #Token::CloseParen
-        | Array. #Token::OpenBracket MaybeGeneralExpression #Token::CloseBracket
-        | AbstractArray. DirectAbstractDeclarator #Token::OpenBracket MaybeGeneralExpression #Token::CloseBracket
-        | Function. #Token::OpenParen &MaybeParameterTypeList #Token::CloseParen
-        | AbstractFunction. DirectAbstractDeclarator #Token::OpenParen &MaybeParameterTypeList #Token::CloseParen
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum TypeName {
+            TypeName(Box<DeclarationSpecifiers>, Box<AbstractDeclarator>),
+        }
         ;
 
     MaybeParameterTypeList
@@ -357,6 +350,11 @@ grammar! {
     SelectionStatement
        -> #Token::If #Token::OpenParen &Expression #Token::CloseParen Statement &MaybeElse
         | #Token::Switch #Token::OpenParen &Expression #Token::CloseParen Statement
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum SelectionStatement { 
+            If(Box<Expression>, Statement, Option<Box<Statement>>),
+            Switch(Box<Expression>, Statement),
+        }
         ;
 
     MaybeElse
@@ -367,12 +365,12 @@ grammar! {
     IterationStatement
        -> #Token::While #Token::OpenParen &Expression #Token::CloseParen &Statement
         | #Token::Do &Statement #Token::While #Token::OpenParen &Expression #Token::CloseParen #Token::Semicolon
-        | #Token::For #Token::OpenParen &ForExpr #Token::CloseParen &Statement
+        | #Token::For #Token::OpenParen ForExpr #Token::CloseParen &Statement
         ;
 
     ForExpr
        -> EmptyLast. &ExpressionStatement &ExpressionStatement
-        | ExpressionStatement &ExpressionStatement &Expression
+        | &ExpressionStatement &ExpressionStatement &Expression
         ;
 
     JumpStatement
@@ -473,18 +471,6 @@ grammar! {
         @ pub type Specifiers = (StorageClassSpecifiers, TypeQualifiers)
         ;
 
-    Declarator
-       -> &Pointer #Token::Identifier &DirectDeclarator
-        | #Token::Identifier &DirectDeclarator
-        | FunctionPointer. #Token::OpenParen &Declarator #Token::CloseParen &DirectDeclarator
-        | FunctionPointerReturningPointer. &Pointer #Token::OpenParen &Declarator #Token::CloseParen &DirectDeclarator
-        @ #[derive(Clone, Debug, PartialEq)]
-        pub enum Declarator {
-            Declarator(Option<Box<Pointer>>, Rc<str>, Box<DirectDeclarator>),
-            FunctionPointer(Option<Box<Pointer>>, Box<Declarator>, Box<DirectDeclarator>),
-        }
-        ;
-
     Pointer
        -> #Token::Times
         | TypeList. #Token::Times TypeQualifierList
@@ -496,19 +482,6 @@ grammar! {
         }
         ;
 
-    DirectDeclarator
-       -> Epsilon
-        | Array. DirectDeclarator #Token::OpenBracket MaybeGeneralExpression #Token::CloseBracket
-        | Function. DirectDeclarator #Token::OpenParen #Token::CloseParen
-        | FunctionParams. DirectDeclarator #Token::OpenParen FunctionParams #Token::CloseParen
-        @ #[derive(Clone, Debug, PartialEq)]
-        pub enum DirectDeclarator {
-            Nothing,
-            ArrayOf(Box<DirectDeclarator>, Option<Box<GeneralExpression>>),
-            Function(Box<DirectDeclarator>, FunctionParams),
-        }
-        ;
-
     Declaration
        -> &DeclarationSpecifiers #Token::Semicolon
         | List. &DeclarationSpecifiers &InitDeclaratorList #Token::Semicolon
@@ -517,6 +490,53 @@ grammar! {
             Declaration(Box<DeclarationSpecifiers>, Vec<InitDeclarator>),
         }
         ;
+
+    AbstractDeclarator
+       -> &Pointer &DirectAbstractDeclarator
+        | &DirectAbstractDeclarator
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum AbstractDeclarator {
+            AbstractDeclarator(Option<Box<Pointer>>, Box<DirectAbstractDeclarator>),
+        }
+        ;
+
+    Declarator
+       -> &Pointer &DirectDeclarator
+        | &DirectDeclarator
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum Declarator {
+            Declarator(Option<Box<Pointer>>, Box<DirectDeclarator>),
+        }
+        ;
+
+    DirectAbstractDeclarator
+       -> Epsilon
+        | #Token::OpenParen &AbstractDeclarator #Token::CloseParen
+        | Array. DirectAbstractDeclarator #Token::OpenBracket MaybeGeneralExpression #Token::CloseBracket
+        | Function. DirectAbstractDeclarator #Token::OpenParen &MaybeParameterTypeList #Token::CloseParen
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum DirectAbstractDeclarator {
+            Epsilon(),
+            Parens(Box<AbstractDeclarator>),
+            Array(Box<DirectAbstractDeclarator>, Option<Box<GeneralExpression>>),
+            Function(Box<DirectAbstractDeclarator>, FunctionParams),
+        }
+        ;
+
+    DirectDeclarator
+       -> #Token::Identifier
+        | #Token::OpenParen &Declarator #Token::CloseParen
+        | Array. DirectDeclarator #Token::OpenBracket MaybeGeneralExpression #Token::CloseBracket
+        | FunctionParams. DirectDeclarator #Token::OpenParen FunctionParams #Token::CloseParen
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum DirectDeclarator {
+            Identifier(Rc<str>),
+            Parens(Box<Declarator>),
+            Array(Box<DirectDeclarator>, Option<Box<GeneralExpression>>),
+            Function(Box<DirectDeclarator>, FunctionParams),
+        }
+        ;
+
 }
 
 pub type FunctionParams = Vec<FunctionParam>;
@@ -543,7 +563,13 @@ pub enum PrimitiveType {
     LongDouble,
 }
 
-pub type StructField = (Box<DeclarationSpecifiers>, Option<Box<Declarator>>);
+#[derive(Clone, Debug, PartialEq)]
+pub enum EitherDeclarator {
+    Anonymous(AbstractDeclarator),
+    Declarator(Declarator),
+}
+
+pub type StructField = (Box<DeclarationSpecifiers>, Option<Vec<EitherDeclarator>>);
 pub type EnumField = (Rc<str>, Option<TernaryExpression>);
 
 #[derive(Clone, Debug, PartialEq)]

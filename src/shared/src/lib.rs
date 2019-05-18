@@ -4,3 +4,4 @@ extern crate regex;
 
 pub mod intern;
 pub mod utils;
+pub mod traits;

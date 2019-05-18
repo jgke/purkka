@@ -17,3 +17,6 @@ members = [
     "src/resolve",
     "src/shared"
 ]
+
+[profile.release]
+lto = true

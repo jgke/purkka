@@ -32,6 +32,14 @@ pub fn format_c<H: std::hash::BuildHasher>(tree: &S, includes: HashSet<Rc<str>, 
     context.buf
 }
 
+macro_rules! op_3 {
+    ($this:ident, $left:ident, $op:ident, $right:ident) => {{
+        $this.general_expression($left);
+        $this.push_token($op);
+        $this.general_expression($right);
+    }};
+}
+
 impl Context {
     fn s(&mut self, tree: &S) {
         match tree {
@@ -265,22 +273,128 @@ impl Context {
     fn statement(&mut self, tree: &Statement) {
         match tree {
             Statement::CompoundStatement(compound) => self.compound_statement(compound),
-            Statement::ExpressionStatement(box ExpressionStatement::Expression(e)) => {
+            Statement::ExpressionStatement(expr) => self.expression_statement(&**expr),
+            Statement::JumpStatement(jumpy) => self.jump_statement(jumpy),
+            Statement::SelectionStatement(statement) => self.selection_statement(statement),
+            Statement::LabeledStatement(statement) => self.labeled_statement(statement),
+            Statement::IterationStatement(statement) => self.iteration_statement(statement),
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn expression_statement(&mut self, tree: &ExpressionStatement) {
+        match tree {
+            ExpressionStatement::Expression(e) => {
                 if let Some(e) = e.as_ref() {
                     self.expression(&**e)
                 }
                 self.push_token(&Token::Semicolon(0));
             }
-            Statement::JumpStatement(box JumpStatement::ReturnVoid(r, t)) => {
+        }
+    }
+
+    fn selection_statement(&mut self, tree: &SelectionStatement) {
+        match tree {
+            SelectionStatement::If(e, s, otherwise) => {
+                self.push_token(&Token::If(0));
+                self.push_token(&Token::OpenParen(0));
+                self.expression(&**e);
+                self.push_token(&Token::CloseParen(0));
+                self.statement(s);
+                if let Some(e) = otherwise {
+                    self.push_token(&Token::Else(0));
+                    self.statement(e);
+                }
+            }
+            SelectionStatement::Switch(e, s) => {
+                self.push_token(&Token::Switch(0));
+                self.push_token(&Token::OpenParen(0));
+                self.expression(&**e);
+                self.push_token(&Token::CloseParen(0));
+                self.statement(s);
+            }
+        }
+    }
+
+    fn labeled_statement(&mut self, tree: &LabeledStatement) {
+        match tree {
+            LabeledStatement::Case(case, e, c, s) => {
+                self.push_token(case);
+                self.general_expression(&**e);
+                self.push_token(c);
+                self.statement(s);
+            }
+            LabeledStatement::Default(kw, c, s) => {
+                self.push_token(kw);
+                self.push_token(c);
+                self.statement(s);
+            }
+            f => panic!("Not implemented.: {:?}", f),
+        }
+    }
+
+    fn iteration_statement(&mut self, tree: &IterationStatement) {
+        match tree {
+            IterationStatement::While(w, op, e, cp, s) => {
+                self.push_token(w);
+                self.push_token(op);
+                self.expression(&**e);
+                self.push_token(cp);
+                self.statement(s);
+            }
+            IterationStatement::Do(d, s, w, op, e, cp, semi) => {
+                self.push_token(d);
+                self.statement(s);
+                self.push_token(w);
+                self.push_token(op);
+                self.expression(&**e);
+                self.push_token(cp);
+                self.push_token(semi);
+            }
+            IterationStatement::For(f, op, ForExpr::EmptyLast(e1, e2), cp, s) => {
+                self.push_token(f);
+                self.push_token(op);
+                self.expression_statement(&**e1);
+                self.expression_statement(&**e2);
+                self.push_token(cp);
+                self.statement(s);
+            }
+            IterationStatement::For(f, op, ForExpr::ExpressionStatement(e1, e2, e3), cp, s) => {
+                self.push_token(f);
+                self.push_token(op);
+                self.expression_statement(&**e1);
+                self.expression_statement(&**e2);
+                self.expression(&**e3);
+                self.push_token(cp);
+                self.statement(s);
+            }
+        }
+    }
+
+    fn jump_statement(&mut self, tree: &JumpStatement) {
+        match tree {
+            JumpStatement::Goto(kw, ident, s) => {
+                self.push_token(kw);
+                self.push_token(ident);
+                self.push_token(s);
+            }
+            JumpStatement::Continue(kw, s) => {
+                self.push_token(kw);
+                self.push_token(s);
+            }
+            JumpStatement::Break(kw, s) => {
+                self.push_token(kw);
+                self.push_token(s);
+            }
+            JumpStatement::ReturnVoid(r, t) => {
                 self.push_token(r);
                 self.push_token(t);
             }
-            Statement::JumpStatement(box JumpStatement::Return(r, e, t)) => {
+            JumpStatement::Return(r, e, t) => {
                 self.push_token(r);
                 self.expression(e);
                 self.push_token(t);
             }
-            f => panic!("Not implemented.: {:?}", f),
         }
     }
 
@@ -301,33 +415,106 @@ impl Context {
     fn assignment_expression(&mut self, tree: &AssignmentExpression) {
         match tree {
             AssignmentExpression::TernaryExpression(e) => self.ternary_expression(e),
-            f => panic!("Not implemented.: {:?}", f),
+            AssignmentExpression::Assignment(unary, assignment, expr) => {
+                self.unary_expression(unary);
+                match assignment {
+                    AssignmentOperator::Assign(op) => self.push_token(op),
+                    f => panic!("Not implemented.: {:?}", f),
+                }
+                self.assignment_expression(&**expr);
+            }
         }
     }
 
     fn ternary_expression(&mut self, tree: &TernaryExpression) {
         match tree {
             TernaryExpression::GeneralExpression(e) => self.general_expression(e),
-            f => panic!("Not implemented.: {:?}", f),
+            TernaryExpression::Ternary(ge, q, e, c, t) => {
+                self.general_expression(ge);
+                self.push_token(q);
+                self.expression(&**e);
+                self.push_token(c);
+                self.ternary_expression(&**t);
+            }
         }
     }
 
     fn general_expression(&mut self, tree: &GeneralExpression) {
         match tree {
             GeneralExpression::CastExpression(e) => self.cast_expression(e),
-            GeneralExpression::Plus(left, op, right) => {
-                self.general_expression(left);
-                self.push_token(op);
-                self.general_expression(right);
-            }
-            f => panic!("Not implemented.: {:?}", f),
+
+            GeneralExpression::Times(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::Divide(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::Mod(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::Plus(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::Minus(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::BitShiftLeft(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::BitShiftRight(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::LessThan(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::MoreThan(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::LessEqThan(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::MoreEqThan(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::Equals(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::NotEquals(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::BitAnd(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::BitXor(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::BitOr(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::And(left, op, right) => op_3!(self, left, op, right),
+            GeneralExpression::Or(left, op, right) => op_3!(self, left, op, right),
         }
     }
 
     fn cast_expression(&mut self, tree: &CastExpression) {
         match tree {
             CastExpression::UnaryExpression(e) => self.unary_expression(e),
-            f => panic!("Not implemented.: {:?}", f),
+            CastExpression::OpenParen(op, ty, cp, e) => {
+                self.push_token(op);
+                self.type_name(&**ty);
+                self.push_token(cp);
+                self.general_expression(&**e);
+            }
+        }
+    }
+
+    fn type_name(&mut self, tree: &TypeName) {
+        let TypeName::TypeName(spec, abs) = tree;
+        self.declaration_specifiers(spec);
+        self.abstract_declarator(&**abs);
+    }
+
+    fn abstract_declarator(&mut self, tree: &AbstractDeclarator) {
+        match tree {
+            AbstractDeclarator::AbstractDeclarator(ptr, abs) => {
+                if let Some(p) = ptr {
+                    self.pointer(p);
+                }
+                self.direct_abstract_declarator(&**abs)
+            }
+        }
+    }
+
+    fn direct_abstract_declarator(&mut self, tree: &DirectAbstractDeclarator) {
+        match tree {
+            DirectAbstractDeclarator::Epsilon() => {}, 
+            DirectAbstractDeclarator::Parens(d) => {
+                self.push_token(&Token::OpenParen(0));
+                self.abstract_declarator(&**d);
+                self.push_token(&Token::CloseParen(0));
+            }, 
+            DirectAbstractDeclarator::Array(d, e) => {
+                self.direct_abstract_declarator(&**d);
+                self.push_token(&Token::OpenBrace(0));
+                if let Some(e) = e {
+                    self.general_expression(&**e);
+                }
+                self.push_token(&Token::CloseBrace(0));
+            }, 
+            DirectAbstractDeclarator::Function(d, params) => {
+                self.direct_abstract_declarator(&**d);
+                self.push_token(&Token::OpenParen(0));
+                self.parameter_type_list(params);
+                self.push_token(&Token::CloseParen(0));
+            }, 
         }
     }
 
@@ -341,7 +528,44 @@ impl Context {
     fn postfix_expression(&mut self, tree: &PostfixExpression) {
         match tree {
             PostfixExpression::PrimaryExpression(e) => self.primary_expression(e),
-            f => panic!("Not implemented.: {:?}", f),
+            PostfixExpression::Call(pe, op, list, cp) => {
+                self.postfix_expression(pe);
+                self.push_token(op);
+                match list {
+                    ArgumentExpressionList::List(list) => {
+                        if let Some((last, rest)) = list.split_last() {
+                            for expr in rest {
+                                self.assignment_expression(expr);
+                                self.push_token(&Token::Comma(0));
+                            }
+                            self.assignment_expression(last);
+                        }
+                    }
+                }
+                self.push_token(cp);
+            }
+            PostfixExpression::Increment(pe, inc) => {
+                self.postfix_expression(pe);
+                match inc {
+                    IncrementOrDecrement::Increment(op) => self.push_token(op),
+                    IncrementOrDecrement::Decrement(op) => self.push_token(op),
+                }
+            }
+            PostfixExpression::Member(pe, access, ident) => {
+                self.postfix_expression(pe);
+                match access {
+                    MemberAccess::Dot(op) => self.push_token(op),
+                    MemberAccess::Arrow(op) => self.push_token(op),
+                }
+                self.push_token(ident);
+            }
+            PostfixExpression::Index(pe, ob, e, cb) => {
+                self.postfix_expression(pe);
+                self.push_token(ob);
+                self.expression(e);
+                self.push_token(cb);
+            }
+            PostfixExpression::StructValue(..) => unimplemented!()
         }
     }
 
@@ -419,14 +643,21 @@ impl Context {
 
     fn direct_declarator(&mut self, tree: &DirectDeclarator) {
         match tree {
-            DirectDeclarator::Nothing => {}
-            DirectDeclarator::ArrayOf(direct_decl, e) => {
+            DirectDeclarator::Identifier(ident) => self.push_token(&Token::Identifier(0, ident.clone())),
+            DirectDeclarator::Parens(decl) => {
+                self.push_token(&Token::OpenParen(0));
+                self.declarator(decl);
+                self.push_token(&Token::CloseParen(0));
+            }
+            DirectDeclarator::Array(direct_decl, e) => {
                 self.direct_declarator(&*direct_decl);
                 self.push_token(&Token::OpenBracket(0));
                 self.maybe_general_expression(e.as_ref().map(|t| &**t));
                 self.push_token(&Token::CloseBracket(0));
             }
             DirectDeclarator::Function(direct_decl, params) => {
+                self.whitespace = false;
+                self.push(" ");
                 self.direct_declarator(&*direct_decl);
                 self.push_token(&Token::OpenParen(0));
                 self.parameter_type_list(params);
@@ -461,8 +692,7 @@ impl Context {
             FunctionParam::Varargs => self.push_token(&Token::Varargs(0)),
         }
     }
-
-    fn parameter_declaration(&mut self, tree: &ParameterDeclaration) {
+fn parameter_declaration(&mut self, tree: &ParameterDeclaration) {
         match tree {
             ParameterDeclaration::Declarator(decl_spec, decl) => {
                 self.declaration_specifiers(decl_spec);
@@ -471,28 +701,19 @@ impl Context {
             ParameterDeclaration::DeclarationSpecifiers(decl_spec) => {
                 self.declaration_specifiers(decl_spec);
             }
-            f => panic!("Not implemented.: {:?}", f),
+            ParameterDeclaration::AbstractDeclarator(decl_spec, abst) => {
+                self.declaration_specifiers(decl_spec);
+                self.abstract_declarator(abst);
+            }
         }
     }
 
     fn declarator(&mut self, tree: &Declarator) {
         match tree {
-            Declarator::Declarator(ptr, name, direct_decl) => {
+            Declarator::Declarator(ptr, direct_decl) => {
                 if let Some(t) = ptr.as_ref() {
                     self.pointer(&**t)
                 }
-                self.push_token(&Token::Identifier(0, name.clone()));
-                self.direct_declarator(direct_decl);
-            }
-            Declarator::FunctionPointer(ptr, decl, direct_decl) => {
-                if let Some(t) = ptr.as_ref() {
-                    self.pointer(&**t)
-                }
-                self.whitespace = false;
-                self.push(" ");
-                self.push_token(&Token::OpenParen(0));
-                self.declarator(decl);
-                self.push_token(&Token::CloseParen(0));
                 self.direct_declarator(direct_decl);
             }
         }
@@ -501,12 +722,11 @@ impl Context {
     fn pointer(&mut self, tree: &Pointer) {
         match tree {
             Pointer::Ptr(qualifiers, ptr) => {
+                self.push_token(&Token::Times(0));
                 self.type_qualifiers(qualifiers);
-                if qualifiers.any() {
+                if !qualifiers.any() {
                     self.whitespace = false;
                 }
-                self.push_token(&Token::Times(0));
-                self.whitespace = false;
                 if let Some(t) = ptr.as_ref() {
                     self.pointer(&**t)
                 }
@@ -623,8 +843,20 @@ impl Context {
             self.push_token(&Token::OpenBrace(0));
             for field in fields {
                 self.declaration_specifiers(&*field.0);
-                if let Some(declarator) = &field.1 {
-                    self.declarator(&**declarator);
+                if let Some(declarators) = &field.1 {
+                    if let Some((last, rest)) = declarators.split_last() {
+                        for decl in rest {
+                            match decl {
+                                EitherDeclarator::Anonymous(decl) => self.abstract_declarator(decl),
+                                EitherDeclarator::Declarator(decl) => self.declarator(decl),
+                            }
+                            self.push_token(&Token::Comma(0));
+                        }
+                        match last {
+                            EitherDeclarator::Anonymous(decl) => self.abstract_declarator(decl),
+                            EitherDeclarator::Declarator(decl) => self.declarator(decl),
+                        }
+                    }
                 }
                 self.whitespace = false;
                 self.newline = false;
