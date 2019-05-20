@@ -569,13 +569,15 @@ pub enum EitherDeclarator {
     Declarator(Declarator),
 }
 
-pub type StructField = (Box<DeclarationSpecifiers>, Option<Vec<EitherDeclarator>>);
+pub type StructField = (Box<DeclarationSpecifiers>, Option<Vec<(EitherDeclarator, Option<Box<GeneralExpression>>)>>);
 pub type EnumField = (Rc<str>, Option<TernaryExpression>);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CompoundType {
     Struct(Rc<str>, Option<Vec<StructField>>),
     AnonymousStruct(Vec<StructField>),
+    Union(Rc<str>, Option<Vec<StructField>>),
+    AnonymousUnion(Vec<StructField>),
     Enum(Rc<str>, Option<Vec<EnumField>>),
     AnonymousEnum(Vec<EnumField>),
 }

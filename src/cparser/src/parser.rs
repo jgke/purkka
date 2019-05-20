@@ -155,7 +155,7 @@ where I: Iterator<Item=&'a Token> {
         let mut units = Vec::new();
         while maybe_read_token!(self, Token::Semicolon).is_some() {}
         while self.peek().is_some() {
-            units.push(dbg!(self.parse_external_declaration()));
+            units.push(self.parse_external_declaration());
             while maybe_read_token!(self, Token::Semicolon).is_some() {}
         }
         TranslationUnit::Units(units)
@@ -319,7 +319,7 @@ where I: Iterator<Item=&'a Token> {
                     read_token!(self, Token::Long);
                     longs += 1;
                 }
-                Some(Token::Enum(..)) | Some(Token::Struct(..)) => {
+                Some(Token::Enum(..)) | Some(Token::Struct(..)) | Some(Token::Union(..)) => {
                     ty.replace_if_empty(
                         CType::Compound(self.parse_compound_type()),
                         "Conflicting type specifiers",
@@ -395,7 +395,10 @@ where I: Iterator<Item=&'a Token> {
                 },
             }
         } else {
-            read_token!(self, Token::Struct);
+            let is_union = maybe_read_token!(self, Token::Union).is_some();
+            if !is_union {
+                read_token!(self, Token::Struct);
+            }
             let ident = maybe_read_token!(self, Token::Identifier);
             match self.peek() {
                 Some(Token::OpenBrace(..)) => {
@@ -416,12 +419,24 @@ where I: Iterator<Item=&'a Token> {
                     read_token!(self, Token::CloseBrace);
 
                     match ident {
-                        Some(t) => CompoundType::Struct(t.get_ident_str().clone(), Some(fields)),
-                        None => CompoundType::AnonymousStruct(fields),
+                        Some(t) => if is_union {
+                            CompoundType::Union(t.get_ident_str().clone(), Some(fields))
+                        } else {
+                            CompoundType::Struct(t.get_ident_str().clone(), Some(fields))
+                        }
+                        None => if is_union {
+                            CompoundType::AnonymousUnion(fields)
+                        } else {
+                            CompoundType::AnonymousStruct(fields)
+                        }
                     }
                 }
                 _ => match ident {
-                    Some(t) => CompoundType::Struct(t.get_ident_str().clone(), None),
+                    Some(t) => if is_union {
+                        CompoundType::Union(t.get_ident_str().clone(), None)
+                    } else {
+                        CompoundType::Struct(t.get_ident_str().clone(), None)
+                    }
                     None => unexpected_token!(self.peek(), self),
                 },
             }
@@ -439,16 +454,32 @@ where I: Iterator<Item=&'a Token> {
         }
     }
 
-    fn parse_struct_field(&mut self) -> (Box<DeclarationSpecifiers>, Option<Vec<EitherDeclarator>>) {
+    fn parse_struct_field(&mut self) -> (Box<DeclarationSpecifiers>, Option<Vec<(EitherDeclarator, Option<Box<GeneralExpression>>)>>) {
         let specifiers = Box::new(self.parse_declaration_specifiers());
         match self.peek() {
             Some(Token::Semicolon(..)) => (specifiers, None),
             _ => {
-                let mut decls = vec![self.parse_declarator_or_abstract_declarator()];
+                let either = self.parse_declarator_or_abstract_declarator();
+                let expr = match self.peek() {
+                    Some(Token::Colon(..)) => {
+                        read_token!(self, Token::Colon);
+                        Some(self.parse_general_expression())
+                    }
+                    _ => None
+                };
+                let mut decls = vec![(either, expr)];
                 loop {
                     if let Some(Token::Comma(..)) = self.peek() {
                         read_token!(self, Token::Comma);
-                        decls.push(self.parse_declarator_or_abstract_declarator());
+                        let either = self.parse_declarator_or_abstract_declarator();
+                        let expr = match self.peek() {
+                            Some(Token::Colon(..)) => {
+                                read_token!(self, Token::Colon);
+                                Some(self.parse_general_expression())
+                            }
+                            _ => None
+                        };
+                        decls.push((either, expr));
                     } else {
                         break
                     }
@@ -482,6 +513,7 @@ where I: Iterator<Item=&'a Token> {
                         _ => break,
                     };
                 }
+                self.peek_pointer();
             }
             _ => {}
         }
@@ -565,6 +597,11 @@ where I: Iterator<Item=&'a Token> {
                 _ => {
                     let spec = Box::new(self.parse_declaration_specifiers());
                     match self.peek() {
+                        Some(Token::Varargs(..)) => {
+                            read_token!(self, Token::Varargs);
+                            params.push(FunctionParam::Varargs);
+                            break;
+                        }
                         Some(Token::Comma(..)) | Some(Token::CloseParen(..))
                             => params.push(FunctionParam::Parameter(ParameterDeclaration::DeclarationSpecifiers(spec))),
                         _ => {
@@ -750,11 +787,16 @@ where I: Iterator<Item=&'a Token> {
                 let case = read_token!(self, Token::Case);
                 let e = self.parse_general_expression();
                 if let Some(Token::Varargs(..)) = self.peek() {
-                    unimplemented!();
+                    let v = read_token!(self, Token::Varargs);
+                    let e2 = self.parse_general_expression();
+                    let c = read_token!(self, Token::Colon);
+                    let s = self.parse_statement();
+                    LabeledStatement::RangeCase(case, e, v, e2, c, s)
+                } else {
+                    let c = read_token!(self, Token::Colon);
+                    let s = self.parse_statement();
+                    LabeledStatement::Case(case, e, c, s)
                 }
-                let c = read_token!(self, Token::Colon);
-                let s = self.parse_statement();
-                LabeledStatement::Case(case, e, c, s)
             }
             Some(Token::Default(..)) => {
                 let def = read_token!(self, Token::Default);

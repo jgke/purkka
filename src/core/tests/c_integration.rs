@@ -108,6 +108,18 @@ fn tons_of_types() {
     assert_eq!(parse("struct foo { int a, b; };").c_content, "struct foo {\n    int a, b;\n};\n");
     assert_eq!(parse("struct foo { int *a, *b; };").c_content, "struct foo {\n    int *a, *b;\n};\n");
     assert_eq!(parse("struct foo { int *a, b; };").c_content, "struct foo {\n    int *a, b;\n};\n");
+    assert_eq!(parse("struct foo { int *a, **b; };").c_content, "struct foo {\n    int *a, **b;\n};\n");
+    assert_eq!(parse("struct foo { int a:8; };").c_content, "struct foo {\n    int a:8;\n};\n");
+    assert_eq!(parse("struct foo { int a:8, b:4+1; };").c_content, "struct foo {\n    int a:8, b:4 + 1;\n};\n");
+
+    assert_eq!(parse("union foo { int a; };").c_content, "union foo {\n    int a;\n};\n");
+    assert_eq!(parse("union foo { int; };").c_content, "union foo {\n    int;\n};\n");
+    assert_eq!(parse("union foo { int a; char b; };").c_content, "union foo {\n    int a;\n    char b;\n};\n");
+    assert_eq!(parse("union foo { int a, b; };").c_content, "union foo {\n    int a, b;\n};\n");
+    assert_eq!(parse("union foo { int *a, *b; };").c_content, "union foo {\n    int *a, *b;\n};\n");
+    assert_eq!(parse("union foo { int *a, b; };").c_content, "union foo {\n    int *a, b;\n};\n");
+    assert_eq!(parse("union foo { int *a, **b; };").c_content, "union foo {\n    int *a, **b;\n};\n");
+
     assert_eq!(parse("extern const unsigned char * const *ideal_nops;").c_content, "extern const unsigned char * const *ideal_nops;\n");
 
     assert_eq!(parse("int *foo;").c_content, "int *foo;\n");
@@ -123,6 +135,7 @@ fn statements() {
         switch(a) {
             case 1: foo(); bar();
             case 2: baz(); qux(); break;
+            case 3 ... 4: baz(); qux(); break;
             default: panic();
         }
     }").is_ok());
@@ -140,6 +153,9 @@ fn statements() {
         for (i = 0; i < 5;) { baz(); }
         for (;;) { baz(); }
     }").is_ok());
+    assert!(parse("int foo(...) {}").is_ok());
+    assert!(parse("int foo(int a, ...) {}").is_ok());
+    assert!(parse("int foo(int a, int b, ...) {}").is_ok());
 }
 
 #[test]

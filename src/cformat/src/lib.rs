@@ -324,6 +324,14 @@ impl Context {
                 self.push_token(c);
                 self.statement(s);
             }
+            LabeledStatement::RangeCase(case, e, v, e2, c, s) => {
+                self.push_token(case);
+                self.general_expression(&**e);
+                self.push_token(v);
+                self.general_expression(&**e2);
+                self.push_token(c);
+                self.statement(s);
+            }
             LabeledStatement::Default(kw, c, s) => {
                 self.push_token(kw);
                 self.push_token(c);
@@ -798,9 +806,19 @@ fn parameter_declaration(&mut self, tree: &ParameterDeclaration) {
             }
             CompoundType::AnonymousEnum(enum_fields) => self.enum_ty(None, Some(enum_fields)),
             CompoundType::Struct(name, struct_fields) => {
+                self.push_token(&Token::Struct(0));
                 self.struct_ty(Some(name), struct_fields.as_ref().map(|t| t.as_slice()))
             }
             CompoundType::AnonymousStruct(struct_fields) => {
+                self.push_token(&Token::Struct(0));
+                self.struct_ty(None, Some(struct_fields))
+            }
+            CompoundType::Union(name, struct_fields) => {
+                self.push_token(&Token::Union(0));
+                self.struct_ty(Some(name), struct_fields.as_ref().map(|t| t.as_slice()))
+            }
+            CompoundType::AnonymousUnion(struct_fields) => {
+                self.push_token(&Token::Union(0));
                 self.struct_ty(None, Some(struct_fields))
             }
         }
@@ -835,7 +853,6 @@ fn parameter_declaration(&mut self, tree: &ParameterDeclaration) {
     }
 
     fn struct_ty(&mut self, name: Option<&Rc<str>>, fields: Option<&[StructField]>) {
-        self.push_token(&Token::Struct(0));
         if let Some(n) = name {
             self.push_token(&Token::Identifier(0, n.clone()));
         }
@@ -846,16 +863,10 @@ fn parameter_declaration(&mut self, tree: &ParameterDeclaration) {
                 if let Some(declarators) = &field.1 {
                     if let Some((last, rest)) = declarators.split_last() {
                         for decl in rest {
-                            match decl {
-                                EitherDeclarator::Anonymous(decl) => self.abstract_declarator(decl),
-                                EitherDeclarator::Declarator(decl) => self.declarator(decl),
-                            }
+                            self.struct_field(decl);
                             self.push_token(&Token::Comma(0));
                         }
-                        match last {
-                            EitherDeclarator::Anonymous(decl) => self.abstract_declarator(decl),
-                            EitherDeclarator::Declarator(decl) => self.declarator(decl),
-                        }
+                        self.struct_field(last);
                     }
                 }
                 self.whitespace = false;
@@ -864,6 +875,25 @@ fn parameter_declaration(&mut self, tree: &ParameterDeclaration) {
                 self.newline = true;
             }
             self.push_token(&Token::CloseBrace(0));
+        }
+    }
+
+    fn struct_field(&mut self, field: &(EitherDeclarator, Option<Box<GeneralExpression>>)) {
+        match field {
+            (EitherDeclarator::Anonymous(decl), bitfield) => {
+                self.abstract_declarator(decl);
+                if let Some(expr) = bitfield {
+                    self.push_token(&Token::Colon(0));
+                    self.general_expression(&**expr);
+                }
+            }
+            (EitherDeclarator::Declarator(decl), bitfield) => {
+                self.declarator(decl);
+                if let Some(expr) = bitfield {
+                    self.push_token(&Token::Colon(0));
+                    self.general_expression(&**expr);
+                }
+            }
         }
     }
 
