@@ -8,7 +8,7 @@ use shared::intern::StringInterner;
 use shared::utils::*;
 
 use crate::calculator::eval_expression;
-use crate::macrotoken::{MacroToken, MacroTokenType, SpecialType};
+use crate::macrotoken::{MacroToken, MacroTokenType};
 use crate::tokentype::{Operator, Punctuation, OPERATORS, PUNCTUATION};
 
 #[derive(Debug)]
@@ -1063,14 +1063,6 @@ where
             }
         }
 
-        for t in &list {
-            if let MacroTokenType::Identifier(ref ident) = t.0.ty {
-                if ident.as_ref() == "sizeof" || ident.as_ref() == "asm" {
-                    panic!();
-                }
-            }
-        }
-
         let result: Vec<MacroToken> = list.into_iter().map(|(x, _)| x).collect();
         if result.is_empty() {
             vec![MacroToken::dummy(MacroTokenType::Empty)]
@@ -1149,179 +1141,11 @@ where
                     if_debug(DebugVal::MacroExpand, || {
                         println!("Not expanding {:?}", &ident_str)
                     });
-                    match ident_str.as_ref().map(AsRef::as_ref).unwrap_or("") {
-                        "sizeof" => self.parse_sizeof_expr(iter),
-                        t @ "typeof" | t @ "__typeof__" => {
-                            let replace_with =
-                                MacroTokenType::Identifier(self.intern.get_ref("int"));
-                            self.parse_builtin(iter, t, replace_with);
-                        }
-                        t @ "__builtin_offsetof" => {
-                            let replace_with = MacroTokenType::Number(self.intern.get_ref("1"));
-                            self.parse_builtin(iter, t, replace_with);
-                        }
-                        t @ "__builtin_types_compatible_p" => {
-                            // XXX: Not a good hack
-                            let replace_with = MacroTokenType::Number(self.intern.get_ref("1"));
-                            self.parse_builtin(iter, t, replace_with);
-                        }
-                        "asm" => self.parse_asm_expr(iter),
-                        _ => iter.1 += 1,
-                    }
+                    iter.1 += 1;
                     return;
                 }
             }
         }
-    }
-
-    fn get_tokens_until_closing_paren(&mut self, iter: &mut MacroParseIter) -> Vec<MacroToken> {
-        let mut depth = 1;
-        let range_start = iter.1;
-        let mut tokens = 0;
-        'outer: while self.has_next_token(iter) {
-            let (next_tok, consumed_index) = self.get_next_token(iter);
-
-            if consumed_index {
-                //iter.1 -= 1;
-            } else if next_tok.is_some() {
-                iter.0.push(next_tok.unwrap());
-            }
-
-            while iter.1 < iter.0.len() {
-                let old_i = iter.1;
-                self.maybe_expand_identifier_full(iter);
-                iter.1 = old_i;
-
-                let (t, consumed_index) = self.get_next_token(iter);
-                assert!(consumed_index);
-
-                tokens += 1;
-                iter.1 += 1;
-
-                match t.as_ref().map(|t| &t.0.ty) {
-                    Some(MacroTokenType::Punctuation(Punctuation::CloseParen)) => {
-                        depth -= 1;
-                        if depth == 0 {
-                            break 'outer;
-                        }
-                    }
-                    None => break,
-                    Some(MacroTokenType::Punctuation(Punctuation::OpenParen)) => {
-                        depth += 1;
-                    }
-                    _ => {}
-                }
-            }
-        }
-        iter.1 -= tokens;
-        iter.0
-            .splice(range_start..range_start + tokens, std::iter::empty())
-            .map(|x| x.0)
-            .collect()
-    }
-
-    fn get_sizeof_type(&self, token: &MacroToken) -> MacroTokenType {
-        match &token.ty {
-            MacroTokenType::Identifier(_) => {
-                MacroTokenType::Special(SpecialType::Sizeof(vec![token.clone()]))
-            }
-            _ => panic!(),
-        }
-    }
-
-    fn parse_sizeof_expr(&mut self, iter: &mut MacroParseIter) {
-        // sizeof unary-expression
-        // sizeof ( type-name )
-        let start = self.get_next_token_mut(iter).map(|(t, _)| t);
-        assert_eq!(
-            start.as_ref().map(|t| &t.ty),
-            Some(&MacroTokenType::Identifier(self.intern.get_ref("sizeof")))
-        );
-        let mut start_span = start.unwrap().source;
-        let ident_or_open_paren = self.get_next_token_mut(iter).map(|(t, _)| t);
-        if let Some(MacroTokenType::Punctuation(Punctuation::OpenParen)) =
-            ident_or_open_paren.as_ref().map(|t| &t.ty)
-        {
-            // sizeof ( type-name | expression )
-            let mut tokens = self.get_tokens_until_closing_paren(iter);
-            start_span.span.hi = tokens.pop().unwrap().source.span.hi;
-            iter.0.insert(
-                iter.1,
-                (
-                    MacroToken {
-                        ty: MacroTokenType::Special(SpecialType::Sizeof(tokens)),
-                        source: start_span,
-                    },
-                    HashSet::new(),
-                ),
-            );
-        } else {
-            // sizeof unary-expression
-            start_span.span.hi = ident_or_open_paren.as_ref().unwrap().source.span.hi;
-            iter.0.insert(
-                iter.1,
-                (
-                    MacroToken {
-                        ty: self.get_sizeof_type(&ident_or_open_paren.unwrap()),
-                        source: start_span,
-                    },
-                    HashSet::new(),
-                ),
-            );
-        }
-    }
-
-    fn parse_asm_expr(&mut self, iter: &mut MacroParseIter) {
-        let start = self.get_next_token_mut(iter).map(|(t, _)| t);
-        assert_eq!(
-            start.as_ref().map(|t| &t.ty),
-            Some(&MacroTokenType::Identifier(self.intern.get_ref("asm")))
-        );
-        loop {
-            let t = self.get_next_token_mut(iter);
-            match t.map(|t| t.0.ty) {
-                Some(MacroTokenType::Punctuation(Punctuation::OpenParen)) => break,
-                Some(MacroTokenType::Identifier(ident)) => match ident.as_ref() {
-                    "__volatile__" | "volatile" | "goto" | "inline" => {}
-                    other => panic!("Unexpected asm qualifier: {}", other),
-                },
-                Some(t) => panic!("Unexpected token: {:?}", t),
-                None => panic!("Unexpected end of input while parsing asm expression"),
-            }
-        }
-        let tokens = self.get_tokens_until_closing_paren(iter);
-        let end = &tokens[tokens.len() - 1];
-        let mut source = start.unwrap().source;
-        source.span.hi = end.source.span.hi;
-        iter.0.insert(
-            iter.1,
-            (
-                MacroToken {
-                    source,
-                    ty: MacroTokenType::Special(SpecialType::Asm(tokens)),
-                },
-                HashSet::new(),
-            ),
-        );
-    }
-
-    fn parse_builtin(&mut self, iter: &mut MacroParseIter, expected: &str, ty: MacroTokenType) {
-        let start = self.get_next_token_mut(iter).map(|(t, _)| t);
-        let ident = start
-            .as_ref()
-            .and_then(MacroToken::get_identifier_str)
-            .unwrap();
-
-        assert!(expected == ident.as_ref());
-        let mut source = start.unwrap().source;
-        assert_eq!(
-            self.get_next_token_mut(iter).map(|(t, _)| t.ty),
-            Some(MacroTokenType::Punctuation(Punctuation::OpenParen))
-        );
-        let mut tokens = self.get_tokens_until_closing_paren(iter);
-        source.span.hi = tokens.pop().unwrap().source.span.hi;
-        iter.0
-            .insert(iter.1, (MacroToken { ty, source }, HashSet::new()));
     }
 
     fn maybe_expand_function_macro(

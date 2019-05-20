@@ -6,6 +6,7 @@ pub enum DebugVal {
     LalrRuntime,
     DebugFragment,
     MacroExpand,
+    CParserToken,
 }
 
 pub static DEBUG_VALS: &[&str] = &[
@@ -14,6 +15,7 @@ pub static DEBUG_VALS: &[&str] = &[
     "DEBUG_LALR_RUNTIME",
     "DEBUG_FRAGMENT",
     "DEBUG_MACRO_EXPAND",
+    "DEBUG_CPARSER_TOKEN",
 ];
 
 pub fn is_debug_enabled(ident: DebugVal) -> bool {
@@ -29,7 +31,7 @@ pub fn is_debug_enabled(ident: DebugVal) -> bool {
 
 pub fn if_debug<CB>(ident: DebugVal, cb: CB)
 where
-    CB: Fn() -> (),
+    CB: FnOnce() -> (),
 {
     if is_debug_enabled(ident) {
         cb();

@@ -386,10 +386,10 @@ impl Context {
     pub fn primary_expr(&mut self, k: pp::PrimaryExpression) -> cp::PrimaryExpression {
         match k {
             pp::PrimaryExpression::Literal(pp::Literal::Integer(pt::Token::Integer(_, i))) => {
-                cp::PrimaryExpression::Number(ct::Token::Number(0, From::from(i.to_string())))
+                cp::PrimaryExpression::Number(From::from(i.to_string()))
             }
             pp::PrimaryExpression::Identifier(i) => {
-                cp::PrimaryExpression::Identifier(ct::Token::Identifier(0, i.clone()))
+                cp::PrimaryExpression::Identifier(i.clone())
             }
             other => panic!("Not implemented: {:?}", other),
         }

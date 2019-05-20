@@ -125,6 +125,10 @@ fn tons_of_types() {
     assert_eq!(parse("int *foo;").c_content, "int *foo;\n");
     assert_eq!(parse("int (*fp)(int a);").c_content, "int (*fp)(int a);\n");
     assert_eq!(parse("int (*fp)(int);").c_content, "int (*fp)(int);\n");
+
+    assert_eq!(parse("typeof(int) a;").c_content, "typeof(int) a;\n");
+    assert_eq!(parse("typeof(foo) a;").c_content, "typeof(foo) a;\n");
+    assert_eq!(parse("typedef int foo; typeof(foo) a;").c_content, "typedef int foo;\ntypeof(foo) a;\n");
 }
 
 #[test]
@@ -171,6 +175,19 @@ fn expressions() {
     assert!(parse("int a = a.b;").is_ok());
     assert!(parse("int a = a[b];").is_ok());
     assert!(parse("int a = b ? c : d;").is_ok());
+    assert!(parse("struct foo {int a;}; struct foo a = (struct foo) { 2 }; ").is_ok());
+    assert!(parse("typedef struct foo {int a;} foo; foo a = (foo) { 2 }; ").is_ok());
+    assert_eq!(parse("char *foo = \"bar baz\";").c_content, "char *foo = \"bar baz\";\n");
+    assert_eq!(parse("char foo = 'b';").c_content, "char foo = 'b';\n");
+    assert_eq!(parse("int foo = sizeof(\"foo\");").c_content, "int foo = sizeof(\"foo\");\n");
+    assert_eq!(parse("int foo() {  asm(lol asd); }").c_content, "int foo() {\n    asm(lol asd);\n}\n");
+}
+
+#[test]
+fn sizeofs() {
+    assert_eq!(parse("int a = sizeof(int);").c_content, "int a = sizeof(int);\n");
+    assert_eq!(parse("int a = sizeof foo;").c_content, "int a = sizeof foo;\n");
+    assert_eq!(parse("int a = sizeof(*foo);").c_content, "int a = sizeof(*foo);\n");
 }
 
 #[test]
@@ -183,9 +200,17 @@ fn declarations() {
 #[test]
 fn typedefs() {
     assert!(parse("typedef int foo; foo a = 1;").is_ok());
+    assert!(parse("typedef void (*foo)(void (*)(int));").is_ok());
 }
 
 #[test]
 fn extensions() {
-    assert!(parse("int a = asm(any tokens here);").is_ok());
+    assert!(parse("int a = ({
+        typedef int foo;
+        foo bar;
+        __typeof__ (*(((bor)))) __ret = (((arg)));
+        __ret;
+    });").is_ok());
+    assert!(parse("int a() { typedef int foo; }\nint b() { typedef int foo; }").is_ok());
+    assert!(parse("int a() { __label__ foo; bar: baz(); foo = &&bar; }\n").is_ok());
 }

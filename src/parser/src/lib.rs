@@ -6,7 +6,7 @@ fn get_source_index(token: &Token) -> usize {
     match token {
         Token::And(index) => *index,
         Token::Arrow(index) => *index,
-        Token::Asm(index, ..) => *index,
+        Token::Asm(index) => *index,
         Token::Assign(index) => *index,
         Token::Auto(index) => *index,
         Token::BitAnd(index) => *index,
@@ -75,7 +75,7 @@ fn get_source_index(token: &Token) -> usize {
         Token::Semicolon(index) => *index,
         Token::Short(index) => *index,
         Token::Signed(index) => *index,
-        Token::Sizeof(index, _) => *index,
+        Token::Sizeof(index) => *index,
         Token::Static(index) => *index,
         Token::StringLiteral(index, _) => *index,
         Token::Struct(index) => *index,
@@ -111,9 +111,6 @@ pub fn parse(
             list.push(t);
             list
         });
-    //for (t, s) in tokens.iter().zip(input.iter()) {
-    //    println!("{:?} {}", t, s.to_src());
-    //}
     match cparser::parse(
         tokens,
         &input.iter().map(|t| t.source.clone()).collect::<Vec<_>>(),

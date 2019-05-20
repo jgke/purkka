@@ -11,10 +11,20 @@ grammar! {
         | #Token::StringLiteral
         | #Token::CharLiteral
         | #Token::Sizeof
-        | #Token::Asm
-        | #Token::And #Token::Identifier // Weird GCC extension around label values
         | Statement. #Token::OpenParen &CompoundStatement #Token::CloseParen
         | Expression. #Token::OpenParen &Expression #Token::CloseParen
+        | StructValue. #Token::OpenParen &TypeName #Token::CloseParen #Token::OpenBrace &InitializerList #Token::CloseBrace
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum PrimaryExpression {
+            Identifier(Rc<str>),
+            Number(Rc<str>),
+            StringLiteral(Rc<str>),
+            CharLiteral(char),
+            Sizeof(Box<[Token]>),
+            Statement(Box<CompoundStatement>),
+            Expression(Box<Expression>),
+            StructValue(Box<TypeName>, Vec<Initializer>),
+        }
         ;
 
     PostfixExpression
@@ -23,7 +33,6 @@ grammar! {
         | Call.PostfixExpression #Token::OpenParen ArgumentExpressionList #Token::CloseParen
         | Member. PostfixExpression MemberAccess #Token::Identifier
         | Increment. PostfixExpression IncrementOrDecrement
-        | StructValue. #Token::OpenParen &TypeName #Token::CloseParen #Token::OpenBrace &InitializerList #Token::CloseBrace
         ;
 
     MemberAccess
@@ -52,6 +61,18 @@ grammar! {
        -> &PostfixExpression
         | IncrementOrDecrement UnaryExpression
         | UnaryOperator &CastExpression
+        | SizeofExpr. #Token::Sizeof UnaryExpression
+        | SizeofTy. #Token::Sizeof #Token::OpenParen TypeName #Token::CloseParen
+        | AddressOfLabel. #Token::And #Token::Identifier
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum UnaryExpression {
+            PostfixExpression(Box<PostfixExpression>),
+            IncrementOrDecrement(IncrementOrDecrement, Box<UnaryExpression>),
+            UnaryOperator(UnaryOperator, Box<CastExpression>),
+            SizeofExpr(Box<UnaryExpression>),
+            SizeofTy(Box<TypeName>),
+            AddressOfLabel(Rc<str>),
+        }
         ;
 
     CastExpression
@@ -309,6 +330,7 @@ grammar! {
         | &IterationStatement
         | &JumpStatement
         | &TypeDeclaration
+        | &AsmStatement
         ;
 
     LabeledStatement
@@ -379,6 +401,12 @@ grammar! {
         | #Token::Break #Token::Semicolon
         | ReturnVoid. #Token::Return #Token::Semicolon
         | #Token::Return Expression #Token::Semicolon
+        ;
+
+    AsmStatement
+       -> #Token::Asm #Token::OpenParen /* anything here */ #Token::CloseParen
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum AsmStatement { Asm(Vec<Token>) }
         ;
 
     TranslationUnit
@@ -460,7 +488,18 @@ grammar! {
         | &StructOrUnionSpecifier
         | &EnumSpecifier
         | #Token::Identifier
+        | TypeOf
         @ pub type TypeSpecifier = CType
+        ;
+
+    TypeOf
+       -> Expression. #Token::Identifier #Token::OpenParen &Expression #Token::CloseParen
+        | TypeName. #Token::Identifier #Token::OpenParen &TypeName #Token::CloseParen
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum TypeOf {
+            Expression(Box<Expression>),
+            TypeName(Box<TypeName>),
+        }
         ;
 
     Specifiers
@@ -549,6 +588,7 @@ pub enum CType {
     Primitive(TypeSign, PrimitiveType),
     Compound(CompoundType),
     Custom(Rc<str>),
+    TypeOf(TypeOf),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]

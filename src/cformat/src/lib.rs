@@ -100,10 +100,6 @@ impl Context {
             Token::BitXorAssign(_) => "^=",
             Token::BitOrAssign(_) => "|=",
 
-            // Special forms
-            Token::Sizeof(_, _) => panic!(),
-            Token::Asm(_, _) => panic!(),
-
             // Second set: Whitespace after
             t => {
                 let s = match t {
@@ -159,6 +155,10 @@ impl Context {
                             Token::Semicolon(_) => ";",
                             Token::Varargs(_) => "...",
 
+                            /* These are always followed by ( */
+                            Token::Sizeof(_) => "sizeof",
+                            Token::Asm(_) => "asm",
+
                             // Special cases
                             t => match t {
                                 Token::OpenBrace(_) => {
@@ -185,6 +185,21 @@ impl Context {
                                 }
                                 Token::Times(_) => {
                                     self.push("*");
+                                    return;
+                                }
+                                Token::StringLiteral(_, s) => {
+                                    self.push("*");
+                                    self.push("\"");
+                                    self.whitespace = false;
+                                    self.push(s);
+                                    self.push("\"");
+                                    return;
+                                }
+                                Token::CharLiteral(_, s) => {
+                                    self.push("'");
+                                    self.whitespace = false;
+                                    self.push(&s.to_string());
+                                    self.push("'");
                                     return;
                                 }
                                 t => panic!("Unhandled case: {:?}", t),
@@ -278,7 +293,8 @@ impl Context {
             Statement::SelectionStatement(statement) => self.selection_statement(statement),
             Statement::LabeledStatement(statement) => self.labeled_statement(statement),
             Statement::IterationStatement(statement) => self.iteration_statement(statement),
-            f => panic!("Not implemented.: {:?}", f),
+            Statement::AsmStatement(asm) => self.asm_statement(asm),
+            Statement::TypeDeclaration(..) => unimplemented!()
         }
     }
 
@@ -337,7 +353,11 @@ impl Context {
                 self.push_token(c);
                 self.statement(s);
             }
-            f => panic!("Not implemented.: {:?}", f),
+            LabeledStatement::Identifier(ident, c, s) => {
+                self.push_token(ident);
+                self.push_token(c);
+                self.statement(s);
+            }
         }
     }
 
@@ -376,6 +396,14 @@ impl Context {
                 self.push_token(cp);
                 self.statement(s);
             }
+        }
+    }
+
+    fn asm_statement(&mut self, tree: &AsmStatement) {
+        self.push("asm");
+        let AsmStatement::Asm(list) = tree;
+        for t in list {
+            self.push_token(t);
         }
     }
 
@@ -529,7 +557,38 @@ impl Context {
     fn unary_expression(&mut self, tree: &UnaryExpression) {
         match tree {
             UnaryExpression::PostfixExpression(e) => self.postfix_expression(e),
-            f => panic!("Not implemented.: {:?}", f),
+            UnaryExpression::IncrementOrDecrement(inc, e) => {
+                match inc {
+                    IncrementOrDecrement::Increment(op) => self.push_token(op),
+                    IncrementOrDecrement::Decrement(op) => self.push_token(op),
+                }
+                self.unary_expression(&**e);
+            }
+            UnaryExpression::UnaryOperator(un_op, e) => {
+                match un_op {
+                    UnaryOperator::BitAnd(t) => self.push_token(t),
+                    UnaryOperator::Times(t) => self.push_token(t),
+                    UnaryOperator::Plus(t) => self.push_token(t),
+                    UnaryOperator::Minus(t) => self.push_token(t),
+                    UnaryOperator::BitNot(t) => self.push_token(t),
+                    UnaryOperator::Not(t) => self.push_token(t),
+                }
+                self.cast_expression(&**e);
+            }
+            UnaryExpression::AddressOfLabel(label) => {
+                self.push_token(&Token::And(0));
+                self.push_token(&Token::Identifier(0, label.clone()));
+            }
+            UnaryExpression::SizeofExpr(e) => {
+                self.push("sizeof");
+                self.unary_expression(&**e);
+            }
+            UnaryExpression::SizeofTy(e) => {
+                self.push("sizeof");
+                self.push_token(&Token::OpenParen(0));
+                self.type_name(&**e);
+                self.push_token(&Token::CloseParen(0));
+            }
         }
     }
 
@@ -573,26 +632,57 @@ impl Context {
                 self.expression(e);
                 self.push_token(cb);
             }
-            PostfixExpression::StructValue(..) => unimplemented!()
         }
     }
 
     fn primary_expression(&mut self, tree: &PrimaryExpression) {
         match tree {
-            PrimaryExpression::Identifier(Token::Identifier(_, e)) => self.push(e),
-            PrimaryExpression::Number(Token::Number(_, e)) => self.push(e),
-            PrimaryExpression::Asm(Token::Asm(_, _e)) => { /* XXX: implement */ }
-            PrimaryExpression::Expression(op, expr, cp) => {
-                self.push_token(op);
+            PrimaryExpression::Identifier(val) => self.push(val),
+            PrimaryExpression::Number(val) => self.push(val),
+            PrimaryExpression::Expression(expr) => {
+                self.push_token(&Token::OpenParen(0));
                 self.expression(expr);
-                self.push_token(cp);
+                self.push_token(&Token::CloseParen(0));
             }
-            PrimaryExpression::Statement(op, stat, cp) => {
-                self.push_token(op);
+            PrimaryExpression::Statement(stat) => {
+                self.push_token(&Token::OpenParen(0));
                 self.compound_statement(stat);
-                self.push_token(cp);
+                self.push_token(&Token::CloseParen(0));
             }
-            f => panic!("Not implemented.: {:?}", f),
+            PrimaryExpression::StructValue(ty, list) => {
+                self.push_token(&Token::OpenParen(0));
+                self.type_name(&**ty);
+                self.push_token(&Token::CloseParen(0));
+                self.push_token(&Token::OpenBrace(0));
+                if let Some((last, rest)) = list.split_last() {
+                    for init in rest {
+                        self.initializer(init);
+                        self.push_token(&Token::Comma(0));
+                    }
+                    self.initializer(last);
+                }
+                self.push_token(&Token::CloseBrace(0));
+            }
+            PrimaryExpression::Sizeof(toks) => {
+                self.push("sizeof");
+                self.push_token(&Token::OpenParen(0));
+                for t in toks.iter() {
+                    self.push_token(t);
+                }
+                self.push_token(&Token::CloseParen(0));
+            }
+            PrimaryExpression::StringLiteral(s) => {
+                self.push("\"");
+                self.whitespace = false;
+                self.push(s);
+                self.push("\"");
+            }
+            PrimaryExpression::CharLiteral(s) => {
+                self.push("'");
+                self.whitespace = false;
+                self.push(&s.to_string());
+                self.push("'");
+            }
         }
     }
 
@@ -609,12 +699,12 @@ impl Context {
     fn init_declarator(&mut self, tree: &InitDeclarator) {
         match tree {
             InitDeclarator::Declarator(decl) => self.declarator(decl),
+            InitDeclarator::Asm(..) => unimplemented!(),
             InitDeclarator::Assign(decl, t, list) => {
                 self.declarator(decl);
                 self.push_token(t);
                 self.assignment_or_initializer_list(list);
             }
-            f => panic!("Not implemented.: {:?}", f),
         }
     }
 
@@ -676,8 +766,8 @@ impl Context {
 
     fn maybe_general_expression(&mut self, tree: Option<&GeneralExpression>) {
         match tree {
+            Some(t) => self.general_expression(t),
             None => {}
-            f => panic!("Not implemented.: {:?}", f),
         }
     }
 
@@ -778,7 +868,7 @@ fn parameter_declaration(&mut self, tree: &ParameterDeclaration) {
     }
 
     fn type_specifier(&mut self, spec: &TypeSpecifier) {
-        let token = match spec {
+        match spec {
             CType::Primitive(sign, ty) => {
                 if let Some(token) = self.sign_to_token(*sign) {
                     self.push_token(&token);
@@ -788,15 +878,32 @@ fn parameter_declaration(&mut self, tree: &ParameterDeclaration) {
                     self.push_token(&Token::Long(0));
                 }
                 self.push_token(&t);
-                return;
             }
+            CType::TypeOf(ty) => self.type_of(ty),
+            CType::Void => self.push_token(&Token::Void(0)),
+            CType::Custom(ident) => self.push_token(&Token::Identifier(0, ident.clone())),
 
-            CType::Void => Token::Void(0),
-            CType::Custom(ident) => Token::Identifier(0, ident.clone()),
+            CType::Compound(compound) => self.compound_type(compound),
+        }
+    }
 
-            CType::Compound(compound) => return self.compound_type(compound),
-        };
-        self.push_token(&token);
+    fn type_of(&mut self, ty: &TypeOf) {
+        match ty {
+            TypeOf::Expression(e) => {
+                self.push_token(&Token::Identifier(0, From::from("typeof")));
+                self.push_token(&Token::OpenParen(0));
+                self.expression(&**e);
+                self.push_token(&Token::CloseParen(0));
+                self.push(" ");
+            }
+            TypeOf::TypeName(e) => {
+                self.push_token(&Token::Identifier(0, From::from("typeof")));
+                self.push_token(&Token::OpenParen(0));
+                self.type_name(&**e);
+                self.push_token(&Token::CloseParen(0));
+                self.push(" ");
+            }
+        }
     }
 
     fn compound_type(&mut self, ty: &CompoundType) {

@@ -58,6 +58,7 @@ pub enum UnaryOperator {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Keyword {
+    Asm,
     Auto,
     Break,
     Case,
@@ -238,6 +239,7 @@ pub static PUNCTUATION: &'static [(&'static str, &'static Punctuation)] = &[
 ];
 
 pub static KEYWORDS: &'static [(&'static str, &'static Keyword)] = &[
+    ("asm", &Asm),
     ("auto", &Auto),
     ("break", &Break),
     ("case", &Case),

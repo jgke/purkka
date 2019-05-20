@@ -13,15 +13,8 @@ pub enum MacroTokenType {
     Char(char),
     Operator(Operator),
     Punctuation(Punctuation),
-    Special(SpecialType),
     Other(char),
     Empty,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SpecialType {
-    Asm(Vec<MacroToken>),
-    Sizeof(Vec<MacroToken>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -78,6 +71,7 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
 
         MacroTokenType::Identifier(ident) => {
             match ident.as_ref() {
+                "asm" => Asm(index),
                 "auto" => Auto(index),
                 "break" => Break(index),
                 "case" => Case(index),
@@ -100,7 +94,7 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
                 "return" => Return(index),
                 "short" => Short(index),
                 "signed" => Signed(index),
-                "sizeof" => panic!(), // these should be stripped out by now
+                "sizeof" => Sizeof(index),
                 "static" => Static(index),
                 "inline" => Inline(index),
                 "struct" => Struct(index),
@@ -130,21 +124,6 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
 
         MacroTokenType::StringLiteral(s) => StringLiteral(index, s.clone()),
         MacroTokenType::Number(s) => Number(index, s.clone()),
-        MacroTokenType::Special(SpecialType::Sizeof(expr)) => Sizeof(
-            index,
-            expr.iter()
-                .filter(|t| t.ty != MacroTokenType::Empty)
-                .map(|t| preprocessor_to_parser(context, t, index))
-                .collect(),
-        ),
-        MacroTokenType::Special(SpecialType::Asm(exprs)) => Asm(
-            index,
-            exprs
-                .iter()
-                .filter(|t| t.ty != MacroTokenType::Empty)
-                .map(|t| preprocessor_to_parser(context, t, index))
-                .collect(),
-        ),
         MacroTokenType::Char(c) => CharLiteral(index, *c),
         MacroTokenType::Other(c) => panic!(
             "Tried to convert Other({}) to parser\n{}",
@@ -181,15 +160,6 @@ impl MacroToken {
 
             MacroTokenType::StringLiteral(s) => s.to_string(),
             MacroTokenType::Number(s) => s.to_string(),
-            MacroTokenType::Special(SpecialType::Sizeof(expr)) => format!("sizeof({:?})", expr),
-            MacroTokenType::Special(SpecialType::Asm(exprs)) => format!(
-                "asm ({})",
-                exprs
-                    .iter()
-                    .map(MacroToken::to_src)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ),
             MacroTokenType::Char(c) => format!("'{}'", c),
             MacroTokenType::Other(c) => c.to_string(),
             MacroTokenType::Empty => " ".to_string(),

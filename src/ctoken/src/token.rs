@@ -45,6 +45,7 @@ pub enum Token {
     MacroPaste(usize),
 
     // Keyword
+    Asm(usize),
     Auto(usize),
     Break(usize),
     Case(usize),
@@ -67,6 +68,7 @@ pub enum Token {
     Return(usize),
     Short(usize),
     Signed(usize),
+    Sizeof(usize),
     Static(usize),
     Inline(usize),
     Struct(usize),
@@ -88,10 +90,6 @@ pub enum Token {
     Colon(usize),
     Semicolon(usize),
     Varargs(usize),
-
-    // Special forms
-    Sizeof(usize, Box<[Token]>),
-    Asm(usize, Box<[Token]>),
 
     // Literals
     Identifier(usize, Rc<str>),
@@ -203,8 +201,17 @@ impl Token {
     }
 
     pub fn get_ident_str(&self) -> &Rc<str> {
-        if let Token::Identifier(_, i) = self {
-            i
+        match self {
+            Token::Identifier(_, i) => i,
+            Token::Number(_, i) => i,
+            Token::StringLiteral(_, i) => i,
+            _ => panic!()
+        }
+    }
+
+    pub fn get_char_val(&self) -> char {
+        if let Token::CharLiteral(_, i) = self {
+            *i
         } else {
             panic!()
         }
