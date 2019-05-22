@@ -205,7 +205,7 @@ impl Token {
             Token::Identifier(_, i) => i,
             Token::Number(_, i) => i,
             Token::StringLiteral(_, i) => i,
-            _ => panic!()
+            _ => panic!(),
         }
     }
 

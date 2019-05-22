@@ -143,22 +143,28 @@ impl Context {
                 let else_block = otherwise
                     .map(|block| {
                         Some(cp::Statement::CompoundStatement(Box::new(
-                            cp::CompoundStatement::Statements(
-                                self.block_to_statement_list(*block),
-                            ),
+                            cp::CompoundStatement::Statements(self.block_to_statement_list(*block)),
                         )))
                     })
                     .unwrap_or(None);
 
                 let tail = iter.rev().fold(else_block, |prev, next| {
                     Some(cp::Statement::SelectionStatement(Box::new(
-                        self.cond_and_block_to_selection_statement(*next.0, *next.1, prev.map(Box::new)),
+                        self.cond_and_block_to_selection_statement(
+                            *next.0,
+                            *next.1,
+                            prev.map(Box::new),
+                        ),
                     )))
                 });
 
                 cp::CompoundStatement::Statements(vec![cp::StatementOrDeclaration::Statement(
                     cp::Statement::SelectionStatement(Box::new(
-                        self.cond_and_block_to_selection_statement(*first.0, *first.1, tail.map(Box::new)),
+                        self.cond_and_block_to_selection_statement(
+                            *first.0,
+                            *first.1,
+                            tail.map(Box::new),
+                        ),
                     )),
                 )])
             }
@@ -265,7 +271,11 @@ impl Context {
         }
     }
 
-    pub fn function_params_from_params(&mut self, name: Rc<str>, params: Vec<Param>) -> cp::DirectDeclarator {
+    pub fn function_params_from_params(
+        &mut self,
+        name: Rc<str>,
+        params: Vec<Param>,
+    ) -> cp::DirectDeclarator {
         let e = Box::new(cp::DirectDeclarator::Identifier(name));
         cp::DirectDeclarator::Function(e, self.parameter_list_from_params(params))
     }
@@ -388,9 +398,7 @@ impl Context {
             pp::PrimaryExpression::Literal(pp::Literal::Integer(pt::Token::Integer(_, i))) => {
                 cp::PrimaryExpression::Number(From::from(i.to_string()))
             }
-            pp::PrimaryExpression::Identifier(i) => {
-                cp::PrimaryExpression::Identifier(i.clone())
-            }
+            pp::PrimaryExpression::Identifier(i) => cp::PrimaryExpression::Identifier(i.clone()),
             other => panic!("Not implemented: {:?}", other),
         }
     }

@@ -8,12 +8,13 @@
 //! See https://github.com/bluss/rust-itertools/blob/master/LICENSE-APACHE and
 //! https://github.com/bluss/rust-itertools/blob/master/LICENSE-MIT for licensing terms.
 
-use std::iter::Fuse;
 use std::collections::VecDeque;
+use std::iter::Fuse;
 
 #[derive(Clone, Debug)]
 pub struct MultiPeek<I>
-    where I: Iterator
+where
+    I: Iterator,
 {
     iter: Fuse<I>,
     buf: VecDeque<I::Item>,
@@ -23,7 +24,8 @@ pub struct MultiPeek<I>
 /// An iterator adaptor that allows the user to peek at multiple `.next()`
 /// values without advancing the base iterator.
 pub fn multipeek<I>(iterable: I) -> MultiPeek<I::IntoIter>
-    where I: IntoIterator
+where
+    I: IntoIterator,
 {
     MultiPeek {
         iter: iterable.into_iter().fuse(),
@@ -33,7 +35,8 @@ pub fn multipeek<I>(iterable: I) -> MultiPeek<I::IntoIter>
 }
 
 impl<I> MultiPeek<I>
-    where I: Iterator
+where
+    I: Iterator,
 {
     /// Reset the peeking “cursor”
     pub fn reset_peek(&mut self) {
@@ -67,7 +70,7 @@ impl<I: Iterator> MultiPeek<I> {
                     self.buf.push_back(x);
                     Some(&self.buf[self.index])
                 }
-                None => return None,
+                None => None,
             }
         }
     }
@@ -90,7 +93,8 @@ impl<I: Iterator> MultiPeek<I> {
 }
 
 impl<I> Iterator for MultiPeek<I>
-    where I: Iterator
+where
+    I: Iterator,
 {
     type Item = I::Item;
 
@@ -113,9 +117,7 @@ impl<I> Iterator for MultiPeek<I>
 }
 
 // Same size
-impl<I> ExactSizeIterator for MultiPeek<I>
-    where I: ExactSizeIterator
-{}
+impl<I> ExactSizeIterator for MultiPeek<I> where I: ExactSizeIterator {}
 
 #[test]
 fn buf_handling() {

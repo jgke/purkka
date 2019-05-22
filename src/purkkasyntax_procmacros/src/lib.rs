@@ -17,10 +17,14 @@ use syntax::parse::token;
 use syntax::tokenstream::TokenTree;
 use syntax_pos::{FileName, Span};
 
-pub fn format_blocks(
-    cx: &mut ExtCtxt,
+struct Options {
     fmap: bool,
     unbox: bool,
+}
+
+fn format_blocks(
+    cx: &mut ExtCtxt,
+    options: Options,
     this: &str,
     variant: &str,
     result_type: &str,
@@ -36,7 +40,7 @@ pub fn format_blocks(
             .collect::<String>()
     );
     let trait_name = format!("{}_{}", this, fn_name);
-    let t = match (fmap, unbox) {
+    let t = match (options.fmap, options.unbox) {
         (false, false) => "Some(t)",
         (true, false) => "t.as_ref()",
         (false, true) => "Some(t.as_ref())",
@@ -124,8 +128,7 @@ fn impl_enter_res(
     cx: &mut ExtCtxt,
     sp: Span,
     args: &[TokenTree],
-    fmap: bool,
-    unbox: bool,
+    options: Options,
 ) -> Result<Box<MacResult + 'static>, Box<MacResult + 'static>> {
     let mut iter = args.iter();
     let this = read_ident(cx, sp, &mut iter)?;
@@ -146,8 +149,7 @@ fn impl_enter_res(
     };
     Ok(format_blocks(
         cx,
-        fmap,
-        unbox,
+        options,
         &this,
         &variant,
         &result_type,
@@ -160,10 +162,9 @@ fn impl_enter(
     cx: &mut ExtCtxt,
     sp: Span,
     args: &[TokenTree],
-    fmap: bool,
-    unbox: bool,
+    options: Options,
 ) -> Box<MacResult + 'static> {
-    match impl_enter_res(cx, sp, args, fmap, unbox) {
+    match impl_enter_res(cx, sp, args, options) {
         Ok(t) => t,
         Err(t) => t,
     }
@@ -172,15 +173,47 @@ fn impl_enter(
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
     reg.register_macro("impl_enter", |cx, sp, args| {
-        impl_enter(cx, sp, args, false, false)
+        impl_enter(
+            cx,
+            sp,
+            args,
+            Options {
+                fmap: false,
+                unbox: false,
+            },
+        )
     });
     reg.register_macro("impl_enter_fmap", |cx, sp, args| {
-        impl_enter(cx, sp, args, true, false)
+        impl_enter(
+            cx,
+            sp,
+            args,
+            Options {
+                fmap: true,
+                unbox: false,
+            },
+        )
     });
     reg.register_macro("impl_enter_unbox", |cx, sp, args| {
-        impl_enter(cx, sp, args, false, true)
+        impl_enter(
+            cx,
+            sp,
+            args,
+            Options {
+                fmap: false,
+                unbox: true,
+            },
+        )
     });
     reg.register_macro("impl_enter_unbox_fmap", |cx, sp, args| {
-        impl_enter(cx, sp, args, true, true)
+        impl_enter(
+            cx,
+            sp,
+            args,
+            Options {
+                fmap: true,
+                unbox: true,
+            },
+        )
     });
 }

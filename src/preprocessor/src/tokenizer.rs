@@ -1148,6 +1148,7 @@ where
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn maybe_expand_function_macro(
         &mut self,
         iter: &mut MacroParseIter,
@@ -1280,6 +1281,7 @@ where
     ///     remove t from token list
     ///     for tt in replacement list:
     ///         add (tt, used macros) to token list
+    #[allow(clippy::too_many_arguments)]
     fn expand_function_macro(
         &mut self,
         iter: &mut MacroParseIter,
@@ -1447,6 +1449,7 @@ where
         (consume_count, res)
     }
 
+    #[allow(clippy::type_complexity, clippy::too_many_arguments)]
     fn parse_function_macro_arguments(
         &mut self,
         iter: &mut MacroParseIter,

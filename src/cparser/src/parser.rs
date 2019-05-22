@@ -92,7 +92,8 @@ pub struct ScopedState {
 
 #[derive(Debug)]
 pub struct ParseContext<'a, I>
-where I: Iterator<Item=&'a Token>
+where
+    I: Iterator<Item = &'a Token>,
 {
     pub scope: Vec<ScopedState>,
     pub iter: MultiPeek<I>,
@@ -120,7 +121,8 @@ pub fn parse<'a, I>(
     sources: &'a [Source],
     fragment_iter: &'a FragmentIterator,
 ) -> Result<S, Option<Token>>
-where I: IntoIterator<Item=&'a Token>
+where
+    I: IntoIterator<Item = &'a Token>,
 {
     println!("Starting parsing");
     let context = ParseContext {
@@ -141,7 +143,9 @@ where I: IntoIterator<Item=&'a Token>
 }
 
 impl<'a, I> ParseContext<'a, I>
-where I: Iterator<Item=&'a Token> {
+where
+    I: Iterator<Item = &'a Token>,
+{
     fn next(&mut self) -> Option<&'a Token> {
         if_debug(DebugVal::CParserToken, || {
             dbg!(self.peek());
@@ -181,7 +185,8 @@ where I: Iterator<Item=&'a Token> {
 
     fn parse_external_declaration(&mut self) -> ExternalDeclaration {
         let spec = self.parse_declaration_specifiers();
-        let has_typedef = if let DeclarationSpecifiers::DeclarationSpecifiers(Some(spec), _) = &spec {
+        let has_typedef = if let DeclarationSpecifiers::DeclarationSpecifiers(Some(spec), _) = &spec
+        {
             spec.0.typedef
         } else {
             false
@@ -245,8 +250,9 @@ where I: Iterator<Item=&'a Token> {
             Pointer => self.parse_ptr(),
         );
         let abs = match self.peek() {
-            Some(Token::OpenParen(..)) | Some(Token::OpenBracket(..))
-                => self.parse_direct_abstract_declarator(),
+            Some(Token::OpenParen(..)) | Some(Token::OpenBracket(..)) => {
+                self.parse_direct_abstract_declarator()
+            }
             _ => Box::new(DirectAbstractDeclarator::Epsilon()),
         };
         AbstractDeclarator::AbstractDeclarator(ptr, abs)
@@ -317,6 +323,7 @@ where I: Iterator<Item=&'a Token> {
         }
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn parse_type_specifier(&mut self) -> Option<TypeSpecifier> {
         let mut longs = 0;
         let mut sign = None;
@@ -378,9 +385,7 @@ where I: Iterator<Item=&'a Token> {
                         TypeOf::Expression(Box::new(self.parse_expression()))
                     };
                     read_token!(self, Token::CloseParen);
-                    ty.replace_if_empty(
-                        CType::TypeOf(r),
-                        "Conflicting type specifiers")
+                    ty.replace_if_empty(CType::TypeOf(r), "Conflicting type specifiers")
                 }
                 Some(Token::Identifier(_, ident)) if self.is_type(ident) => {
                     read_token!(self, Token::Identifier);
@@ -425,6 +430,7 @@ where I: Iterator<Item=&'a Token> {
         }
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn parse_compound_type(&mut self) -> CompoundType {
         if let Some(Token::Enum(..)) = self.peek() {
             read_token!(self, Token::Enum);
@@ -476,23 +482,29 @@ where I: Iterator<Item=&'a Token> {
                     read_token!(self, Token::CloseBrace);
 
                     match ident {
-                        Some(t) => if is_union {
-                            CompoundType::Union(t.get_ident_str().clone(), Some(fields))
-                        } else {
-                            CompoundType::Struct(t.get_ident_str().clone(), Some(fields))
+                        Some(t) => {
+                            if is_union {
+                                CompoundType::Union(t.get_ident_str().clone(), Some(fields))
+                            } else {
+                                CompoundType::Struct(t.get_ident_str().clone(), Some(fields))
+                            }
                         }
-                        None => if is_union {
-                            CompoundType::AnonymousUnion(fields)
-                        } else {
-                            CompoundType::AnonymousStruct(fields)
+                        None => {
+                            if is_union {
+                                CompoundType::AnonymousUnion(fields)
+                            } else {
+                                CompoundType::AnonymousStruct(fields)
+                            }
                         }
                     }
                 }
                 _ => match ident {
-                    Some(t) => if is_union {
-                        CompoundType::Union(t.get_ident_str().clone(), None)
-                    } else {
-                        CompoundType::Struct(t.get_ident_str().clone(), None)
+                    Some(t) => {
+                        if is_union {
+                            CompoundType::Union(t.get_ident_str().clone(), None)
+                        } else {
+                            CompoundType::Struct(t.get_ident_str().clone(), None)
+                        }
                     }
                     None => unexpected_token!(self.peek(), self),
                 },
@@ -511,7 +523,7 @@ where I: Iterator<Item=&'a Token> {
         }
     }
 
-    fn parse_struct_field(&mut self) -> (Box<DeclarationSpecifiers>, Option<Vec<(EitherDeclarator, Option<Box<GeneralExpression>>)>>) {
+    fn parse_struct_field(&mut self) -> StructField {
         let specifiers = Box::new(self.parse_declaration_specifiers());
         match self.peek() {
             Some(Token::Semicolon(..)) => (specifiers, None),
@@ -522,24 +534,20 @@ where I: Iterator<Item=&'a Token> {
                         read_token!(self, Token::Colon);
                         Some(self.parse_general_expression())
                     }
-                    _ => None
+                    _ => None,
                 };
                 let mut decls = vec![(either, expr)];
-                loop {
-                    if let Some(Token::Comma(..)) = self.peek() {
-                        read_token!(self, Token::Comma);
-                        let either = self.parse_declarator_or_abstract_declarator();
-                        let expr = match self.peek() {
-                            Some(Token::Colon(..)) => {
-                                read_token!(self, Token::Colon);
-                                Some(self.parse_general_expression())
-                            }
-                            _ => None
-                        };
-                        decls.push((either, expr));
-                    } else {
-                        break
-                    }
+                while let Some(Token::Comma(..)) = self.peek() {
+                    read_token!(self, Token::Comma);
+                    let either = self.parse_declarator_or_abstract_declarator();
+                    let expr = match self.peek() {
+                        Some(Token::Colon(..)) => {
+                            read_token!(self, Token::Colon);
+                            Some(self.parse_general_expression())
+                        }
+                        _ => None,
+                    };
+                    decls.push((either, expr));
                 }
                 (specifiers, Some(decls))
             }
@@ -554,45 +562,43 @@ where I: Iterator<Item=&'a Token> {
     /* Detect whether we should parse a declarator or an abstract declarator, using arbitrary
      * lookahead. I think there's some method of doing this without n-lookahead, but this is a lot
      * easier :) */
-    fn is_declarator_upcoming(&mut self) -> bool {
+    fn declarator_upcoming(&mut self) -> bool {
         self.peek_pointer();
-        self.is_direct_declarator_upcoming()
+        self.direct_declarator_upcoming()
     }
 
     /* Consume a pointer from the peek buf */
     fn peek_pointer(&mut self) {
-        match self.iter.peek_buf() {
-            Some(Token::Times(..)) => {
-                self.iter.peek_and_advance();
-                loop {
-                    match self.iter.peek_buf() {
-                        Some(Token::Volatile(..)) | Some(Token::Const(..)) => self.iter.peek_and_advance(),
-                        _ => break,
-                    };
-                }
-                self.peek_pointer();
+        if let Some(Token::Times(..)) = self.iter.peek_buf() {
+            self.iter.peek_and_advance();
+            loop {
+                match self.iter.peek_buf() {
+                    Some(Token::Volatile(..)) | Some(Token::Const(..)) => {
+                        self.iter.peek_and_advance()
+                    }
+                    _ => break,
+                };
             }
-            _ => {}
+            self.peek_pointer();
         }
     }
 
-    fn is_direct_declarator_upcoming(&mut self) -> bool {
+    fn direct_declarator_upcoming(&mut self) -> bool {
         match self.iter.peek_and_advance() {
             Some(Token::Identifier(..)) => true,
-            Some(Token::OpenParen(..)) => self.is_declarator_upcoming(),
+            Some(Token::OpenParen(..)) => self.declarator_upcoming(),
             _ => false,
         }
     }
 
     fn parse_declarator_or_abstract_declarator(&mut self) -> EitherDeclarator {
         self.peek(); /* Clear out peek buf, just in case */
-        if self.is_declarator_upcoming() {
+        if self.declarator_upcoming() {
             EitherDeclarator::Declarator(self.parse_declarator())
         } else {
             EitherDeclarator::Anonymous(self.parse_abstract_declarator())
         }
     }
-
 
     fn parse_ptr(&mut self) -> Option<Box<Pointer>> {
         match self.peek() {
@@ -615,7 +621,9 @@ where I: Iterator<Item=&'a Token> {
 
     fn parse_direct_declarator(&mut self) -> Box<DirectDeclarator> {
         let mut decl = if let Some(Token::Identifier(..)) = self.peek() {
-            Box::new(DirectDeclarator::Identifier(read_token!(self, Token::Identifier).get_ident_str().clone()))
+            Box::new(DirectDeclarator::Identifier(
+                read_token!(self, Token::Identifier).get_ident_str().clone(),
+            ))
         } else {
             read_token!(self, Token::OpenParen);
             let d = self.parse_declarator();
@@ -659,14 +667,22 @@ where I: Iterator<Item=&'a Token> {
                             params.push(FunctionParam::Varargs);
                             break;
                         }
-                        Some(Token::Comma(..)) | Some(Token::CloseParen(..))
-                            => params.push(FunctionParam::Parameter(ParameterDeclaration::DeclarationSpecifiers(spec))),
+                        Some(Token::Comma(..)) | Some(Token::CloseParen(..)) => {
+                            params.push(FunctionParam::Parameter(
+                                ParameterDeclaration::DeclarationSpecifiers(spec),
+                            ))
+                        }
                         _ => {
                             let decl = match self.parse_declarator_or_abstract_declarator() {
-                                EitherDeclarator::Anonymous(declarator)
-                                    => ParameterDeclaration::AbstractDeclarator(spec, Box::new(declarator)),
-                                EitherDeclarator::Declarator(declarator)
-                                    => ParameterDeclaration::Declarator(spec, Box::new(declarator)),
+                                EitherDeclarator::Anonymous(declarator) => {
+                                    ParameterDeclaration::AbstractDeclarator(
+                                        spec,
+                                        Box::new(declarator),
+                                    )
+                                }
+                                EitherDeclarator::Declarator(declarator) => {
+                                    ParameterDeclaration::Declarator(spec, Box::new(declarator))
+                                }
                             };
                             params.push(FunctionParam::Parameter(decl));
                         }
@@ -728,7 +744,7 @@ where I: Iterator<Item=&'a Token> {
 
     fn parse_initializer_list(&mut self) -> Vec<Initializer> {
         if let Some(Token::CloseBrace(..)) = self.peek() {
-            return vec![]
+            return vec![];
         }
 
         let mut initializers = vec![self.parse_initializer()];
@@ -797,7 +813,8 @@ where I: Iterator<Item=&'a Token> {
 
     fn parse_declaration(&mut self) -> Declaration {
         let spec = self.parse_declaration_specifiers();
-        let has_typedef = if let DeclarationSpecifiers::DeclarationSpecifiers(Some(spec), _) = &spec {
+        let has_typedef = if let DeclarationSpecifiers::DeclarationSpecifiers(Some(spec), _) = &spec
+        {
             spec.0.typedef
         } else {
             false
@@ -818,8 +835,11 @@ where I: Iterator<Item=&'a Token> {
 
     fn parse_statement(&mut self) -> Statement {
         match self.peek_n(2).as_slice() {
-            [Token::Identifier(..), Token::Colon(..)] | [Token::Case(..), _] | [Token::Default(..), _]
-                => return Statement::LabeledStatement(Box::new(self.parse_labeled_statement())),
+            [Token::Identifier(..), Token::Colon(..)]
+            | [Token::Case(..), _]
+            | [Token::Default(..), _] => {
+                return Statement::LabeledStatement(Box::new(self.parse_labeled_statement()))
+            }
             _ => {}
         }
         match_first!(
@@ -852,7 +872,7 @@ where I: Iterator<Item=&'a Token> {
                 Some(Token::Volatile(..)) => volatile = true,
                 Some(Token::Goto(..)) => goto = true,
                 Some(Token::Inline(..)) => inline = true,
-                Some(t@Token::OpenParen(..)) => {
+                Some(t @ Token::OpenParen(..)) => {
                     tokens.push((*t).clone());
                     break;
                 }
@@ -875,7 +895,9 @@ where I: Iterator<Item=&'a Token> {
                         break;
                     }
                 }
-                t => { tokens.push((*t).clone()); },
+                t => {
+                    tokens.push((*t).clone());
+                }
             }
         }
 
@@ -883,7 +905,12 @@ where I: Iterator<Item=&'a Token> {
             panic!("Unexpected end of file");
         }
 
-        AsmStatement::Asm { tokens, volatile, goto, inline, }
+        AsmStatement::Asm {
+            tokens,
+            volatile,
+            goto,
+            inline,
+        }
     }
 
     fn parse_expression_statement(&mut self) -> ExpressionStatement {
@@ -943,7 +970,7 @@ where I: Iterator<Item=&'a Token> {
                         read_token!(self, Token::Else);
                         Some(Box::new(self.parse_statement()))
                     }
-                    _ => None
+                    _ => None,
                 };
                 SelectionStatement::If(Box::new(e), s, otherwise)
             }
@@ -959,6 +986,7 @@ where I: Iterator<Item=&'a Token> {
         }
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn parse_iteration_statement(&mut self) -> IterationStatement {
         match self.peek() {
             Some(Token::While(..)) => {
@@ -1034,7 +1062,7 @@ where I: Iterator<Item=&'a Token> {
     fn is_typeof(&self, ident: &str) -> bool {
         match ident {
             "__typeof__" | "typeof" => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -1042,7 +1070,7 @@ where I: Iterator<Item=&'a Token> {
         match ident {
             t if self.is_typeof(t) => true,
             "__label__" => true,
-            _ => self.scope.iter().any(|e| e.types.contains(ident))
+            _ => self.scope.iter().any(|e| e.types.contains(ident)),
         }
     }
 
@@ -1199,7 +1227,7 @@ where I: Iterator<Item=&'a Token> {
 
     fn parse_cast_expression(&mut self) -> CastExpression {
         if let [Token::OpenParen(..), t] = self.peek_n(2).as_slice() {
-            let tt = *t.clone();
+            let tt = (**t).clone();
             if self.starts_type(&tt) && !self.starts_struct_literal() {
                 let op = read_token!(self, Token::OpenParen);
                 let ty = self.parse_type_name();
@@ -1231,8 +1259,8 @@ where I: Iterator<Item=&'a Token> {
             Some(Token::Sizeof(..)) => {
                 read_token!(self, Token::Sizeof);
                 if let [Token::OpenParen(..), t] = self.peek_n(2).as_slice() {
-                    let tt = *t.clone();
-                    if self.starts_type(tt) {
+                    let tt = (**t).clone();
+                    if self.starts_type(&tt) {
                         read_token!(self, Token::OpenParen);
                         let ty = self.parse_type_name();
                         read_token!(self, Token::CloseParen);
@@ -1288,14 +1316,19 @@ where I: Iterator<Item=&'a Token> {
                         }
                     }
                     let cp = read_token!(self, Token::CloseParen);
-                    e = PostfixExpression::Call(Box::new(e), op, ArgumentExpressionList::List(list), cp);
+                    e = PostfixExpression::Call(
+                        Box::new(e),
+                        op,
+                        ArgumentExpressionList::List(list),
+                        cp,
+                    );
                 }
                 Some(Token::Increment(..)) | Some(Token::Decrement(..)) => {
                     let t = self.next().cloned().unwrap();
                     let inc = self.increment_or_decrement(t);
                     e = PostfixExpression::Increment(Box::new(e), inc);
                 }
-                _ => return e
+                _ => return e,
             }
         }
     }
@@ -1310,7 +1343,9 @@ where I: Iterator<Item=&'a Token> {
                     PrimaryExpression::Identifier(s)
                 }
             }
-            Some(Token::Number(..)) => PrimaryExpression::Number(self.next().unwrap().get_ident_str().clone()),
+            Some(Token::Number(..)) => {
+                PrimaryExpression::Number(self.next().unwrap().get_ident_str().clone())
+            }
             Some(Token::StringLiteral(..)) => {
                 PrimaryExpression::StringLiteral(self.next().unwrap().get_ident_str().clone())
             }
@@ -1340,7 +1375,7 @@ where I: Iterator<Item=&'a Token> {
         }
     }
 
-    fn is_builtin(&mut self, name: &Rc<str>) -> bool {
+    fn is_builtin(&self, name: &Rc<str>) -> bool {
         match name.as_ref() {
             "__builtin_offsetof" => true,
             "__builtin_types_compatible_p" => true,
@@ -1354,25 +1389,25 @@ where I: Iterator<Item=&'a Token> {
                 read_token!(self, Token::OpenParen);
                 let ty = Box::new(self.parse_type_name());
                 read_token!(self, Token::Comma);
-                let mut designator = Box::new(
-                    BuiltinDesignator::Identifier(
-                        read_token!(self, Token::Identifier).get_ident_str().clone()));
+                let mut designator = Box::new(BuiltinDesignator::Identifier(
+                    read_token!(self, Token::Identifier).get_ident_str().clone(),
+                ));
 
                 loop {
                     match self.peek() {
                         Some(Token::Dot(..)) => {
                             read_token!(self, Token::Dot);
-                            designator = Box::new(
-                                BuiltinDesignator::Field(
-                                    designator,
-                                    read_token!(self, Token::Identifier).get_ident_str().clone()));
+                            designator = Box::new(BuiltinDesignator::Field(
+                                designator,
+                                read_token!(self, Token::Identifier).get_ident_str().clone(),
+                            ));
                         }
                         Some(Token::OpenBracket(..)) => {
                             read_token!(self, Token::OpenBracket);
-                            designator = Box::new(
-                                BuiltinDesignator::Index(
-                                    designator,
-                                    Box::new(self.parse_expression())));
+                            designator = Box::new(BuiltinDesignator::Index(
+                                designator,
+                                Box::new(self.parse_expression()),
+                            ));
                             read_token!(self, Token::CloseBracket);
                         }
                         _ => break,
@@ -1391,7 +1426,7 @@ where I: Iterator<Item=&'a Token> {
                 read_token!(self, Token::CloseParen);
                 Builtin::TypesCompatible(left, right)
             }
-            _ => panic!()
+            _ => panic!(),
         };
 
         PrimaryExpression::Builtin(Box::new(extension))
@@ -1436,12 +1471,12 @@ where I: Iterator<Item=&'a Token> {
 
     pub fn ext_decl_identifiers(&self, ext_decl: &ExternalDeclaration) -> Vec<Rc<str>> {
         if let ExternalDeclaration::Declaration(box Declaration::Declaration(_, list)) = ext_decl {
-            list.iter().map(|e| {
-                match e {
+            list.iter()
+                .map(|e| match e {
                     InitDeclarator::Declarator(decl) => self.get_decl_identifier(&**decl),
-                    _ => panic!()
-                }
-            }).collect()
+                    _ => panic!(),
+                })
+                .collect()
         } else {
             vec![]
         }
@@ -1458,7 +1493,9 @@ where I: Iterator<Item=&'a Token> {
             DirectDeclarator::Identifier(ident) => ident.clone(),
             DirectDeclarator::Parens(decl) => self.get_decl_identifier(decl),
             DirectDeclarator::Array(direct_decl, _) => self.get_direct_decl_identifier(direct_decl),
-            DirectDeclarator::Function(direct_decl, _) => self.get_direct_decl_identifier(direct_decl),
+            DirectDeclarator::Function(direct_decl, _) => {
+                self.get_direct_decl_identifier(direct_decl)
+            }
         }
     }
 }

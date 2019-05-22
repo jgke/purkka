@@ -374,7 +374,7 @@ grammar! {
        -> #Token::If #Token::OpenParen &Expression #Token::CloseParen Statement &MaybeElse
         | #Token::Switch #Token::OpenParen &Expression #Token::CloseParen Statement
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum SelectionStatement { 
+        pub enum SelectionStatement {
             If(Box<Expression>, Statement, Option<Box<Statement>>),
             Switch(Box<Expression>, Statement),
         }
@@ -610,7 +610,10 @@ pub enum EitherDeclarator {
     Declarator(Declarator),
 }
 
-pub type StructField = (Box<DeclarationSpecifiers>, Option<Vec<(EitherDeclarator, Option<Box<GeneralExpression>>)>>);
+pub type StructField = (
+    Box<DeclarationSpecifiers>,
+    Option<Vec<(EitherDeclarator, Option<Box<GeneralExpression>>)>>,
+);
 pub type EnumField = (Rc<str>, Option<TernaryExpression>);
 
 #[derive(Clone, Debug, PartialEq)]

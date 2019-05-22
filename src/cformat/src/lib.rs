@@ -138,7 +138,7 @@ impl Context {
                     Token::While(_) => "while",
                     Token::Identifier(_, t) => t,
                     Token::Number(_, t) => t,
-                    Token::Sizeof(_) => "sizeof", 
+                    Token::Sizeof(_) => "sizeof",
                     Token::Asm(_) => "asm",
 
                     // Third set: No whitespace before or after
@@ -207,7 +207,7 @@ impl Context {
                                     return;
                                 }
                                 t => panic!("Unhandled case: {:?}", t),
-                            }
+                            },
                         };
                         self.whitespace = false;
                         self.newline = false;
@@ -301,7 +301,7 @@ impl Context {
                 self.asm_statement(asm);
                 self.push_token(&Token::Semicolon(0));
             }
-            Statement::TypeDeclaration(..) => unimplemented!()
+            Statement::TypeDeclaration(..) => unimplemented!(),
         }
     }
 
@@ -410,7 +410,12 @@ impl Context {
 
     fn asm_statement(&mut self, tree: &AsmStatement) {
         self.push_token(&Token::Asm(0));
-        let AsmStatement::Asm { tokens, volatile, goto, inline } = tree;
+        let AsmStatement::Asm {
+            tokens,
+            volatile,
+            goto,
+            inline,
+        } = tree;
         if *volatile {
             self.push_token(&Token::Volatile(0));
         }
@@ -558,12 +563,12 @@ impl Context {
 
     fn direct_abstract_declarator(&mut self, tree: &DirectAbstractDeclarator) {
         match tree {
-            DirectAbstractDeclarator::Epsilon() => {}, 
+            DirectAbstractDeclarator::Epsilon() => {}
             DirectAbstractDeclarator::Parens(d) => {
                 self.push_token(&Token::OpenParen(0));
                 self.abstract_declarator(&**d);
                 self.push_token(&Token::CloseParen(0));
-            }, 
+            }
             DirectAbstractDeclarator::Array(d, e) => {
                 self.direct_abstract_declarator(&**d);
                 self.push_token(&Token::OpenBracket(0));
@@ -571,13 +576,13 @@ impl Context {
                     self.general_expression(&**e);
                 }
                 self.push_token(&Token::CloseBracket(0));
-            }, 
+            }
             DirectAbstractDeclarator::Function(d, params) => {
                 self.direct_abstract_declarator(&**d);
                 self.push_token(&Token::OpenParen(0));
                 self.parameter_type_list(params);
                 self.push_token(&Token::CloseParen(0));
-            }, 
+            }
         }
     }
 
@@ -727,7 +732,10 @@ impl Context {
                 self.push_token(&Token::CloseParen(0));
             }
             Builtin::TypesCompatible(left, right) => {
-                self.push_token(&Token::Identifier(0, From::from("__builtin_types_compatible_p")));
+                self.push_token(&Token::Identifier(
+                    0,
+                    From::from("__builtin_types_compatible_p"),
+                ));
                 self.push_token(&Token::OpenParen(0));
                 self.type_name(&**left);
                 self.push_token(&Token::Comma(0));
@@ -812,7 +820,9 @@ impl Context {
 
     fn direct_declarator(&mut self, tree: &DirectDeclarator) {
         match tree {
-            DirectDeclarator::Identifier(ident) => self.push_token(&Token::Identifier(0, ident.clone())),
+            DirectDeclarator::Identifier(ident) => {
+                self.push_token(&Token::Identifier(0, ident.clone()))
+            }
             DirectDeclarator::Parens(decl) => {
                 self.push_token(&Token::OpenParen(0));
                 self.declarator(decl);
@@ -836,9 +846,8 @@ impl Context {
     }
 
     fn maybe_general_expression(&mut self, tree: Option<&GeneralExpression>) {
-        match tree {
-            Some(t) => self.general_expression(t),
-            None => {}
+        if let Some(t) = tree {
+            self.general_expression(t);
         }
     }
 
@@ -861,7 +870,7 @@ impl Context {
             FunctionParam::Varargs => self.push_token(&Token::Varargs(0)),
         }
     }
-fn parameter_declaration(&mut self, tree: &ParameterDeclaration) {
+    fn parameter_declaration(&mut self, tree: &ParameterDeclaration) {
         match tree {
             ParameterDeclaration::Declarator(decl_spec, decl) => {
                 self.declaration_specifiers(decl_spec);
@@ -980,12 +989,12 @@ fn parameter_declaration(&mut self, tree: &ParameterDeclaration) {
     fn compound_type(&mut self, ty: &CompoundType) {
         match ty {
             CompoundType::Enum(name, enum_fields) => {
-                self.enum_ty(Some(name), enum_fields.as_ref().map(|t| t.as_slice()))
+                self.enum_ty(Some(name), enum_fields.as_ref().map(Vec::as_slice))
             }
             CompoundType::AnonymousEnum(enum_fields) => self.enum_ty(None, Some(enum_fields)),
             CompoundType::Struct(name, struct_fields) => {
                 self.push_token(&Token::Struct(0));
-                self.struct_ty(Some(name), struct_fields.as_ref().map(|t| t.as_slice()))
+                self.struct_ty(Some(name), struct_fields.as_ref().map(Vec::as_slice))
             }
             CompoundType::AnonymousStruct(struct_fields) => {
                 self.push_token(&Token::Struct(0));
@@ -993,7 +1002,7 @@ fn parameter_declaration(&mut self, tree: &ParameterDeclaration) {
             }
             CompoundType::Union(name, struct_fields) => {
                 self.push_token(&Token::Union(0));
-                self.struct_ty(Some(name), struct_fields.as_ref().map(|t| t.as_slice()))
+                self.struct_ty(Some(name), struct_fields.as_ref().map(Vec::as_slice))
             }
             CompoundType::AnonymousUnion(struct_fields) => {
                 self.push_token(&Token::Union(0));
