@@ -17,6 +17,7 @@ grammar! {
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum PrimaryExpression {
             Identifier(Rc<str>),
+            Builtin(Box<Builtin>),
             Number(Rc<str>),
             StringLiteral(Rc<str>),
             CharLiteral(char),
@@ -154,7 +155,7 @@ grammar! {
 
     InitDeclarator
        -> &Declarator
-        | Asm. &Declarator #Token::Asm
+        | Asm. &Declarator &AsmStatement
         | Assign. &Declarator #Token::Assign &AssignmentOrInitializerList
         ;
 
@@ -406,7 +407,7 @@ grammar! {
     AsmStatement
        -> #Token::Asm #Token::OpenParen /* anything here */ #Token::CloseParen
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum AsmStatement { Asm(Vec<Token>) }
+        pub enum AsmStatement { Asm { tokens: Vec<Token>, volatile: bool, goto: bool, inline: bool } }
         ;
 
     TranslationUnit
@@ -620,6 +621,19 @@ pub enum CompoundType {
     AnonymousUnion(Vec<StructField>),
     Enum(Rc<str>, Option<Vec<EnumField>>),
     AnonymousEnum(Vec<EnumField>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Builtin {
+    Offsetof(Box<TypeName>, Box<BuiltinDesignator>),
+    TypesCompatible(Box<TypeName>, Box<TypeName>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum BuiltinDesignator {
+    Identifier(Rc<str>),
+    Field(Box<BuiltinDesignator>, Rc<str>),
+    Index(Box<BuiltinDesignator>, Box<Expression>),
 }
 
 impl StorageClassSpecifiers {

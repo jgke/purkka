@@ -136,6 +136,7 @@ fn statements() {
     assert!(parse("int main() {
         if(1) { foo(); }
         if(2) bar(); else qux();
+        if(3) bar(); else if (qux) qux(); else foo();
         switch(a) {
             case 1: foo(); bar();
             case 2: baz(); qux(); break;
@@ -175,12 +176,24 @@ fn expressions() {
     assert!(parse("int a = a.b;").is_ok());
     assert!(parse("int a = a[b];").is_ok());
     assert!(parse("int a = b ? c : d;").is_ok());
+    assert!(parse("int a = (b = c *= 4 /= 5 %= 6 += 7 -= 8 <<= 9 >>= 10 &= 10 ^= 11 |= 12);").is_ok());
     assert!(parse("struct foo {int a;}; struct foo a = (struct foo) { 2 }; ").is_ok());
     assert!(parse("typedef struct foo {int a;} foo; foo a = (foo) { 2 }; ").is_ok());
     assert_eq!(parse("char *foo = \"bar baz\";").c_content, "char *foo = \"bar baz\";\n");
     assert_eq!(parse("char foo = 'b';").c_content, "char foo = 'b';\n");
     assert_eq!(parse("int foo = sizeof(\"foo\");").c_content, "int foo = sizeof(\"foo\");\n");
+    assert_eq!(parse("int foo = sizeof(char[]);").c_content, "int foo = sizeof(char[]);\n");
     assert_eq!(parse("int foo() {  asm(lol asd); }").c_content, "int foo() {\n    asm(lol asd);\n}\n");
+    assert_eq!(parse("int foo() {  asm volatile(lol asd); }").c_content, "int foo() {\n    asm volatile(lol asd);\n}\n");
+    assert_eq!(parse("int foo asm(something);").c_content, "int foo asm(something);\n");
+    assert_eq!(parse("int foo asm volatile goto inline (something);").c_content, "int foo asm volatile goto inline(something);\n");
+    assert_eq!(parse("int foo asm goto volatile inline (something);").c_content, "int foo asm volatile goto inline(something);\n");
+    assert_eq!(parse("int foo asm inline goto volatile (something);").c_content, "int foo asm volatile goto inline(something);\n");
+    assert_eq!(parse("int a = __builtin_offsetof(struct foo, bar);").c_content, "int a = __builtin_offsetof(struct foo, bar);\n");
+    assert_eq!(parse("int a = __builtin_offsetof(struct foo, bar[node]);").c_content, "int a = __builtin_offsetof(struct foo, bar[node]);\n");
+    assert_eq!(
+        parse("int foo() { if(foo) asm(something 1); else if (something) asm(something 2); else asm(something 3); }").c_content,
+        "int foo() {\n    if(foo) asm(something 1);\n    else if(something) asm(something 2);\n    else asm(something 3);\n}\n");
 }
 
 #[test]

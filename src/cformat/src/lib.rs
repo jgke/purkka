@@ -137,6 +137,9 @@ impl Context {
                     Token::Volatile(_) => "volatile",
                     Token::While(_) => "while",
                     Token::Identifier(_, t) => t,
+                    Token::Number(_, t) => t,
+                    Token::Sizeof(_) => "sizeof", 
+                    Token::Asm(_) => "asm",
 
                     // Third set: No whitespace before or after
                     t => {
@@ -152,12 +155,7 @@ impl Context {
                             Token::OpenParen(_) => "(",
                             Token::CloseParen(_) => ")",
                             Token::Colon(_) => ":",
-                            Token::Semicolon(_) => ";",
                             Token::Varargs(_) => "...",
-
-                            /* These are always followed by ( */
-                            Token::Sizeof(_) => "sizeof",
-                            Token::Asm(_) => "asm",
 
                             // Special cases
                             t => match t {
@@ -202,8 +200,14 @@ impl Context {
                                     self.push("'");
                                     return;
                                 }
+                                Token::Semicolon(_) => {
+                                    self.whitespace = false;
+                                    self.push(";");
+                                    self.newline = true;
+                                    return;
+                                }
                                 t => panic!("Unhandled case: {:?}", t),
-                            },
+                            }
                         };
                         self.whitespace = false;
                         self.newline = false;
@@ -293,7 +297,10 @@ impl Context {
             Statement::SelectionStatement(statement) => self.selection_statement(statement),
             Statement::LabeledStatement(statement) => self.labeled_statement(statement),
             Statement::IterationStatement(statement) => self.iteration_statement(statement),
-            Statement::AsmStatement(asm) => self.asm_statement(asm),
+            Statement::AsmStatement(asm) => {
+                self.asm_statement(asm);
+                self.push_token(&Token::Semicolon(0));
+            }
             Statement::TypeDeclaration(..) => unimplemented!()
         }
     }
@@ -316,6 +323,7 @@ impl Context {
                 self.push_token(&Token::OpenParen(0));
                 self.expression(&**e);
                 self.push_token(&Token::CloseParen(0));
+                self.whitespace = true;
                 self.statement(s);
                 if let Some(e) = otherwise {
                     self.push_token(&Token::Else(0));
@@ -327,6 +335,7 @@ impl Context {
                 self.push_token(&Token::OpenParen(0));
                 self.expression(&**e);
                 self.push_token(&Token::CloseParen(0));
+                self.whitespace = true;
                 self.statement(s);
             }
         }
@@ -400,9 +409,18 @@ impl Context {
     }
 
     fn asm_statement(&mut self, tree: &AsmStatement) {
-        self.push("asm");
-        let AsmStatement::Asm(list) = tree;
-        for t in list {
+        self.push_token(&Token::Asm(0));
+        let AsmStatement::Asm { tokens, volatile, goto, inline } = tree;
+        if *volatile {
+            self.push_token(&Token::Volatile(0));
+        }
+        if *goto {
+            self.push_token(&Token::Goto(0));
+        }
+        if *inline {
+            self.push_token(&Token::Inline(0));
+        }
+        for t in tokens {
             self.push_token(t);
         }
     }
@@ -455,7 +473,16 @@ impl Context {
                 self.unary_expression(unary);
                 match assignment {
                     AssignmentOperator::Assign(op) => self.push_token(op),
-                    f => panic!("Not implemented.: {:?}", f),
+                    AssignmentOperator::TimesAssign(op) => self.push_token(op),
+                    AssignmentOperator::DivAssign(op) => self.push_token(op),
+                    AssignmentOperator::ModAssign(op) => self.push_token(op),
+                    AssignmentOperator::PlusAssign(op) => self.push_token(op),
+                    AssignmentOperator::MinusAssign(op) => self.push_token(op),
+                    AssignmentOperator::BitShiftLeftAssign(op) => self.push_token(op),
+                    AssignmentOperator::BitShiftRightAssign(op) => self.push_token(op),
+                    AssignmentOperator::BitAndAssign(op) => self.push_token(op),
+                    AssignmentOperator::BitXorAssign(op) => self.push_token(op),
+                    AssignmentOperator::BitOrAssign(op) => self.push_token(op),
                 }
                 self.assignment_expression(&**expr);
             }
@@ -539,11 +566,11 @@ impl Context {
             }, 
             DirectAbstractDeclarator::Array(d, e) => {
                 self.direct_abstract_declarator(&**d);
-                self.push_token(&Token::OpenBrace(0));
+                self.push_token(&Token::OpenBracket(0));
                 if let Some(e) = e {
                     self.general_expression(&**e);
                 }
-                self.push_token(&Token::CloseBrace(0));
+                self.push_token(&Token::CloseBracket(0));
             }, 
             DirectAbstractDeclarator::Function(d, params) => {
                 self.direct_abstract_declarator(&**d);
@@ -683,6 +710,47 @@ impl Context {
                 self.push(&s.to_string());
                 self.push("'");
             }
+            PrimaryExpression::Builtin(extension) => {
+                self.builtin(&**extension);
+            }
+        }
+    }
+
+    fn builtin(&mut self, builtin: &Builtin) {
+        match builtin {
+            Builtin::Offsetof(ty, designator) => {
+                self.push_token(&Token::Identifier(0, From::from("__builtin_offsetof")));
+                self.push_token(&Token::OpenParen(0));
+                self.type_name(&**ty);
+                self.push_token(&Token::Comma(0));
+                self.builtin_designator(designator);
+                self.push_token(&Token::CloseParen(0));
+            }
+            Builtin::TypesCompatible(left, right) => {
+                self.push_token(&Token::Identifier(0, From::from("__builtin_types_compatible_p")));
+                self.push_token(&Token::OpenParen(0));
+                self.type_name(&**left);
+                self.push_token(&Token::Comma(0));
+                self.type_name(&**right);
+                self.push_token(&Token::CloseParen(0));
+            }
+        }
+    }
+
+    fn builtin_designator(&mut self, builtin: &BuiltinDesignator) {
+        match builtin {
+            BuiltinDesignator::Identifier(i) => self.push(i),
+            BuiltinDesignator::Field(d, i) => {
+                self.builtin_designator(d);
+                self.push_token(&Token::Comma(0));
+                self.push(i);
+            }
+            BuiltinDesignator::Index(d, expr) => {
+                self.builtin_designator(d);
+                self.push_token(&Token::OpenBracket(0));
+                self.expression(&**expr);
+                self.push_token(&Token::CloseBracket(0));
+            }
         }
     }
 
@@ -699,7 +767,10 @@ impl Context {
     fn init_declarator(&mut self, tree: &InitDeclarator) {
         match tree {
             InitDeclarator::Declarator(decl) => self.declarator(decl),
-            InitDeclarator::Asm(..) => unimplemented!(),
+            InitDeclarator::Asm(decl, asm) => {
+                self.declarator(decl);
+                self.asm_statement(asm);
+            }
             InitDeclarator::Assign(decl, t, list) => {
                 self.declarator(decl);
                 self.push_token(t);
