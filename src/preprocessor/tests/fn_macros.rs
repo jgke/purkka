@@ -423,6 +423,8 @@ fn invalid_macros() {
 
 #[test]
 fn weird_stuff() {
+    // this should work, but it doesn't because reasons
+    // process("#define ARGS(...) __VA_ARGS__\n#define BAR(a) \n#define FOO(...) BAR(ARGS(__VA_ARGS__))\nFOO(1, 2)", vec![]);
     process("#define __and(x, y)	___and(x, y)", vec![]);
     //                          ^ \t
     process(
