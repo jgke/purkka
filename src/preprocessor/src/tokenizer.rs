@@ -422,69 +422,71 @@ where
     }
 
     fn read_string(&mut self, iter: &mut FragmentIterator) -> MacroToken {
-        let mut end = false;
-        let (content, source) = iter.collect_while_flatmap(|c, iter| match c {
-            '"' => {
-                if end {
-                    iter.next();
-                    None
-                } else {
-                    end = true;
-                    Some(vec![])
+        match iter.next_new_span() {
+            Some('"') => {}
+            Some(t) => panic!("Unexpected character: {}", t),
+            None => panic!("Unexpected end of file"),
+        }
+
+        let mut content = String::new();
+
+        loop {
+            match iter.next() {
+                Some('"') => {
+                    break;
                 }
-            }
-            '\n' => panic!("Missing terminating \" character"),
-            '\\' => {
-                iter.next();
-                if let Some(c) = iter.peek() {
-                    Some(vec![self.read_string_escape(iter, c)])
-                } else {
-                    panic!("Unexpected end of file");
+                Some('\n') => panic!("Missing terminating \" character"),
+                Some('\\') => {
+                    if let Some(c) = iter.peek() {
+                        content.push(self.read_string_escape(iter, c));
+                    } else {
+                        panic!("Unexpected end of file");
+                    }
                 }
+                Some(c) => content.push(c),
+                None => panic!("Unexpected end of file"),
             }
-            c => Some(vec![c]),
-        });
+        }
+
         MacroToken {
-            source,
+            source: iter.current_source(),
             ty: MacroTokenType::StringLiteral(
-                self.intern
-                    .get_ref(&content.iter().map(|t| t.1).collect::<String>()),
+                self.intern.get_ref(&content),
             ),
         }
     }
 
     fn read_char(&mut self, iter: &mut FragmentIterator) -> MacroToken {
-        let mut end = false;
-        let (content, source) = iter.collect_while_flatmap(|c, iter| match c {
-            '\'' => {
-                if end {
-                    iter.next();
-                    None
-                } else {
-                    end = true;
-                    Some(vec![])
-                }
-            }
-            '\n' => panic!("Missing terminating \' character"),
-            '\\' => {
-                iter.next();
+        match iter.next_new_span() {
+            Some('\'') => {}
+            Some(t) => panic!("Unexpected character: {}", t),
+            None => panic!("Unexpected end of file"),
+        }
+        let c = match iter.next() {
+            Some('\\') => {
                 if let Some(c) = iter.peek() {
-                    Some(vec![self.read_string_escape(iter, c)])
+                    self.read_string_escape(iter, c)
                 } else {
                     panic!("Unexpected end of file");
                 }
             }
-            c => Some(vec![c]),
-        });
-        assert!(content.len() == 1);
+            Some('\n') => panic!("Unexpected newline"),
+            Some(c) => c,
+            None => panic!("Unexpected end of file"),
+        };
+        match iter.next() {
+            Some('\'') => {}
+            Some(t) => panic!("Unexpected character: {}", t),
+            None => panic!("Unexpected end of file"),
+        }
         MacroToken {
-            source,
-            ty: MacroTokenType::Char(content.iter().map(|t| t.1).next().unwrap()),
+            source: iter.current_source(),
+            ty: MacroTokenType::Char(c),
         }
     }
 
     fn read_string_escape(&self, iter: &mut FragmentIterator, c: char) -> char {
-        match c {
+        let ret = match c {
             '\'' => '\'',
             '"' => '\"',
             '?' => '?',
@@ -496,10 +498,12 @@ where
             't' => '\t',
             'r' => '\r',
             'v' => '\x0B',
-            c @ '0'...'7' => self.get_octal(iter, c),
-            'x' => self.get_hex(iter),
+            c @ '0'...'7' => return self.get_octal(iter, c),
+            'x' => return self.get_hex(iter),
             c => c,
-        }
+        };
+        iter.next();
+        ret
     }
 
     fn get_octal(&self, iter: &mut FragmentIterator, c: char) -> char {
@@ -983,6 +987,7 @@ where
         let MacroParseIter(list, index, iter) = ctx;
         list.len() > *index || iter.peek().is_some()
     }
+
     fn get_next_token(
         &mut self,
         ctx: &mut MacroParseIter,
@@ -990,14 +995,15 @@ where
         let MacroParseIter(list, index, iter) = ctx;
 
         if list.len() > *index {
-            return (Some(list[*index].clone()), true);
+            (Some(list[*index].clone()), true)
+        } else {
+            (
+                self.get_token(iter, false).0.map(|x| (x, HashSet::new())),
+                false,
+            )
         }
-
-        (
-            self.get_token(iter, false).0.map(|x| (x, HashSet::new())),
-            false,
-        )
     }
+
     fn get_next_token_mut(
         &mut self,
         ctx: &mut MacroParseIter,

@@ -21,4 +21,18 @@ fn char() {
     test_char("'\\141'", 'a');
     test_char("'\\40'", ' ');
     test_char("'\\1'", '\u{1}');
+    process(
+        "'\\n' 'b'",
+        vec![mt(
+            "foo.c",
+            0,
+            3,
+            MacroTokenType::Char('\n'),
+        ), mt(
+            "foo.c",
+            5,
+            7,
+            MacroTokenType::Char('b'),
+        )],
+    );
 }
