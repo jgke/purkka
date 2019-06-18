@@ -230,6 +230,14 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         self.types.contains_key(s)
     }
 
+    fn push_operator(&mut self, left_associative: bool, precedence: usize, s: Rc<str>) {
+        if left_associative {
+            self.precedence.insert(s, Precedence::binop(precedence));
+        } else {
+            self.precedence.insert(s, Precedence::binop_right(precedence));
+        }
+    }
+
     fn parse_unit(&mut self) -> Unit {
         match_first!(
             self.peek() => _t,
@@ -515,7 +523,25 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_new_operator(&mut self) -> OperatorOverload {
         read_token!(self, Token::NewOperator);
-        let op = if let Token::StringLiteral(_, s) = read_token!(self, Token::StringLiteral) {
+        let left_associative = match maybe_read_token!(self, Token::Identifier) {
+            Some(Token::Identifier(i, t)) => match t.as_ref() {
+                "left" => true,
+                "right" => false,
+                _ => unexpected_token!(Some(Token::Identifier(*i, t.clone())), self),
+            }
+            None => true,
+            Some(_) => unreachable!(),
+        };
+        let precedence = if let Token::Integer(i, t) = read_token!(self, Token::Integer) {
+            usize::try_from(t)
+                .unwrap_or_else(|_| {
+                    println!("Unexpected signed integer");
+                    unexpected_token!(Some(Token::Integer(i, t)), self);
+                })
+        } else {
+            unreachable!();
+        };
+        let op = if let Token::Operator(_, s) = read_token!(self, Token::Operator) {
             s
         } else {
             unreachable!();
@@ -523,6 +549,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         let (params, return_type, block) = self.parse_fun();
         let ty = TypeSignature::Function(params.clone(), Box::new(return_type.clone()));
         let body = self.fun_to_expr(params, return_type, block);
+        self.push_operator(left_associative, precedence, op.clone());
         OperatorOverload::OperatorOverload(op, Box::new(ty), Box::new(body))
     }
 

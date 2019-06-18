@@ -131,7 +131,12 @@ fn parse_terse_fn() {
 
 #[test]
 fn parse_operators() {
-    test_parse_file("operator \"&~\" (left: long, bits: long) => left & ~bits;");
+    test_parse_file("operator left 5 &~ (left: long, bits: long) => left & ~bits;");
+}
+
+#[test]
+fn parse_and_use_operator() {
+    test_parse_file("operator left 5 +- (left: int, right: int) => left-right;let a = 1 +- 2;");
 }
 
 #[test]
