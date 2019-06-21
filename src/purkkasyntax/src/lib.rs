@@ -6,7 +6,7 @@
 #![allow(non_camel_case_types)]
 
 use std::collections::HashMap;
-use std::convert::TryFrom;
+
 use std::rc::Rc;
 
 use std::ops::{Add, Div};
@@ -42,7 +42,7 @@ grammar! {
         | Definition. Visibility Mutability #Token::Identifier MaybeType #Token::Operator Expression #Token::SemiColon
         | Function. Visibility #Token::Fun #Token::Identifier Function
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum Declaration { Declaration(bool, bool, Rc<str>, Option<Box<TypeSignature>>, Option<Box<Expression>>) }
+        pub enum Declaration { Declaration(bool, bool, Rc<str>, Box<TypeSignature>, Option<Box<Expression>>) }
         ;
 
     Function
@@ -101,6 +101,15 @@ grammar! {
        -> #Token::Identifier #Token::Operator TypeSignature
         | TypeSignature
         @ pub type _Param = Param
+        ;
+
+    LambdaParam
+       -> #Token::Identifier #Token::Operator TypeSignature
+        | #Token::Identifier
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum LambdaParam {
+            LambdaParam(Rc<str>, Box<TypeSignature>),
+        }
         ;
 
     StructFieldList
@@ -210,7 +219,7 @@ grammar! {
        -> #Token::Fun ParamList #Token::Operator Block
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Lambda {
-            Lambda(Vec<Param>, TypeSignature, BlockExpression),
+            Lambda(Vec<LambdaParam>, TypeSignature, BlockExpression),
         }
         ;
 
@@ -303,7 +312,7 @@ grammar! {
 impl_enter!(S, TranslationUnit, TranslationUnit, translation_unit, 1);
 impl_enter!(TranslationUnit, Units, "Vec<Unit>", units, 1);
 impl_enter!(Unit, Declaration, Declaration, declaration, 1);
-impl_enter_unbox_fmap!(Declaration, Declaration, TypeSignature, ty, 4);
+impl_enter_unbox!(Declaration, Declaration, TypeSignature, ty, 4);
 impl_enter_unbox_fmap!(Declaration, Declaration, Expression, expr, 5);
 impl_enter!(Declaration, Declaration, "Rc<str>", identifier, 3);
 
@@ -324,13 +333,53 @@ pub enum TypeSignature {
     DynamicArray(Box<TypeSignature>, Box<Expression>),
 
     Function(Vec<Param>, Box<TypeSignature>),
-    Infer,
+    Infer(IntermediateType),
+}
+
+impl From<TypeSignature> for IntermediateType {
+    fn from(ty: TypeSignature) -> Self {
+        match ty {
+            TypeSignature::Infer(intermediate) => intermediate,
+            otherwise => IntermediateType::Exact(Box::new(otherwise)),
+        }
+    }
+}
+
+impl From<IntermediateType> for TypeSignature {
+    fn from(ty: IntermediateType) -> Self {
+        match ty {
+            IntermediateType::Exact(ty) => *ty,
+            otherwise => TypeSignature::Infer(otherwise),
+        }
+    }
+}
+
+impl From<LambdaParam> for Param {
+    fn from(LambdaParam::LambdaParam(ident, ty): LambdaParam) -> Self {
+        Param::Param(ident, ty)
+    }
+}
+
+impl From<Param> for LambdaParam {
+    fn from(param: Param) -> Self {
+        match param {
+            Param::TypeOnly(..) => unimplemented!(),
+            Param::Param(ident, ty) => LambdaParam::LambdaParam(ident, ty),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum IntermediateType {
+    Exact(Box<TypeSignature>),
+    Any(i128),
+    Number(i128),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Param {
+    TypeOnly(Box<TypeSignature>),
     Param(Rc<str>, Box<TypeSignature>),
-    Anon(Box<TypeSignature>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -350,13 +399,12 @@ pub enum EnumField {
     },
 }
 
-impl TryFrom<Param> for TypeSignature {
-    type Error = ();
-
-    fn try_from(param: Param) -> Result<Self, Self::Error> {
+impl From<Param> for TypeSignature {
+    fn from(param: Param) -> Self {
         match param {
-            Param::Anon(ty) => Ok(*ty),
-            Param::Param(..) => Err(()),
+            Param::Param(name, box TypeSignature::Infer(..)) => TypeSignature::Plain(name),
+            Param::Param(_name, ty) => *ty,
+            Param::TypeOnly(ty) => *ty,
         }
     }
 }

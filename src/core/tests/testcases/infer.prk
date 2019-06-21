@@ -1,0 +1,10 @@
+fun foo() -> int {
+    let a: int = 1;
+    let b = a;
+    return b;
+};
+
+let bar = fun (left, right) {
+    let res = left + right;
+    return res;
+};

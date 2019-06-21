@@ -450,9 +450,7 @@ where
 
         MacroToken {
             source: iter.current_source(),
-            ty: MacroTokenType::StringLiteral(
-                self.intern.get_ref(&content),
-            ),
+            ty: MacroTokenType::StringLiteral(self.intern.get_ref(&content)),
         }
     }
 

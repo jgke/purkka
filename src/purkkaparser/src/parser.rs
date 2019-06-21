@@ -155,6 +155,7 @@ pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator) -
         fragment: fragment_iter,
         sources,
         types: default_types(),
+        infer_id: 0,
     };
     S::TranslationUnit(context.parse_translation_unit())
 }
@@ -207,6 +208,7 @@ struct ParseContext<'a, 'b> {
     fragment: &'a FragmentIterator,
     sources: &'a [Source],
     types: HashMap<Rc<str>, TypeSignature>,
+    infer_id: i128,
 }
 
 impl<'a, 'b> ParseContext<'a, 'b> {
@@ -234,8 +236,14 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         if left_associative {
             self.precedence.insert(s, Precedence::binop(precedence));
         } else {
-            self.precedence.insert(s, Precedence::binop_right(precedence));
+            self.precedence
+                .insert(s, Precedence::binop_right(precedence));
         }
+    }
+
+    fn get_inferred_type(&mut self) -> TypeSignature {
+        self.infer_id += 1;
+        TypeSignature::Infer(IntermediateType::Any(self.infer_id))
     }
 
     fn parse_unit(&mut self) -> Unit {
@@ -260,13 +268,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     .identifier_s()
                     .unwrap()
                     .clone();
-                let (params, return_type, block) = self.parse_fun();
+                let (params, return_type, block) = self.parse_lambda();
                 return Declaration::Declaration(
                     visible,
                     false,
                     ident,
-                    None,
-                    Some(Box::new(self.fun_to_expr(params, return_type, block))),
+                    Box::new(self.get_inferred_type()),
+                    Some(Box::new(self.lambda_to_expr(params, return_type, block))),
                 );
             }
             t => unexpected_token!(t, self),
@@ -278,9 +286,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         let ty = match self.peek() {
             Some(Token::Operator(_, t)) if &**t == ":" => {
                 read_token!(self, Token::Operator);
-                Some(Box::new(self.parse_type()))
+                Box::new(self.parse_type())
             }
-            _ => None,
+            _ => Box::new(self.get_inferred_type()),
         };
 
         let res = match self.peek() {
@@ -333,21 +341,14 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_fn_or_tuple(&mut self, maybe_fn: bool) -> TypeSignature {
         let params = self.parse_param_list();
+        dbg!(&params);
         match self.peek() {
             Some(Token::Operator(_, t)) if &**t == "->" && maybe_fn => {
                 read_token!(self, Token::Operator);
                 let return_type = self.parse_type();
                 TypeSignature::Function(params, Box::new(return_type))
             }
-            t => {
-                let ty_list: Result<Vec<TypeSignature>, ()> =
-                    params.clone().into_iter().map(TryFrom::try_from).collect();
-                if ty_list.is_ok() {
-                    TypeSignature::Tuple(ty_list.unwrap())
-                } else {
-                    unexpected_token!(t, self)
-                }
-            }
+            _t => TypeSignature::Tuple(params.clone().into_iter().map(From::from).collect()),
         }
     }
 
@@ -425,7 +426,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Operator(_, t)) if &**t == "->" => {
                 read_token!(self, Token::Operator);
                 let return_type = self.parse_type();
-                TypeSignature::Function(vec![Param::Anon(Box::new(arg_ty))], Box::new(return_type))
+                TypeSignature::Function(
+                    vec![Param::TypeOnly(Box::new(arg_ty))],
+                    Box::new(return_type),
+                )
             }
             _ => arg_ty,
         }
@@ -449,17 +453,19 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                             let ty = self.parse_type();
                             Some(Param::Param(ident.clone(), Box::new(ty)))
                         }
-                        _ => Some(Param::Anon(Box::new(TypeSignature::Plain(ident.clone())))),
+                        _ => Some(Param::TypeOnly(Box::new(TypeSignature::Plain(
+                            ident.clone(),
+                        )))),
                     }
                 } else {
-                    Some(Param::Anon(Box::new(ty)))
+                    Some(Param::TypeOnly(Box::new(ty)))
                 }
             }
             Some(_) => match_first!(
                 self.peek() => _t,
                 default None,
 
-                TypeSignature => Some(Param::Anon(Box::new(self.parse_type()))),),
+                TypeSignature => Some(Param::TypeOnly(Box::new(self.parse_type()))),),
             None => None,
         }
     }
@@ -528,16 +534,15 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 "left" => true,
                 "right" => false,
                 _ => unexpected_token!(Some(Token::Identifier(*i, t.clone())), self),
-            }
+            },
             None => true,
             Some(_) => unreachable!(),
         };
         let precedence = if let Token::Integer(i, t) = read_token!(self, Token::Integer) {
-            usize::try_from(t)
-                .unwrap_or_else(|_| {
-                    println!("Unexpected signed integer");
-                    unexpected_token!(Some(Token::Integer(i, t)), self);
-                })
+            usize::try_from(t).unwrap_or_else(|_| {
+                println!("Unexpected signed integer");
+                unexpected_token!(Some(Token::Integer(i, t)), self);
+            })
         } else {
             unreachable!();
         };
@@ -546,9 +551,12 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         } else {
             unreachable!();
         };
-        let (params, return_type, block) = self.parse_fun();
-        let ty = TypeSignature::Function(params.clone(), Box::new(return_type.clone()));
-        let body = self.fun_to_expr(params, return_type, block);
+        let (params, return_type, block) = self.parse_lambda();
+        let ty = TypeSignature::Function(
+            params.iter().cloned().map(From::from).collect(),
+            Box::new(return_type.clone()),
+        );
+        let body = self.lambda_to_expr(params, return_type, block);
         self.push_operator(left_associative, precedence, op.clone());
         OperatorOverload::OperatorOverload(op, Box::new(ty), Box::new(body))
     }
@@ -655,7 +663,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
             Some(Token::Fun(..)) => {
                 read_token!(self, Token::Fun);
-                let (params, return_type, block) = self.parse_fun();
+                let (params, return_type, block) = self.parse_lambda();
                 PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block))
             }
             t => unexpected_token!(t, self),
@@ -669,20 +677,19 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         expr
     }
 
-    fn parse_fun(&mut self) -> (Vec<Param>, TypeSignature, BlockExpression) {
-        let params = self.parse_param_list();
+    fn parse_lambda(&mut self) -> (Vec<LambdaParam>, TypeSignature, BlockExpression) {
+        let params = self.parse_lambda_param_list();
         let return_type = match self.peek() {
             Some(Token::Operator(_, t)) if &**t == "->" => {
                 read_token!(self, Token::Operator);
                 self.parse_type()
             }
-            _ => TypeSignature::Infer,
+            _ => self.get_inferred_type(),
         };
         let block = match self.peek() {
             Some(Token::Operator(_, t)) if &**t == "=>" => {
                 read_token!(self, Token::Operator);
                 let expr = self.parse_expression();
-                read_token!(self, Token::SemiColon);
                 BlockExpression::Block(Block::Statements(vec![Statement::Return(Some(Box::new(
                     expr,
                 )))]))
@@ -692,9 +699,36 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         (params, return_type, block)
     }
 
-    fn fun_to_expr(
+    fn parse_lambda_param_list(&mut self) -> Vec<LambdaParam> {
+        read_token!(self, Token::OpenParen);
+        let res = self.parse_comma_delimited_to_vec(Self::parse_lambda_param);
+        read_token!(self, Token::CloseParen);
+        res
+    }
+
+    fn parse_lambda_param(&mut self) -> Option<LambdaParam> {
+        match self.peek() {
+            Some(Token::Identifier(..)) => {
+                let ident = self.next().identifier_s().unwrap().clone();
+                match self.peek() {
+                    Some(Token::Operator(_, t)) if &**t == ":" => {
+                        read_token!(self, Token::Operator);
+                        let ty = self.parse_type();
+                        Some(LambdaParam::LambdaParam(ident, Box::new(ty)))
+                    }
+                    _ => Some(LambdaParam::LambdaParam(
+                        ident,
+                        Box::new(self.get_inferred_type()),
+                    )),
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn lambda_to_expr(
         &self,
-        params: Vec<Param>,
+        params: Vec<LambdaParam>,
         return_type: TypeSignature,
         block: BlockExpression,
     ) -> Expression {
@@ -1036,6 +1070,7 @@ mod tests {
             fragment: &FragmentIterator::new("", ""),
             sources: &Vec::new(),
             types: default_types(),
+            infer_id: 0,
         };
         let result = eval_tree(&context.parse_expression());
         println!("{} = {} (expected: {})", expr, result, expected);

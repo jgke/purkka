@@ -6,7 +6,7 @@ use std::rc::Rc;
 use cparser::grammar as cp;
 use ctoken::token as ct;
 use purkkasyntax as pp;
-use purkkasyntax::{Param, TypeSignature};
+use purkkasyntax::TypeSignature;
 use purkkatoken::token as pt;
 
 mod traits;
@@ -84,15 +84,16 @@ impl Context {
     pub fn translation_unit(&mut self, k: pp::TranslationUnit) -> cp::TranslationUnit {
         match k {
             pp::TranslationUnit::Units(u) => {
-                let drain = self.functions.drain().collect::<Vec<_>>();
+                let mut drain = self.functions.drain().collect::<Vec<_>>();
+                drain.sort_by(|(left, _), (right, _)| left.cmp(right));
                 let funcs = drain
                     .into_iter()
                     .map(|(n, u)| self.format_lambda_as_external_decl(n.clone(), u.clone()))
                     .collect::<Vec<_>>();
                 cp::TranslationUnit::Units(
-                    u.into_iter()
-                        .map(|u| self.unit_to_external_decl(u))
-                        .chain(funcs.into_iter())
+                    funcs
+                        .into_iter()
+                        .chain(u.into_iter().map(|u| self.unit_to_external_decl(u)))
                         .collect(),
                 )
             }
@@ -274,27 +275,46 @@ impl Context {
     pub fn function_params_from_params(
         &mut self,
         name: Rc<str>,
-        params: Vec<Param>,
+        params: Vec<pp::LambdaParam>,
     ) -> cp::DirectDeclarator {
         let e = Box::new(cp::DirectDeclarator::Identifier(name));
         cp::DirectDeclarator::Function(e, self.parameter_list_from_params(params))
     }
 
-    pub fn parameter_list_from_params(&mut self, params: Vec<Param>) -> Vec<cp::FunctionParam> {
+    pub fn function_pointer_from_params(
+        &mut self,
+        name: Rc<str>,
+        params: Vec<pp::LambdaParam>,
+    ) -> cp::DirectDeclarator {
+        let e = Box::new(cp::DirectDeclarator::Parens(Box::new(
+            cp::Declarator::Declarator(
+                Some(Box::new(cp::Pointer::Ptr(
+                    cp::TypeQualifiers::default(),
+                    None,
+                ))),
+                Box::new(cp::DirectDeclarator::Identifier(name)),
+            ),
+        )));
+        cp::DirectDeclarator::Function(e, self.parameter_list_from_params(params))
+    }
+
+    pub fn parameter_list_from_params(
+        &mut self,
+        params: Vec<pp::LambdaParam>,
+    ) -> Vec<cp::FunctionParam> {
         params
             .into_iter()
             .map(|t| cp::FunctionParam::Parameter(self.param_to_declaration(t)))
             .collect()
     }
 
-    pub fn param_to_declaration(&mut self, param: Param) -> cp::ParameterDeclaration {
+    pub fn param_to_declaration(&mut self, param: pp::LambdaParam) -> cp::ParameterDeclaration {
         match param {
-            Param::Param(name, ty) => {
+            pp::LambdaParam::LambdaParam(name, ty) => {
                 let decl_spec = self.type_to_declaration_specifiers(*ty.clone());
                 let decl = self.format_decl(name, *ty);
                 cp::ParameterDeclaration::Declarator(Box::new(decl_spec), Box::new(decl))
             }
-            Param::Anon(_ty) => unimplemented!(),
         }
     }
 
@@ -309,7 +329,7 @@ impl Context {
 
     pub fn convert_declaration(&mut self, k: pp::Declaration) -> cp::Declaration {
         match k {
-            pp::Declaration::Declaration(false, _mutable, name, Some(ty), Some(expr)) => {
+            pp::Declaration::Declaration(false, _mutable, name, ty, Some(expr)) => {
                 cp::Declaration::Declaration(
                     Box::new(self.type_to_declaration_specifiers(*ty.clone())),
                     vec![cp::InitDeclarator::Assign(
@@ -321,7 +341,7 @@ impl Context {
                     )],
                 )
             }
-            pp::Declaration::Declaration(false, _mutable, name, Some(ty), None) => {
+            pp::Declaration::Declaration(false, _mutable, name, ty, None) => {
                 cp::Declaration::Declaration(
                     Box::new(self.type_to_declaration_specifiers(*ty.clone())),
                     vec![cp::InitDeclarator::Declarator(Box::new(
@@ -346,12 +366,12 @@ impl Context {
                 };
                 cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))
             }
-            TypeSignature::Infer => cp::DeclarationSpecifiers::DeclarationSpecifiers(
-                None,
-                Some(cp::CType::Primitive(None, cp::PrimitiveType::Int)),
-            ),
+            TypeSignature::Infer(..) => unreachable!(),
             TypeSignature::Array(ty, _) => self.type_to_declaration_specifiers(*ty),
             TypeSignature::Pointer { ty, .. } => self.type_to_declaration_specifiers(*ty),
+            TypeSignature::Function(_params, ret_ty) => {
+                self.type_to_declaration_specifiers(*ret_ty)
+            }
             other => panic!("Not implemented: {:?}", other),
         }
     }
@@ -389,7 +409,27 @@ impl Context {
                     )),
                 ))
             }
+            pp::Expression::Op(op, pp::ExprList::List(list)) => {
+                let left = Box::new(self.expression_as_general(list[0].clone()));
+                let right = Box::new(self.expression_as_general(list[1].clone()));
+                let e = match &op {
+                    pt::Token::Operator(_, s) if s.as_ref() == "+" => {
+                        cp::GeneralExpression::Plus(left, ct::Token::Plus(0), right)
+                    }
+                    other => panic!("Not implemented: {:?}", other),
+                };
+                cp::TernaryExpression::GeneralExpression(e)
+            }
             other => panic!("Not implemented: {:?}", other),
+        }
+    }
+
+    fn expression_as_general(&mut self, k: pp::Expression) -> cp::GeneralExpression {
+        let tern = self.expression_as_ternary(k);
+        if let cp::TernaryExpression::GeneralExpression(e) = tern {
+            e
+        } else {
+            panic!("Not implemented: {:?}", tern)
         }
     }
 
@@ -414,6 +454,8 @@ impl Context {
         match ty {
             TypeSignature::Plain(_) => cp::DirectDeclarator::Identifier(name),
             TypeSignature::Pointer { ty, .. } => self.format_direct_decl(name, *ty),
+            TypeSignature::Function(params, _ret_ty) => self
+                .function_pointer_from_params(name, params.into_iter().map(From::from).collect()),
             other => panic!("Not implemented: {:?}", other),
         }
     }

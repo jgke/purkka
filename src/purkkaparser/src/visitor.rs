@@ -22,6 +22,9 @@ pub trait ASTVisitor {
     fn visit_ty(&mut self, s: &mut TypeSignature) {
         walk_ty(self, s);
     }
+    fn visit_intermediate_type(&mut self, s: &mut IntermediateType) {
+        walk_intermediate_type(self, s);
+    }
     fn visit_struct_field(&mut self, s: &mut StructField) {
         walk_struct_field(self, s);
     }
@@ -49,6 +52,9 @@ pub trait ASTVisitor {
     }
     fn visit_param(&mut self, s: &mut Param) {
         walk_param(self, s);
+    }
+    fn visit_lambda_param(&mut self, s: &mut LambdaParam) {
+        walk_lambda_param(self, s);
     }
 }
 
@@ -85,9 +91,7 @@ pub fn walk_operator_overload<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut O
 pub fn walk_declaration<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Declaration) {
     match s {
         Declaration::Declaration(_, _, _, ty, assignment) => {
-            if let Some(ty) = ty {
-                visitor.visit_ty(ty);
-            }
+            visitor.visit_ty(ty);
             if let Some(assignment) = assignment {
                 visitor.visit_expression(assignment);
             }
@@ -119,7 +123,17 @@ pub fn walk_ty<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut TypeSignature) {
                 .for_each(|ref mut p| visitor.visit_param(p));
             visitor.visit_ty(return_type.deref_mut());
         }
-        TypeSignature::Infer => {}
+        TypeSignature::Infer(ref mut intermediate) => {
+            visitor.visit_intermediate_type(intermediate);
+        }
+    }
+}
+
+pub fn walk_intermediate_type<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut IntermediateType) {
+    match s {
+        IntermediateType::Exact(ref mut ty) => visitor.visit_ty(ty),
+        IntermediateType::Any(_) => {}
+        IntermediateType::Number(_) => {}
     }
 }
 
@@ -260,7 +274,9 @@ pub fn walk_statement<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Statement
 pub fn walk_lambda<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Lambda) {
     match s {
         Lambda::Lambda(params, ty, block_expr) => {
-            params.iter_mut().for_each(|p| visitor.visit_param(p));
+            params
+                .iter_mut()
+                .for_each(|p| visitor.visit_lambda_param(p));
             visitor.visit_ty(ty);
             visitor.visit_block_expression(block_expr);
         }
@@ -272,7 +288,15 @@ pub fn walk_param<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Param) {
         Param::Param(_, ty) => {
             visitor.visit_ty(ty);
         }
-        Param::Anon(ty) => {
+        Param::TypeOnly(ty) => {
+            visitor.visit_ty(ty);
+        }
+    }
+}
+
+pub fn walk_lambda_param<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut LambdaParam) {
+    match s {
+        LambdaParam::LambdaParam(_, ty) => {
             visitor.visit_ty(ty);
         }
     }

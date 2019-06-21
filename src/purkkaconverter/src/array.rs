@@ -21,7 +21,7 @@ impl<'a> TreeTransformer<'a> for ArrayToPointer<'a> {
 impl ASTVisitor for ArrayToPointer<'_> {
     fn visit_ty(&mut self, e: &mut TypeSignature) {
         if let TypeSignature::Array(_, None) = e {
-            let mut tmp = TypeSignature::Infer;
+            let mut tmp = TypeSignature::Infer(IntermediateType::Any(-1));
             std::mem::swap(&mut tmp, e);
             if let TypeSignature::Array(mut ty, None) = tmp {
                 self.visit_ty(&mut ty);

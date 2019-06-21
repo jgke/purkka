@@ -5,6 +5,7 @@ use purkkasyntax::*;
 use purkkatoken::token::Token;
 
 fn test_parse_file(s: &str) -> S {
+    println!("Testing following file:\n------\n{}\n------", s);
     parse_file("file.prk", s)
 }
 
@@ -80,7 +81,7 @@ fn parse_types() {
     assert_eq!(
         get_ty(&parse_ty("&&int -> int")).unwrap(),
         &TypeSignature::Function(
-            vec![Param::Anon(Box::new(TypeSignature::Pointer {
+            vec![Param::TypeOnly(Box::new(TypeSignature::Pointer {
                 nullable: false,
                 ty: Box::new(TypeSignature::Pointer {
                     nullable: false,
