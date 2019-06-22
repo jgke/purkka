@@ -18,9 +18,9 @@ static DEFAULT_INCLUDE_PATH: &[&str] = &[
 
 pub fn get_file_cb<'a>(
     options: &'a PreprocessorOptions,
-    get_file_content: &'a Fn(&FileQuery) -> (String, String),
+    get_file_content: &'a dyn Fn(&FileQuery) -> (String, String),
 ) -> impl Fn(FileQuery) -> ResolveResult + 'a {
-    fix(move |get_file: &Fn(FileQuery) -> ResolveResult, req| {
+    fix(move |get_file: &dyn Fn(FileQuery) -> ResolveResult, req| {
         let (content, full_path) = get_file_content(&req);
 
         if req.need_raw {

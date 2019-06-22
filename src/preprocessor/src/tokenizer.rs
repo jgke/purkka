@@ -268,7 +268,7 @@ where
                     substr_iter.next();
                     let token = if let Some(c) = substr_iter.next() {
                         match c {
-                            '0'...'9' => self.read_number(iter),
+                            '0'..='9' => self.read_number(iter),
                             _ => self.read_other(iter),
                         }
                     } else {
@@ -290,8 +290,8 @@ where
                 }
                 Some(c) => {
                     let token = match c {
-                        'a'...'z' | 'A'...'Z' | '_' => self.read_identifier(iter),
-                        '0'...'9' => self.read_number(iter),
+                        'a'..='z' | 'A'..='Z' | '_' => self.read_identifier(iter),
+                        '0'..='9' => self.read_number(iter),
                         _ => self.read_other(iter),
                     };
                     (Some(token), false)
@@ -387,7 +387,7 @@ where
 
     fn read_identifier_raw(&mut self, iter: &mut FragmentIterator) -> (Rc<str>, Source) {
         let (ident, src) = iter.collect_while(|c| match c {
-            '0'...'9' | 'a'...'z' | 'A'...'Z' | '_' => true,
+            '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' => true,
             _ => false,
         });
         (self.intern.get_ref(&ident), src)
@@ -405,8 +405,8 @@ where
                     Some(e.chars().collect())
                 })
                 .unwrap_or_else(|| match c {
-                    'a'...'z' | 'A'...'Z' => Some(vec![c]),
-                    '0'...'9' => Some(vec![c]),
+                    'a'..='z' | 'A'..='Z' => Some(vec![c]),
+                    '0'..='9' => Some(vec![c]),
                     '_' => Some(vec![c]),
                     '.' => Some(vec![c]),
                     _ => None,
@@ -496,7 +496,7 @@ where
             't' => '\t',
             'r' => '\r',
             'v' => '\x0B',
-            c @ '0'...'7' => return self.get_octal(iter, c),
+            c @ '0'..='7' => return self.get_octal(iter, c),
             'x' => return self.get_hex(iter),
             c => c,
         };
@@ -507,10 +507,10 @@ where
     fn get_octal(&self, iter: &mut FragmentIterator, c: char) -> char {
         iter.next();
         match iter.peek() {
-            Some(second @ '0'...'7') => {
+            Some(second @ '0'..='7') => {
                 iter.next();
                 match iter.peek() {
-                    Some(third @ '0'...'7') => {
+                    Some(third @ '0'..='7') => {
                         iter.next();
                         char_from_octal(c, second, third)
                     }
@@ -526,17 +526,17 @@ where
         let mut num: u8 = 0;
         while let Some(c) = iter.peek() {
             match c {
-                c @ '0'...'9' => {
+                c @ '0'..='9' => {
                     num = num.saturating_mul(16).saturating_add(num_val(c));
                     iter.next();
                 }
-                c @ 'a'...'f' => {
+                c @ 'a'..='f' => {
                     num = num
                         .saturating_mul(16)
                         .saturating_add(c as u8 - 'a' as u8 + 10);
                     iter.next();
                 }
-                c @ 'A'...'F' => {
+                c @ 'A'..='F' => {
                     num = num
                         .saturating_mul(16)
                         .saturating_add(c as u8 - 'A' as u8 + 10);
@@ -1382,7 +1382,7 @@ where
                 MacroTokenType::Operator(Operator::MacroPaste) => {
                     if let Some(ident) = sub_iter.peek().and_then(|t| t.get_identifier_str()) {
                         if Some(&ident) == varargs.as_ref() {
-                            if res.get(res.len() - 1).map(|t| &t.0.ty)
+                            if res.last().map(|t| &t.0.ty)
                                 == Some(&MacroTokenType::Punctuation(Punctuation::Comma))
                                 && more_syms[&ident]
                                     == vec![MacroToken::dummy(MacroTokenType::Empty)]
@@ -1484,7 +1484,7 @@ where
         let mut empty_iter = std::iter::empty();
         let mut looping_iter = std::iter::repeat(varargs_str.clone());
 
-        let varargs_iter: &mut Iterator<Item = Rc<str>> = if has_varargs {
+        let varargs_iter: &mut dyn Iterator<Item = Rc<str>> = if has_varargs {
             &mut looping_iter
         } else {
             &mut empty_iter

@@ -225,7 +225,7 @@ pub fn is_left_associative(op: Operator) -> bool {
     }
 }
 
-pub static PUNCTUATION: &'static [(&'static str, &'static Punctuation)] = &[
+pub static PUNCTUATION: &[(&str, &Punctuation)] = &[
     ("[", &Punctuation::OpenBracket),
     ("]", &Punctuation::CloseBracket),
     ("(", &Punctuation::OpenParen),
@@ -238,7 +238,7 @@ pub static PUNCTUATION: &'static [(&'static str, &'static Punctuation)] = &[
     //("#", &Punctuation::Macro)
 ];
 
-pub static KEYWORDS: &'static [(&'static str, &'static Keyword)] = &[
+pub static KEYWORDS: &[(&str, &Keyword)] = &[
     ("asm", &Asm),
     ("auto", &Auto),
     ("break", &Break),

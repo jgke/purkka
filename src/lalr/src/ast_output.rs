@@ -119,7 +119,10 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         self.cx.ty_path(self.cx.path_all(
             self.span,
             true,
-            self.cx.std_path(&["boxed", "Box"]),
+            self.cx.std_path(&[
+                symbol::Symbol::intern("boxed"),
+                symbol::Symbol::intern("Box"),
+            ]),
             vec![ast::GenericArg::Type(ty)],
             Vec::new(),
         ))
@@ -246,7 +249,7 @@ pub fn output_parser(
     tm: &RuleTranslationMap,
     rules: &[Rule],
     terminals: &HashSet<Terminal>,
-) -> Box<MacResult + 'static> {
+) -> Box<dyn MacResult + 'static> {
     let special_rules: HashMap<String, String> = terminals
         .iter()
         .filter(|term| term.conversion_fn.is_some())

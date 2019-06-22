@@ -1014,7 +1014,9 @@ where
                 let e1 = if self.starts_type(next) {
                     DeclarationOrExpression::Declaration(Box::new(self.parse_declaration()))
                 } else {
-                    DeclarationOrExpression::ExpressionStatement(Box::new(self.parse_expression_statement()))
+                    DeclarationOrExpression::ExpressionStatement(Box::new(
+                        self.parse_expression_statement(),
+                    ))
                 };
                 let e2 = Box::new(self.parse_expression_statement());
                 let f_expr = if let Some(Token::CloseParen(..)) = self.peek() {

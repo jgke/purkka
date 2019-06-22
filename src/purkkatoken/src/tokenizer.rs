@@ -24,8 +24,8 @@ pub fn tokenize(
             }
             '"' => read_string(&mut iter, &mut intern, res.len()),
             '\'' => read_char(&mut iter, res.len()),
-            'a'...'z' | 'A'...'Z' | '_' => read_identifier(&mut iter, &mut intern, res.len()),
-            '0'...'9' => read_number(&mut iter, &mut intern, res.len()),
+            'a'..='z' | 'A'..='Z' | '_' => read_identifier(&mut iter, &mut intern, res.len()),
+            '0'..='9' => read_number(&mut iter, &mut intern, res.len()),
             _ => read_other(&mut iter, &mut intern, res.len()),
         };
         res.push(token);
@@ -83,7 +83,7 @@ fn read_number(
         _ => 10,
     };
     let (content_str, source) = iter.collect_while(|c| match c {
-        '0'...'9' | 'a'...'f' | 'A'...'F' | '_' | '.' => true,
+        '0'..='9' | 'a'..='f' | 'A'..='F' | '_' | '.' => true,
         _ => false,
     });
     let content = content_str
@@ -176,7 +176,7 @@ fn read_string_escape(iter: &mut FragmentIterator, c: char) -> char {
         't' => '\t',
         'r' => '\r',
         'v' => '\x0B',
-        c @ '0'...'7' => get_octal(iter, c),
+        c @ '0'..='7' => get_octal(iter, c),
         'x' => get_hex(iter),
         c => c,
     }
@@ -185,10 +185,10 @@ fn read_string_escape(iter: &mut FragmentIterator, c: char) -> char {
 fn get_octal(iter: &mut FragmentIterator, c: char) -> char {
     iter.next();
     match iter.peek() {
-        Some(second @ '0'...'7') => {
+        Some(second @ '0'..='7') => {
             iter.next();
             match iter.peek() {
-                Some(third @ '0'...'7') => {
+                Some(third @ '0'..='7') => {
                     iter.next();
                     char_from_octal(c, second, third)
                 }
@@ -205,17 +205,17 @@ fn get_hex(iter: &mut FragmentIterator) -> char {
 
     while let Some(c) = iter.peek() {
         match c {
-            c @ '0'...'9' => {
+            c @ '0'..='9' => {
                 num = num.saturating_mul(16).saturating_add(num_val(c));
                 iter.next();
             }
-            c @ 'a'...'f' => {
+            c @ 'a'..='f' => {
                 num = num
                     .saturating_mul(16)
                     .saturating_add(c as u8 - 'a' as u8 + 10);
                 iter.next();
             }
-            c @ 'A'...'F' => {
+            c @ 'A'..='F' => {
                 num = num
                     .saturating_mul(16)
                     .saturating_add(c as u8 - 'A' as u8 + 10);
@@ -234,7 +234,7 @@ fn read_identifier(
     num: usize,
 ) -> (Token, Source) {
     let (content, source) = iter.collect_while(|c| match c {
-        '0'...'9' | 'a'...'z' | 'A'...'Z' | '_' => true,
+        '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' => true,
         _ => false,
     });
 

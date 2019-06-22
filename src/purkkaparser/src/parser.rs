@@ -392,7 +392,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             .or_else(|| {
                 expr.map(|e| TypeSignature::DynamicArray(Box::new(ty.clone()), Box::new(e)))
             })
-            .unwrap_or(TypeSignature::Array(Box::new(ty), None))
+            .unwrap_or_else(|| TypeSignature::Array(Box::new(ty), None))
     }
 
     fn parse_ptr(&mut self, op: &str) -> TypeSignature {
@@ -610,14 +610,15 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     let ty = self.parse_type();
                     expr = Expression::Cast(Box::new(expr), ty);
                 }
-                Some(Token::OpenBracket(..)) =>  {
+                Some(Token::OpenBracket(..)) => {
                     read_token!(self, Token::OpenBracket);
                     let inner_expr = Box::new(self.parse_expression());
                     read_token!(self, Token::CloseBracket);
                     expr = Expression::ArrayAccess(Box::new(expr), inner_expr);
                 }
-                Some(Token::OpenParen(..)) =>
-                    expr = Expression::Call(Box::new(expr), self.parse_args()),
+                Some(Token::OpenParen(..)) => {
+                    expr = Expression::Call(Box::new(expr), self.parse_args())
+                }
                 Some(Token::Operator(_, op)) => match self.precedence.get(op).copied() {
                     Some(n) if precedence <= n.precedence => {
                         let mut left = vec![expr];
@@ -992,48 +993,40 @@ mod tests {
             ))) => *e,
             Expression::PrimaryExpression(_) => unreachable!(),
             Expression::Cast(..) => unreachable!(),
-            Expression::Op(op, ExprList::List(list)) => {
-                match op .as_ref(){
-                    "+" => eval_bin!(list, +),
-                    "-" => eval_bin!(list, -),
-                    "*" => eval_bin!(list, *),
-                    "/" => eval_bin!(list, /),
-                    "&" => eval_bin!(list, &),
-                    "|" => eval_bin!(list, |),
-                    "^" => eval_bin!(list, ^),
-                    "**" => eval_tree(&list[0]).pow(eval_tree(&list[1]) as u32),
-                    "?" => {
-                        if let Expression::Op(op, ExprList::List(res_list)) =
-                            &list[1]
-                        {
-                            if op.as_ref() != ":" {
-                                unreachable!();
-                            }
-                            if eval_tree(&list[0]) != 0 {
-                                eval_tree(&res_list[0])
-                            } else {
-                                eval_tree(&res_list[1])
-                            }
-                        } else {
-                            unreachable!()
+            Expression::Op(op, ExprList::List(list)) => match op.as_ref() {
+                "+" => eval_bin!(list, +),
+                "-" => eval_bin!(list, -),
+                "*" => eval_bin!(list, *),
+                "/" => eval_bin!(list, /),
+                "&" => eval_bin!(list, &),
+                "|" => eval_bin!(list, |),
+                "^" => eval_bin!(list, ^),
+                "**" => eval_tree(&list[0]).pow(eval_tree(&list[1]) as u32),
+                "?" => {
+                    if let Expression::Op(op, ExprList::List(res_list)) = &list[1] {
+                        if op.as_ref() != ":" {
+                            unreachable!();
                         }
+                        if eval_tree(&list[0]) != 0 {
+                            eval_tree(&res_list[0])
+                        } else {
+                            eval_tree(&res_list[1])
+                        }
+                    } else {
+                        unreachable!()
                     }
-                    _ => unreachable!(),
                 }
-            }
-            Expression::Unary(op, ExprList::List(list)) => {
-                match op.as_ref() {
-                    "-" => -eval_tree(&list[0]),
-                    "~" => !eval_tree(&list[0]),
-                    _ => unreachable!(),
-                }
-            }
-            Expression::PostFix(expr, op) => {
-                match op.as_ref() {
-                    "++" => eval_tree(&expr),
-                    _ => unreachable!(),
-                }
-            }
+                _ => unreachable!(),
+            },
+            Expression::Unary(op, ExprList::List(list)) => match op.as_ref() {
+                "-" => -eval_tree(&list[0]),
+                "~" => !eval_tree(&list[0]),
+                _ => unreachable!(),
+            },
+            Expression::PostFix(expr, op) => match op.as_ref() {
+                "++" => eval_tree(&expr),
+                _ => unreachable!(),
+            },
             Expression::Call(..) => unreachable!(),
             Expression::ArrayAccess(..) => unreachable!(),
         }

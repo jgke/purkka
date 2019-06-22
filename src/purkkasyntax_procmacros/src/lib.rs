@@ -30,7 +30,7 @@ fn format_blocks(
     result_type: &str,
     fn_name: &str,
     field_num: usize,
-) -> Box<MacResult + 'static> {
+) -> Box<dyn MacResult + 'static> {
     let pat = format!(
         "{}::{}({} t, ..)",
         this,
@@ -86,10 +86,10 @@ fn parse_failure(
     cx: &mut ExtCtxt,
     outer_span: Span,
     tt: Option<&TokenTree>,
-) -> Box<MacResult + 'static> {
+) -> Box<dyn MacResult + 'static> {
     match tt {
-        Some(TokenTree::Token(span, t)) => {
-            let s: Span = *span;
+        Some(TokenTree::Token(t)) => {
+            let s: Span = t.span;
             cx.span_err(s, &format!("Unexpected token: {:?}", t));
             DummyResult::any(s)
         }
@@ -106,9 +106,12 @@ fn read_ident(
     cx: &mut ExtCtxt,
     sp: Span,
     iter: &mut std::slice::Iter<'_, TokenTree>,
-) -> Result<String, Box<MacResult + 'static>> {
+) -> Result<String, Box<dyn MacResult + 'static>> {
     match iter.next() {
-        Some(TokenTree::Token(_, token::Ident(t, _))) => Ok(t.to_string()),
+        Some(TokenTree::Token(token::Token {
+            kind: token::TokenKind::Ident(t, _),
+            ..
+        })) => Ok(t.to_string()),
         tt => Err(parse_failure(cx, sp, tt)),
     }
 }
@@ -117,9 +120,12 @@ fn read_comma(
     cx: &mut ExtCtxt,
     sp: Span,
     iter: &mut std::slice::Iter<'_, TokenTree>,
-) -> Result<(), Box<MacResult + 'static>> {
+) -> Result<(), Box<dyn MacResult + 'static>> {
     match iter.next() {
-        Some(TokenTree::Token(_, token::Comma)) => Ok(()),
+        Some(TokenTree::Token(token::Token {
+            kind: token::TokenKind::Comma,
+            ..
+        })) => Ok(()),
         tt => Err(parse_failure(cx, sp, tt)),
     }
 }
@@ -129,22 +135,41 @@ fn impl_enter_res(
     sp: Span,
     args: &[TokenTree],
     options: Options,
-) -> Result<Box<MacResult + 'static>, Box<MacResult + 'static>> {
+) -> Result<Box<dyn MacResult + 'static>, Box<dyn MacResult + 'static>> {
     let mut iter = args.iter();
     let this = read_ident(cx, sp, &mut iter)?;
     read_comma(cx, sp, &mut iter)?;
     let variant = read_ident(cx, sp, &mut iter)?;
     read_comma(cx, sp, &mut iter)?;
     let result_type: String = match iter.next() {
-        Some(TokenTree::Token(_, token::Ident(t, _))) => t.to_string(),
-        Some(TokenTree::Token(_, token::Literal(token::Str_(i), None))) => i.to_string(),
+        Some(TokenTree::Token(token::Token {
+            kind: token::TokenKind::Ident(t, _),
+            ..
+        })) => t.to_string(),
+        Some(TokenTree::Token(token::Token {
+            kind:
+                token::TokenKind::Literal(token::Lit {
+                    kind: token::LitKind::Str,
+                    symbol,
+                    ..
+                }),
+            ..
+        })) => symbol.to_string(),
         tt => return Err(parse_failure(cx, sp, tt)),
     };
     read_comma(cx, sp, &mut iter)?;
     let fn_name = read_ident(cx, sp, &mut iter)?;
     read_comma(cx, sp, &mut iter)?;
     let field_num = match iter.next() {
-        Some(TokenTree::Token(_, token::Literal(token::Integer(i), None))) => i,
+        Some(TokenTree::Token(token::Token {
+            kind:
+                token::TokenKind::Literal(token::Lit {
+                    kind: token::LitKind::Integer,
+                    symbol,
+                    ..
+                }),
+            ..
+        })) => symbol.to_string(),
         tt => return Err(parse_failure(cx, sp, tt)),
     };
     Ok(format_blocks(
@@ -154,7 +179,7 @@ fn impl_enter_res(
         &variant,
         &result_type,
         &fn_name,
-        field_num.to_string().parse().unwrap(),
+        field_num.parse().unwrap(),
     ))
 }
 
@@ -163,7 +188,7 @@ fn impl_enter(
     sp: Span,
     args: &[TokenTree],
     options: Options,
-) -> Box<MacResult + 'static> {
+) -> Box<dyn MacResult + 'static> {
     match impl_enter_res(cx, sp, args, options) {
         Ok(t) => t,
         Err(t) => t,

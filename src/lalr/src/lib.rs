@@ -29,14 +29,20 @@ use types::{Component, Rule, RuleData, RuleTranslationMap, Terminal};
 
 fn is_semi_r(tree: Option<&TokenTree>) -> bool {
     match tree {
-        Some(TokenTree::Token(_, token::Semi)) => true,
+        Some(TokenTree::Token(token::Token {
+            kind: token::TokenKind::Semi,
+            ..
+        })) => true,
         _ => false,
     }
 }
 
 fn is_semi(tree: Option<&&TokenTree>) -> bool {
     match tree {
-        Some(TokenTree::Token(_, token::Semi)) => true,
+        Some(TokenTree::Token(token::Token {
+            kind: token::TokenKind::Semi,
+            ..
+        })) => true,
         _ => false,
     }
 }
@@ -49,8 +55,8 @@ fn parse_failure<SuccessType>(
     tt: Option<&TokenTree>,
 ) -> ParseResult<SuccessType> {
     match tt {
-        Some(TokenTree::Token(span, t)) => {
-            let s: Span = *span;
+        Some(TokenTree::Token(t)) => {
+            let s: Span = t.span;
             cx.span_err(s, &format!("Unexpected token: {:?}", t));
             Err(Some(s))
         }
@@ -72,39 +78,53 @@ fn parse_special(
 ) -> ParseResult<Terminal> {
     let mut rsp = outer_span;
     let s = match iter.next() {
-        Some(TokenTree::Token(s, token::Not)) => s,
+        Some(TokenTree::Token(token)) => token.span,
         tt => return parse_failure(cx, outer_span, tt),
     };
     let rule_name = match iter.next() {
-        Some(TokenTree::Token(_, token::Ident(t, _))) => t,
-        tt => return parse_failure(cx, *s, tt),
+        Some(TokenTree::Token(token::Token {
+            kind: token::Ident(t, _),
+            ..
+        })) => t,
+        tt => return parse_failure(cx, s, tt),
     };
     match iter.next() {
-        Some(TokenTree::Token(_, token::RArrow)) => {}
-        Some(TokenTree::Token(span, _)) => {
-            let s: Span = *span;
+        Some(TokenTree::Token(token::Token {
+            kind: token::RArrow,
+            ..
+        })) => {}
+        Some(TokenTree::Token(token)) => {
+            let s: Span = token.span;
             cx.span_err(s, "Special rule name must be followed by ->");
             return Err(Some(s));
         }
-        tt => return parse_failure(cx, *s, tt),
+        tt => return parse_failure(cx, s, tt),
     }
 
     let function_name = match iter.next() {
-        Some(TokenTree::Token(_, token::Ident(tt, _))) => tt.name.to_string(),
-        tt => return parse_failure(cx, *s, tt),
+        Some(TokenTree::Token(token::Token {
+            kind: token::Ident(tt, _),
+            ..
+        })) => tt.to_string(),
+        tt => return parse_failure(cx, s, tt),
     };
 
     match iter.next() {
-        Some(TokenTree::Token(_, token::Pound)) => {}
-        tt => return parse_failure(cx, *s, tt),
+        Some(TokenTree::Token(token::Token {
+            kind: token::Pound, ..
+        })) => {}
+        tt => return parse_failure(cx, s, tt),
     };
 
     let mut special_component = match iter.next() {
-        Some(TokenTree::Token(s, token::Ident(tt, _))) => {
-            rsp = *s;
+        Some(TokenTree::Token(token::Token {
+            kind: token::Ident(tt, _),
+            ..
+        })) => {
+            rsp = s;
             Terminal {
-                identifier: tt.name.to_string(),
-                full_path: tt.name.to_string(),
+                identifier: tt.to_string(),
+                full_path: tt.to_string(),
                 span: s.to(rsp),
                 conversion_fn: None,
             }
@@ -114,16 +134,22 @@ fn parse_special(
 
     while !is_semi(iter.peek()) {
         match iter.next() {
-            Some(TokenTree::Token(s, token::ModSep)) => {
-                rsp = *s;
+            Some(TokenTree::Token(token::Token {
+                kind: token::ModSep,
+                ..
+            })) => {
+                rsp = s;
                 match iter.next() {
-                    Some(TokenTree::Token(s, token::Ident(tt, _))) => {
-                        rsp = *s;
-                        let right = tt.name.to_string();
+                    Some(TokenTree::Token(token::Token {
+                        kind: token::Ident(tt, _),
+                        ..
+                    })) => {
+                        rsp = s;
+                        let right = tt.to_string();
                         special_component.full_path.push_str("::");
                         special_component.full_path.push_str(&right);
                         special_component.identifier = right;
-                        special_component.span = special_component.span.to(*s);
+                        special_component.span = special_component.span.to(s);
                     }
                     tt => return parse_failure(cx, s.to(rsp), tt),
                 }
@@ -156,21 +182,40 @@ fn parse_enumdef(
                 if break_next {
                     break;
                 }
-                if let Some(t @ TokenTree::Token(_, token::Semi)) = iter.peek() {
+                if let Some(
+                    t @ TokenTree::Token(token::Token {
+                        kind: token::Semi, ..
+                    }),
+                ) = iter.peek()
+                {
                     res.push((*t).clone());
                     break;
                 }
             }
-            Some(t @ TokenTree::Token(_, token::Ident(..))) => {
+            Some(
+                t @ TokenTree::Token(token::Token {
+                    kind: token::Ident(..),
+                    ..
+                }),
+            ) => {
                 res.push(t.clone());
-                if let TokenTree::Token(_, token::Ident(ident, _)) = t {
-                    if ident.name == "enum" || ident.name == "struct" {
+                if let TokenTree::Token(token::Token {
+                    kind: token::Ident(ident, _),
+                    ..
+                }) = t
+                {
+                    if ident.as_str() == "enum" || ident.as_str() == "struct" {
                         break_next = true;
                     }
                 }
                 if !break_next {
                     // enable constructs like @ type TypeName = Foo
-                    if let Some(t @ TokenTree::Token(_, token::Semi)) = iter.peek() {
+                    if let Some(
+                        t @ TokenTree::Token(token::Token {
+                            kind: token::Semi, ..
+                        }),
+                    ) = iter.peek()
+                    {
                         res.push((*t).clone());
                         break;
                     }
@@ -182,8 +227,8 @@ fn parse_enumdef(
                     cx,
                     res.last()
                         .and_then(|t| {
-                            if let TokenTree::Token(s, _) = t {
-                                Some(*s)
+                            if let TokenTree::Token(t) = t {
+                                Some(t.span)
                             } else {
                                 None
                             }
@@ -211,13 +256,19 @@ fn parse_item(
     let mut terminal = false;
     let mut indirect = false;
     let (s, t) = match iter.next() {
-        Some(TokenTree::Token(s, token::Ident(t, _))) => (s, t),
+        Some(TokenTree::Token(token::Token {
+            kind: token::Ident(t, _),
+            span: s,
+        })) => (s, t),
         tt => return parse_failure(cx, outer_span, tt),
     };
     match iter.next() {
-        Some(TokenTree::Token(_, token::RArrow)) => {}
-        Some(TokenTree::Token(span, _)) => {
-            let s: Span = *span;
+        Some(TokenTree::Token(token::Token {
+            kind: token::RArrow,
+            ..
+        })) => {}
+        Some(TokenTree::Token(token)) => {
+            let s: Span = token.span;
             cx.span_err(s, "Rule name must be followed by ->");
             return Err(Some(s));
         }
@@ -233,51 +284,82 @@ fn parse_item(
 
     while !is_semi(iter.peek()) {
         match iter.next() {
-            Some(TokenTree::Token(_, token::Literal(token::Integer(new_prio), None))) => {
+            Some(TokenTree::Token(token::Token {
+                kind:
+                    token::TokenKind::Literal(token::Lit {
+                        kind: token::LitKind::Integer,
+                        symbol,
+                        ..
+                    }),
+                ..
+            })) => {
+                let new_prio = symbol.to_string().parse().unwrap();
                 priority = match iter.next() {
-                    Some(TokenTree::Token(_, token::Colon)) => {
-                        Some((new_prio.to_string().parse().unwrap(), true))
-                    }
-                    Some(TokenTree::Token(_, token::Ident(tt, _))) => {
-                        match (iter.next(), tt.name.to_string().as_ref()) {
-                            (Some(TokenTree::Token(_, token::Colon)), "l") => {
-                                Some((new_prio.to_string().parse().unwrap(), true))
-                            }
-                            (Some(TokenTree::Token(_, token::Colon)), "r") => {
-                                Some((new_prio.to_string().parse().unwrap(), false))
-                            }
-                            (tt, _) => return parse_failure(cx, s.to(rsp), tt),
-                        }
-                    }
+                    Some(TokenTree::Token(token::Token {
+                        kind: token::TokenKind::Colon,
+                        ..
+                    })) => Some((new_prio, true)),
+                    Some(TokenTree::Token(token::Token {
+                        kind: token::Ident(tt, _),
+                        ..
+                    })) => match (iter.next(), tt.as_str().as_ref()) {
+                        (
+                            Some(TokenTree::Token(token::Token {
+                                kind: token::Colon, ..
+                            })),
+                            "l",
+                        ) => Some((new_prio.to_string().parse().unwrap(), true)),
+                        (
+                            Some(TokenTree::Token(token::Token {
+                                kind: token::Colon, ..
+                            })),
+                            "r",
+                        ) => Some((new_prio.to_string().parse().unwrap(), false)),
+                        (tt, _) => return parse_failure(cx, s.to(rsp), tt),
+                    },
                     tt => return parse_failure(cx, s.to(rsp), tt),
                 };
             }
-            Some(TokenTree::Token(_, token::Not)) => {
+            Some(TokenTree::Token(token::Token {
+                kind: token::Not, ..
+            })) => {
                 action = match iter.next() {
-                    Some(TokenTree::Token(_, token::Ident(tt, _))) => Some(tt.name.to_string()),
+                    Some(TokenTree::Token(token::Token {
+                        kind: token::Ident(tt, _),
+                        ..
+                    })) => Some(tt.to_string()),
                     tt => return parse_failure(cx, s.to(rsp), tt),
                 };
             }
-            Some(TokenTree::Token(s, token::Ident(tt, _))) => {
+            Some(TokenTree::Token(token::Token {
+                kind: token::Ident(tt, _),
+                ..
+            })) => {
                 rsp = *s;
                 current_components.push(RuleData {
-                    identifier: tt.name.to_string(),
-                    full_path: tt.name.to_string(),
+                    identifier: tt.to_string(),
+                    full_path: tt.to_string(),
                     span: rsp,
                     terminal,
-                    indirect: indirect || tt.name.as_str() == t.name.as_str(),
+                    indirect: indirect || tt.as_str() == t.as_str(),
                     conversion_fn: None,
                 });
                 terminal = false;
                 indirect = false;
             }
-            Some(TokenTree::Token(s, token::ModSep)) => {
-                rsp = *s;
+            Some(TokenTree::Token(token::Token {
+                kind: token::ModSep,
+                span,
+            })) => {
+                rsp = *span;
                 if let Some(mut data) = current_components.pop() {
                     match iter.next() {
-                        Some(TokenTree::Token(s, token::Ident(tt, _))) => {
+                        Some(TokenTree::Token(token::Token {
+                            kind: token::Ident(tt, _),
+                            ..
+                        })) => {
                             rsp = *s;
-                            let right = tt.name.to_string();
+                            let right = tt.to_string();
                             data.full_path.push_str("::");
                             data.full_path.push_str(&right);
                             data.identifier = right;
@@ -290,16 +372,25 @@ fn parse_item(
                     return parse_failure(cx, s.to(rsp), None);
                 }
             }
-            Some(TokenTree::Token(s, token::Pound)) => {
-                rsp = *s;
+            Some(TokenTree::Token(token::Token {
+                kind: token::Pound,
+                span,
+            })) => {
+                rsp = *span;
                 terminal = true;
             }
-            Some(TokenTree::Token(s, token::BinOp(token::BinOpToken::And))) => {
-                rsp = *s;
+            Some(TokenTree::Token(token::Token {
+                kind: token::BinOp(token::BinOpToken::And),
+                span,
+            })) => {
+                rsp = *span;
                 indirect = true;
             }
-            Some(TokenTree::Token(s, token::BinOp(token::BinOpToken::Or))) => {
-                rsp = *s;
+            Some(TokenTree::Token(token::Token {
+                kind: token::BinOp(token::BinOpToken::Or),
+                span,
+            })) => {
+                rsp = *span;
                 let real_real_name = real_name
                     .unwrap_or_else(|| current_components.get(0).unwrap().identifier.clone());
                 real_name = None;
@@ -313,16 +404,22 @@ fn parse_item(
                 priority = None;
                 current_components = vec![];
             }
-            Some(TokenTree::Token(s, token::Dot)) => {
-                rsp = *s;
+            Some(TokenTree::Token(token::Token {
+                kind: token::Dot,
+                span,
+            })) => {
+                rsp = *span;
                 if let Some(data) = current_components.pop() {
                     real_name = Some(data.identifier);
                 } else {
                     return parse_failure(cx, s.to(rsp), None);
                 }
             }
-            Some(TokenTree::Token(s, token::Token::At)) => {
-                enumdef = Some(parse_enumdef(cx, iter, *s)?);
+            Some(TokenTree::Token(token::Token {
+                kind: token::TokenKind::At,
+                span,
+            })) => {
+                enumdef = Some(parse_enumdef(cx, iter, *span)?);
             }
             tt => return parse_failure(cx, s.to(rsp), tt),
         }
@@ -340,7 +437,7 @@ fn parse_item(
 
     assert!(is_semi_r(iter.next()));
 
-    let identifier = t.name.as_str();
+    let identifier = t.as_str();
     let span = s.to(rsp);
 
     let rule = Rule {
@@ -364,7 +461,7 @@ fn parse_item(
     Ok(rule)
 }
 
-fn expand_enums(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult + 'static> {
+fn expand_enums(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<dyn MacResult + 'static> {
     let mut tm = RuleTranslationMap {
         ..Default::default()
     };
@@ -391,7 +488,9 @@ fn expand_enums(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree]) -> Box<MacResult
 
     loop {
         match iter.peek() {
-            Some(TokenTree::Token(_, token::Not)) => match parse_special(cx, sp, &mut iter) {
+            Some(TokenTree::Token(token::Token {
+                kind: token::Not, ..
+            })) => match parse_special(cx, sp, &mut iter) {
                 Ok(item) => {
                     terminals.insert(item);
                 }

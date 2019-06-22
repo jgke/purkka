@@ -77,19 +77,19 @@ fn fragment_spans() {
 fn take_while() {
     let mut iter = FragmentIterator::new("foo.h", "foo bar baz");
     let (s1, _) = iter.collect_while(|x| match x {
-        'a'...'z' => true,
+        'a'..='z' => true,
         _ => false,
     });
     assert_eq!(s1, "foo");
     assert_eq!(iter.next(), Some(' '));
     let (s2, _) = iter.collect_while(|x| match x {
-        'a'...'z' => true,
+        'a'..='z' => true,
         _ => false,
     });
     assert_eq!(s2, "bar");
     assert_eq!(iter.next(), Some(' '));
     let (s3, _) = iter.collect_while(|x| match x {
-        'a'...'z' => true,
+        'a'..='z' => true,
         _ => false,
     });
     assert_eq!(s3, "baz");
@@ -100,7 +100,7 @@ fn take_while() {
 fn take_while_mut() {
     let mut iter = FragmentIterator::new("foo.h", "foo bar baz");
     let (s1, span) = iter.collect_while_map(|x, _| match x {
-        'a'...'z' => Some('A'),
+        'a'..='z' => Some('A'),
         _ => None,
     });
     assert_eq!(s1, "AAA");
@@ -119,10 +119,10 @@ fn take_while_mut() {
     assert_eq!(iter.next(), Some(' '));
 
     let (s2, span) = iter.collect_while_flatmap(|x, iter| match x {
-        'a'...'z' => {
+        'a'..='z' => {
             iter.next();
             match iter.peek() {
-                Some('a'...'z') => Some(vec!['D', 'B']),
+                Some('a'..='z') => Some(vec!['D', 'B']),
                 _ => None,
             }
         }
@@ -144,7 +144,7 @@ fn take_while_mut() {
     assert_eq!(iter.next(), Some(' '));
 
     let (s3, _) = iter.collect_while_flatmap(|x, _| match x {
-        'a'...'z' => Some(vec![]),
+        'a'..='z' => Some(vec![]),
         _ => None,
     });
     assert_eq!(s3, vec![]);
