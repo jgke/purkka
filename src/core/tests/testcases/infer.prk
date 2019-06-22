@@ -4,12 +4,12 @@ fun foo() {
     return b;
 };
 
-let bar = fun (left, right) {
+const bar = fun (left, right) {
     let res = left + right;
     return res;
 };
 
-let for_each = fun(f: int -> void, list, n) {
+const for_each = fun (f: int -> void, list, n) {
     for (let i = 0; i < n; i++) {
         f(list[i]);
     }
