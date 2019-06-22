@@ -191,11 +191,9 @@ grammar! {
         pub enum PrimaryExpression {
             Identifier(Rc<str>),
             StructInitialization(Rc<str>, Vec<StructInitializationField>),
-            Call(Box<PrimaryExpression>, ArgList),
             Literal(Literal),
             BlockExpression(Box<BlockExpression>),
             Expression(Box<Expression>),
-            ArrayAccess(Box<PrimaryExpression>, Box<Expression>),
             Lambda(Lambda),
         }
         ;
@@ -265,6 +263,18 @@ grammar! {
         | Unary. #Token::Operator ExprList
         | PostFix. Expression #Token::Operator
         | Cast. Expression #Token::As TypeSignature
+        | Call. &PrimaryExpression ArgList
+        | ArrayAccess. &PrimaryExpression #Token::OpenBracket &Expression #Token::CloseBracket
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum Expression {
+            PrimaryExpression(PrimaryExpression),
+            Op(Rc<str>, ExprList),
+            Unary(Rc<str>, ExprList),
+            PostFix(Box<Expression>, Rc<str>),
+            Cast(Box<Expression>, TypeSignature),
+            Call(Box<Expression>, ArgList),
+            ArrayAccess(Box<Expression>, Box<Expression>),
+        }
         ;
 
     ExprList -> Expression | Expression ExprList
@@ -458,7 +468,7 @@ impl Expression {
     pub fn eval(&self, constants: &HashMap<Rc<str>, Literal>) -> Result<Literal, Rc<str>> {
         match self {
             Expression::PrimaryExpression(e) => e.eval(constants),
-            Expression::Op(Token::Operator(_, op), ExprList::List(list)) => match op.as_ref() {
+            Expression::Op(op, ExprList::List(list)) => match op.as_ref() {
                 "+" => Ok(list[0].eval(constants)? + list[1].eval(constants)?),
                 "/" => Ok(list[0].eval(constants)? / list[1].eval(constants)?),
                 otherwise => panic!("Not implemented: {:?}", otherwise),
@@ -477,6 +487,12 @@ impl PrimaryExpression {
             PrimaryExpression::Identifier(s) => constants.get(s).cloned().ok_or_else(|| s.clone()),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
+    }
+}
+
+impl From<&str> for PrimaryExpression {
+    fn from(ty: &str) -> Self {
+        PrimaryExpression::Identifier(From::from(ty))
     }
 }
 

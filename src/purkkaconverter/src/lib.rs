@@ -419,12 +419,12 @@ impl Context {
 
     pub fn expression_as_ternary(&mut self, k: pp::Expression) -> cp::TernaryExpression {
         match k {
-            pp::Expression::PrimaryExpression(pp::PrimaryExpression::Call(expr, pp::ArgList::Args(list))) => {
+            pp::Expression::Call(expr, pp::ArgList::Args(list)) => {
                 cp::TernaryExpression::GeneralExpression(cp::GeneralExpression::CastExpression(
                     Box::new(cp::CastExpression::UnaryExpression(
                         cp::UnaryExpression::PostfixExpression(Box::new(
                             cp::PostfixExpression::Call(
-                                    Box::new(cp::PostfixExpression::PrimaryExpression(self.primary_expr(*expr))),
+                                    Box::new(self.expression_as_postfix(*expr)),
                                     ct::Token::OpenParen(0),
                                     cp::ArgumentExpressionList::List(
                                         list.into_iter().map(|e| cp::AssignmentExpression::TernaryExpression(
@@ -436,12 +436,12 @@ impl Context {
                     )),
                 ))
             }
-            pp::Expression::PrimaryExpression(pp::PrimaryExpression::ArrayAccess(arr_expr, index_expr)) => {
+            pp::Expression::ArrayAccess(arr_expr, index_expr) => {
                 cp::TernaryExpression::GeneralExpression(cp::GeneralExpression::CastExpression(
                     Box::new(cp::CastExpression::UnaryExpression(
                         cp::UnaryExpression::PostfixExpression(Box::new(
                             cp::PostfixExpression::Index(
-                                    Box::new(cp::PostfixExpression::PrimaryExpression(self.primary_expr(*arr_expr))),
+                                    Box::new(self.expression_as_postfix(*arr_expr)),
                                     ct::Token::OpenBracket(0),
                                     Box::new(self.expression(*index_expr)),
                                     ct::Token::CloseBracket(0),
@@ -464,18 +464,14 @@ impl Context {
             pp::Expression::Op(op, pp::ExprList::List(list)) => {
                 let left = Box::new(self.expression_as_general(list[0].clone()));
                 let right = Box::new(self.expression_as_general(list[1].clone()));
-                let e = match &op {
-                    pt::Token::Operator(_, s) if s.as_ref() == "+" => {
-                        cp::GeneralExpression::Plus(left, ct::Token::Plus(0), right)
-                    }
-                    pt::Token::Operator(_, s) if s.as_ref() == "<" => {
-                        cp::GeneralExpression::LessThan(left, ct::Token::LessThan(0), right)
-                    }
+                let e = match op.as_ref() {
+                    "+" => cp::GeneralExpression::Plus(left, ct::Token::Plus(0), right),
+                    "<" => cp::GeneralExpression::LessThan(left, ct::Token::LessThan(0), right),
                     other => panic!("Not implemented: {:?}", other),
                 };
                 cp::TernaryExpression::GeneralExpression(e)
             }
-            pp::Expression::PostFix(postfix_expr, pt::Token::Operator(_, t)) => {
+            pp::Expression::PostFix(postfix_expr, t) => {
                 let expr = Box::new(self.expression_as_postfix(*postfix_expr));
                 let e = match t.as_ref() {
                     "++" => {
@@ -495,12 +491,28 @@ impl Context {
     }
 
     pub fn expression_as_postfix(&mut self, k: pp::Expression) -> cp::PostfixExpression {
-        let tern = self.expression_as_ternary(k);
-        cp::PostfixExpression::PrimaryExpression(
-            cp::PrimaryExpression::Expression(
-                Box::new(cp::Expression::Expression(
-                        vec![cp::AssignmentExpression::TernaryExpression(tern)]
-                        ))))
+        match k {
+            pp::Expression::PrimaryExpression(expr) =>
+                cp::PostfixExpression::PrimaryExpression(self.primary_expr(expr)),
+            pp::Expression::PostFix(expr, op) =>
+                match op.as_ref() {
+                    "++" => cp::PostfixExpression::Increment(
+                        Box::new(self.expression_as_postfix(*expr)),
+                        cp::IncrementOrDecrement::Increment(ct::Token::Increment(0))),
+                    "--" => cp::PostfixExpression::Increment(
+                        Box::new(self.expression_as_postfix(*expr)),
+                        cp::IncrementOrDecrement::Decrement(ct::Token::Decrement(0))),
+                    other => panic!("Not implemented: {:?}", other),
+                }
+            _ => {
+                let tern = self.expression_as_ternary(k);
+                cp::PostfixExpression::PrimaryExpression(
+                    cp::PrimaryExpression::Expression(
+                        Box::new(cp::Expression::Expression(
+                                vec![cp::AssignmentExpression::TernaryExpression(tern)]
+                                ))))
+            }
+        }
     }
 
     fn expression_as_general(&mut self, k: pp::Expression) -> cp::GeneralExpression {

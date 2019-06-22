@@ -157,7 +157,7 @@ impl TypeInferrer {
     fn get_type(&mut self, expression: &Expression) -> (IntermediateType, Vec<IntermediateType>) {
         match expression {
             Expression::PrimaryExpression(expr) => self.get_primary_expr_type(expr),
-            Expression::Op(Token::Operator(_, t), ExprList::List(list)) => match t.as_ref() {
+            Expression::Op(t, ExprList::List(list)) => match t.as_ref() {
                 "+" | "-" | "*" | "%" => {
                     assert_eq!(list.len(), 2);
                     let left = self.get_type(&list[0]);
@@ -193,13 +193,27 @@ impl TypeInferrer {
                 }
                 otherwise => panic!("Not implemented: {:?}", otherwise),
             },
-            Expression::PostFix(e, Token::Operator(_, t)) => match t.as_ref() {
+            Expression::PostFix(e, t) => match t.as_ref() {
                 "++" => {
                     let ty = self.get_type(&e);
                     self.make_equal_to_num(&ty.0);
                     ty
                 }
                 otherwise => panic!("Not implemented: {:?}", otherwise),
+            }
+            Expression::ArrayAccess(expr, index) => self.get_array_access_type(expr, index),
+            Expression::Call(expr, ArgList::Args(args)) => {
+                let (ty, mut ret_tys) = self.get_type(&*expr);
+                for arg in args {
+                    let (_, mut more_ret_tys) = self.get_type(arg);
+                    ret_tys.append(&mut more_ret_tys);
+                }
+
+                match From::from(ty) {
+                    t@TypeSignature::Function(..) => (self.call_exact(&t, args), ret_tys),
+                    TypeSignature::Infer(inferred) => (self.call_inferred(&inferred, args), ret_tys),
+                    otherwise => panic!("Not implemented: {:?}", otherwise),
+                }
             }
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
@@ -211,7 +225,6 @@ impl TypeInferrer {
             PrimaryExpression::Literal(Literal::Integer(..)) => {
                 (From::from(TypeSignature::Plain(From::from("int"))), Vec::new())
             }
-            PrimaryExpression::ArrayAccess(expr, index) => self.get_array_access_type(expr, index),
             PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block)) => {
                 if let TypeSignature::Infer(_id) = return_type {
                     self.push_block();
@@ -249,19 +262,6 @@ impl TypeInferrer {
                     )), Vec::new())
                 }
             }
-            PrimaryExpression::Call(expr, ArgList::Args(args)) => {
-                let (ty, mut ret_tys) = self.get_primary_expr_type(&*expr);
-                for arg in args {
-                    let (_, mut more_ret_tys) = self.get_type(arg);
-                    ret_tys.append(&mut more_ret_tys);
-                }
-
-                match From::from(ty) {
-                    t@TypeSignature::Function(..) => (self.call_exact(&t, args), ret_tys),
-                    TypeSignature::Infer(inferred) => (self.call_inferred(&inferred, args), ret_tys),
-                    otherwise => panic!("Not implemented: {:?}", otherwise),
-                }
-            }
             PrimaryExpression::Expression(expr) => self.get_type(expr),
             PrimaryExpression::StructInitialization(ident, _) => {
                 (From::from(TypeSignature::Plain(ident.clone())), Vec::new())
@@ -270,8 +270,8 @@ impl TypeInferrer {
         }
     }
 
-    fn get_array_access_type(&mut self, array_expr: &PrimaryExpression, index_expr: &Expression) -> (IntermediateType, Vec<IntermediateType>) {
-        let (ty, mut ret_tys) = self.get_primary_expr_type(array_expr);
+    fn get_array_access_type(&mut self, array_expr: &Expression, index_expr: &Expression) -> (IntermediateType, Vec<IntermediateType>) {
+        let (ty, mut ret_tys) = self.get_type(array_expr);
         let (index_ty, index_ret_tys) = self.get_type(index_expr);
         ret_tys.extend(index_ret_tys);
         self.make_equal_to_num(&index_ty);

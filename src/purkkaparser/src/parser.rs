@@ -589,44 +589,52 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_expression_(&mut self, precedence: usize) -> Expression {
-        if let Some(Token::Operator(_, p)) = self.peek() {
-            match self.unary_precedence.get(p).copied() {
+        if let Some(Token::Operator(_, op)) = self.peek() {
+            match self.unary_precedence.get(op).copied() {
                 Some(n) if n.left_associative => {
                     assert_eq!(n.left_associative, true);
-                    let op = self.next().unwrap().clone();
+                    read_token!(self, Token::Operator);
                     let exprs = (0..n.param_count)
                         .map(|_| self.parse_expression_(n.precedence))
                         .collect();
-                    return Expression::Unary(op, ExprList::List(exprs));
+                    return Expression::Unary(op.clone(), ExprList::List(exprs));
                 }
-                _ => panic!("Unknown prefix operator: {:?}", p),
+                _ => panic!("Unknown prefix operator: {:?}", op),
             }
         }
         let mut expr = Expression::PrimaryExpression(self.parse_primary_expression());
         loop {
             match self.peek() {
                 Some(Token::As(..)) => {
-                    let as_tok = read_token!(self, Token::As);
+                    read_token!(self, Token::As);
                     let ty = self.parse_type();
-                    expr = Expression::Cast(Box::new(expr), as_tok, ty);
+                    expr = Expression::Cast(Box::new(expr), ty);
                 }
-                Some(Token::Operator(_, p)) => match self.precedence.get(p).copied() {
+                Some(Token::OpenBracket(..)) =>  {
+                    read_token!(self, Token::OpenBracket);
+                    let inner_expr = Box::new(self.parse_expression());
+                    read_token!(self, Token::CloseBracket);
+                    expr = Expression::ArrayAccess(Box::new(expr), inner_expr);
+                }
+                Some(Token::OpenParen(..)) =>
+                    expr = Expression::Call(Box::new(expr), self.parse_args()),
+                Some(Token::Operator(_, op)) => match self.precedence.get(op).copied() {
                     Some(n) if precedence <= n.precedence => {
                         let mut left = vec![expr];
-                        let op = self.next().unwrap().clone();
+                        read_token!(self, Token::Operator);
                         let mut tail = (1..n.param_count)
                             .map(|_| self.parse_expression_(n.precedence))
                             .collect();
                         left.append(&mut tail);
-                        expr = Expression::Op(op, ExprList::List(left));
+                        expr = Expression::Op(op.clone(), ExprList::List(left));
                     }
                     Some(_) => break,
-                    None => match self.postfix_precedence.get(p) {
+                    None => match self.postfix_precedence.get(op) {
                         Some(_) => {
-                            let op = self.next().unwrap().clone();
-                            expr = Expression::PostFix(Box::new(expr), op);
+                            read_token!(self, Token::Operator);
+                            expr = Expression::PostFix(Box::new(expr), op.clone());
                         }
-                        _ => panic!("Unknown operator: {}", p),
+                        _ => panic!("Unknown operator: {}", op),
                     },
                 },
                 _ => break,
@@ -636,7 +644,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_primary_expression(&mut self) -> PrimaryExpression {
-        let mut expr = match self.peek() {
+        match self.peek() {
             Some(Token::Identifier(..)) => {
                 let t = self.next().identifier_s().unwrap().clone();
                 let is_ty = self.is_ty(&t);
@@ -666,21 +674,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block))
             }
             t => unexpected_token!(t, self),
-        };
-        loop {
-            match self.peek() {
-                Some(Token::OpenBracket(..)) =>  {
-                    read_token!(self, Token::OpenBracket);
-                    let inner_expr = Box::new(self.parse_expression());
-                    read_token!(self, Token::CloseBracket);
-                    expr = PrimaryExpression::ArrayAccess(Box::new(expr), inner_expr);
-                }
-                Some(Token::OpenParen(..)) =>
-                    expr = PrimaryExpression::Call(Box::new(expr), self.parse_args()),
-                _ => break,
-            }
         }
-        expr
     }
 
     fn parse_lambda(&mut self) -> (Vec<LambdaParam>, TypeSignature, BlockExpression) {
@@ -999,12 +993,7 @@ mod tests {
             Expression::PrimaryExpression(_) => unreachable!(),
             Expression::Cast(..) => unreachable!(),
             Expression::Op(op, ExprList::List(list)) => {
-                let op_s: &str = if let Token::Operator(_, s) = op {
-                    &*s
-                } else {
-                    unreachable!()
-                };
-                match op_s {
+                match op .as_ref(){
                     "+" => eval_bin!(list, +),
                     "-" => eval_bin!(list, -),
                     "*" => eval_bin!(list, *),
@@ -1014,10 +1003,10 @@ mod tests {
                     "^" => eval_bin!(list, ^),
                     "**" => eval_tree(&list[0]).pow(eval_tree(&list[1]) as u32),
                     "?" => {
-                        if let Expression::Op(Token::Operator(_, op), ExprList::List(res_list)) =
+                        if let Expression::Op(op, ExprList::List(res_list)) =
                             &list[1]
                         {
-                            if &**op != ":" {
+                            if op.as_ref() != ":" {
                                 unreachable!();
                             }
                             if eval_tree(&list[0]) != 0 {
@@ -1033,28 +1022,20 @@ mod tests {
                 }
             }
             Expression::Unary(op, ExprList::List(list)) => {
-                let op_s: &str = if let Token::Operator(_, s) = op {
-                    &*s
-                } else {
-                    unreachable!()
-                };
-                match op_s {
+                match op.as_ref() {
                     "-" => -eval_tree(&list[0]),
                     "~" => !eval_tree(&list[0]),
                     _ => unreachable!(),
                 }
             }
             Expression::PostFix(expr, op) => {
-                let op_s: &str = if let Token::Operator(_, s) = op {
-                    &*s
-                } else {
-                    unreachable!()
-                };
-                match op_s {
+                match op.as_ref() {
                     "++" => eval_tree(&expr),
                     _ => unreachable!(),
                 }
             }
+            Expression::Call(..) => unreachable!(),
+            Expression::ArrayAccess(..) => unreachable!(),
         }
     }
 
@@ -1146,10 +1127,10 @@ mod tests {
                 .declaration()
                 .expr()
                 .unwrap(),
-            &Expression::PrimaryExpression(PrimaryExpression::Call(
-                From::from("foo"),
+            &Expression::Call(
+                Box::new(Expression::PrimaryExpression(From::from("foo"))),
                 ArgList::Args(vec![])
-            ))
+            )
         );
     }
 
@@ -1183,12 +1164,12 @@ mod tests {
                 .declaration()
                 .expr()
                 .unwrap(),
-            &Expression::PrimaryExpression(PrimaryExpression::Call(
-                From::from("foo"),
+            &Expression::Call(
+                Box::new(Expression::PrimaryExpression(From::from("foo"))),
                 ArgList::Args(vec![Expression::PrimaryExpression(
                     PrimaryExpression::Identifier(From::from("asd"))
                 )])
-            ))
+            )
         );
     }
 
@@ -1224,13 +1205,13 @@ mod tests {
                 .declaration()
                 .expr()
                 .unwrap(),
-            &Expression::PrimaryExpression(PrimaryExpression::Call(
-                From::from("foo"),
+            &Expression::Call(
+                Box::new(Expression::PrimaryExpression(From::from("foo"))),
                 ArgList::Args(vec![
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("asd"))),
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("qwe")))
                 ])
-            ))
+            )
         );
     }
 
@@ -1268,8 +1249,8 @@ mod tests {
                 .declaration()
                 .expr()
                 .unwrap(),
-            &Expression::PrimaryExpression(PrimaryExpression::Call(
-                From::from("foo"),
+            &Expression::Call(
+                Box::new(Expression::PrimaryExpression(From::from("foo"))),
                 ArgList::Args(vec![
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("asd"))),
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("qwe"))),
@@ -1277,7 +1258,7 @@ mod tests {
                         "aoeu"
                     )))
                 ])
-            ))
+            )
         );
     }
 }

@@ -165,9 +165,18 @@ pub fn walk_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Expressi
         Expression::PostFix(expr, _op) => {
             visitor.visit_expression(expr);
         }
-        Expression::Cast(expr, _as, ty) => {
+        Expression::Cast(expr, ty) => {
             visitor.visit_expression(expr);
             visitor.visit_ty(ty);
+        }
+        Expression::Call(expr, ArgList::Args(ref mut args)) => {
+            visitor.visit_expression(expr.deref_mut());
+            args.iter_mut()
+                .for_each(|ref mut a| visitor.visit_expression(a.deref_mut()));
+        }
+        Expression::ArrayAccess(array_expr, index_expr) => {
+            visitor.visit_expression(array_expr.deref_mut());
+            visitor.visit_expression(index_expr.deref_mut());
         }
     }
 }
@@ -175,10 +184,6 @@ pub fn walk_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Expressi
 pub fn walk_primary_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut PrimaryExpression) {
     match s {
         PrimaryExpression::Identifier(_ident) => {}
-        PrimaryExpression::Call(_, ArgList::Args(ref mut args)) => {
-            args.iter_mut()
-                .for_each(|ref mut a| visitor.visit_expression(a.deref_mut()));
-        }
         PrimaryExpression::Literal(literal) => {
             visitor.visit_literal(literal);
         }
@@ -190,10 +195,6 @@ pub fn walk_primary_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut 
         }
         PrimaryExpression::Lambda(lambda) => {
             visitor.visit_lambda(lambda);
-        }
-        PrimaryExpression::ArrayAccess(primary_expr, expr) => {
-            visitor.visit_primary_expression(primary_expr.deref_mut());
-            visitor.visit_expression(expr.deref_mut());
         }
         PrimaryExpression::StructInitialization(_ident, list) => {
             list.iter_mut().for_each(

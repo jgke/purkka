@@ -3,7 +3,7 @@ int _lambda_1(int left, int right) {
     return res;
 }
 void _lambda_2(void (*f)(int ), int *list, int n) { {
-        for(int i = 0; i < n;(i) ++) {
+        for(int i = 0; i < n; i++) {
             f(list[i]);
         }
     }

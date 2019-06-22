@@ -67,8 +67,6 @@ impl Context {
     fn push_token(&mut self, token: &Token) {
         let s = match token {
             // First set: Always space before and after
-            Token::Increment(_) => "++",
-            Token::Decrement(_) => "--",
             Token::BitAnd(_) => "&",
             Token::Plus(_) => "+",
             Token::Minus(_) => "-",
@@ -149,6 +147,8 @@ impl Context {
                             Token::MacroPaste(_) => "##",
                             Token::Dot(_) => ".",
                             Token::Arrow(_) => "->",
+                            Token::Increment(_) => "++",
+                            Token::Decrement(_) => "--",
 
                             // Punctuation
                             Token::OpenBracket(_) => "[",
