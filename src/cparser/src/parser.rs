@@ -1010,13 +1010,18 @@ where
             Some(Token::For(..)) => {
                 let f = read_token!(self, Token::For);
                 let op = read_token!(self, Token::OpenParen);
-                let e1 = Box::new(self.parse_expression_statement());
+                let next = self.peek().cloned().unwrap();
+                let e1 = if self.starts_type(next) {
+                    DeclarationOrExpression::Declaration(Box::new(self.parse_declaration()))
+                } else {
+                    DeclarationOrExpression::ExpressionStatement(Box::new(self.parse_expression_statement()))
+                };
                 let e2 = Box::new(self.parse_expression_statement());
                 let f_expr = if let Some(Token::CloseParen(..)) = self.peek() {
                     ForExpr::EmptyLast(e1, e2)
                 } else {
                     let e3 = Box::new(self.parse_expression());
-                    ForExpr::ExpressionStatement(e1, e2, e3)
+                    ForExpr::ForExpr(e1, e2, e3)
                 };
                 let cp = read_token!(self, Token::CloseParen);
                 let s = Box::new(self.parse_statement());

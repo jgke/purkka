@@ -230,10 +230,10 @@ pub fn walk_block_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Bl
             init.iter_mut()
                 .for_each(|b| visitor.visit_statement(b.deref_mut()));
             cond.iter_mut()
-                .for_each(|b| visitor.visit_statement(b.deref_mut()));
+                .for_each(|b| visitor.visit_expression(b.deref_mut()));
             postloop
                 .iter_mut()
-                .for_each(|b| visitor.visit_statement(b.deref_mut()));
+                .for_each(|b| visitor.visit_expression(b.deref_mut()));
             visitor.visit_block(block.deref_mut());
             otherwise
                 .iter_mut()

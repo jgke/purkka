@@ -392,8 +392,13 @@ grammar! {
         ;
 
     ForExpr
-       -> EmptyLast. &ExpressionStatement &ExpressionStatement
-        | &ExpressionStatement &ExpressionStatement &Expression
+       -> EmptyLast. DeclarationOrExpression &ExpressionStatement
+        | ForExpr. DeclarationOrExpression &ExpressionStatement &Expression
+        ;
+
+    DeclarationOrExpression
+       -> &ExpressionStatement
+        | &Declaration
         ;
 
     JumpStatement

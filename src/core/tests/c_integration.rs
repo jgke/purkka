@@ -242,6 +242,8 @@ fn statements() {
         for (i = 0; i < 5; i++) { baz(); }
         for (i = 0; i < 5;) { baz(); }
         for (;;) { baz(); }
+        for (int i = 0; i < 5; i++) { baz(); }
+        for (int i = 0; i < 5;) { baz(); }
     }"
     )
     .is_ok());

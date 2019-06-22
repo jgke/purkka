@@ -180,7 +180,7 @@ grammar! {
 
     PrimaryExpression
        -> #Token::Identifier
-        | Call. #Token::Identifier ArgList
+        | Call. PrimaryExpression ArgList
         | Literal
         | StructInitialization. #Token::Identifier /* ident:typename */ #Token::OpenBrace InitializationFields #Token::CloseBrace
         | ArrayAccess. PrimaryExpression #Token::OpenBracket Expression #Token::CloseBracket
@@ -191,7 +191,7 @@ grammar! {
         pub enum PrimaryExpression {
             Identifier(Rc<str>),
             StructInitialization(Rc<str>, Vec<StructInitializationField>),
-            Call(Rc<str>, ArgList),
+            Call(Box<PrimaryExpression>, ArgList),
             Literal(Literal),
             BlockExpression(Box<BlockExpression>),
             Expression(Box<Expression>),
@@ -233,7 +233,7 @@ grammar! {
             Block(Block),
             If(Vec<(Box<Expression>, Box<Block>)>, Option<Box<Block>>),
             While(Box<Expression>, Box<Block>, Option<Box<Block>>),
-            For(Option<Box<Statement>>, Option<Box<Statement>>, Option<Box<Statement>>, Box<Block>, Option<Box<Block>>),
+            For(Option<Box<Statement>>, Option<Box<Expression>>, Option<Box<Expression>>, Box<Block>, Option<Box<Block>>),
         }
         ;
 
@@ -363,7 +363,7 @@ impl From<LambdaParam> for Param {
 impl From<Param> for LambdaParam {
     fn from(param: Param) -> Self {
         match param {
-            Param::TypeOnly(..) => unimplemented!(),
+            Param::TypeOnly(ty) => LambdaParam::LambdaParam(From::from(""), ty),
             Param::Param(ident, ty) => LambdaParam::LambdaParam(ident, ty),
         }
     }
@@ -477,5 +477,11 @@ impl PrimaryExpression {
             PrimaryExpression::Identifier(s) => constants.get(s).cloned().ok_or_else(|| s.clone()),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
+    }
+}
+
+impl From<&str> for Box<PrimaryExpression> {
+    fn from(ty: &str) -> Self {
+        Box::new(PrimaryExpression::Identifier(From::from(ty)))
     }
 }

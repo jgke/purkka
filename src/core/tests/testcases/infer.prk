@@ -1,5 +1,5 @@
-fun foo() -> int {
-    let a: int = 1;
+fun foo() {
+    let a = 1;
     let b = a;
     return b;
 };
@@ -7,4 +7,10 @@ fun foo() -> int {
 let bar = fun (left, right) {
     let res = left + right;
     return res;
+};
+
+let for_each = fun(f: int -> void, list, n) {
+    for (let i = 0; i < n; i++) {
+        f(list[i]);
+    }
 };

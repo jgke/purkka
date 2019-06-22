@@ -6,6 +6,7 @@ use std::rc::Rc;
 use cparser::grammar::*;
 use ctoken::token::Token;
 
+#[derive(Debug)]
 struct Context {
     indent: usize,
     newline: bool,
@@ -391,16 +392,29 @@ impl Context {
             IterationStatement::For(f, op, ForExpr::EmptyLast(e1, e2), cp, s) => {
                 self.push_token(f);
                 self.push_token(op);
-                self.expression_statement(&**e1);
+                match e1 {
+                    DeclarationOrExpression::Declaration(decl) => self.declaration(decl),
+                    DeclarationOrExpression::ExpressionStatement(e) => self.expression_statement(e),
+                }
+                self.newline = false;
+                self.whitespace = true;
                 self.expression_statement(&**e2);
+                self.newline = false;
                 self.push_token(cp);
                 self.statement(s);
             }
-            IterationStatement::For(f, op, ForExpr::ExpressionStatement(e1, e2, e3), cp, s) => {
+            IterationStatement::For(f, op, ForExpr::ForExpr(e1, e2, e3), cp, s) => {
                 self.push_token(f);
                 self.push_token(op);
-                self.expression_statement(&**e1);
+                match e1 {
+                    DeclarationOrExpression::Declaration(decl) => self.declaration(decl),
+                    DeclarationOrExpression::ExpressionStatement(e) => self.expression_statement(e),
+                }
+                self.newline = false;
+                self.whitespace = true;
                 self.expression_statement(&**e2);
+                self.newline = false;
+                self.whitespace = true;
                 self.expression(&**e3);
                 self.push_token(cp);
                 self.statement(s);

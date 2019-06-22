@@ -641,7 +641,6 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let t = self.next().identifier_s().unwrap().clone();
                 let is_ty = self.is_ty(&t);
                 match self.peek() {
-                    Some(Token::OpenParen(..)) => PrimaryExpression::Call(t, self.parse_args()),
                     Some(Token::OpenBrace(..)) if is_ty => PrimaryExpression::StructInitialization(
                         t,
                         self.parse_initialization_fields(),
@@ -668,11 +667,18 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
             t => unexpected_token!(t, self),
         };
-        while let Some(Token::OpenBracket(..)) = self.peek() {
-            read_token!(self, Token::OpenBracket);
-            let inner_expr = Box::new(self.parse_expression());
-            read_token!(self, Token::CloseBracket);
-            expr = PrimaryExpression::ArrayAccess(Box::new(expr), inner_expr);
+        loop {
+            match self.peek() {
+                Some(Token::OpenBracket(..)) =>  {
+                    read_token!(self, Token::OpenBracket);
+                    let inner_expr = Box::new(self.parse_expression());
+                    read_token!(self, Token::CloseBracket);
+                    expr = PrimaryExpression::ArrayAccess(Box::new(expr), inner_expr);
+                }
+                Some(Token::OpenParen(..)) =>
+                    expr = PrimaryExpression::Call(Box::new(expr), self.parse_args()),
+                _ => break,
+            }
         }
         expr
     }
@@ -765,7 +771,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_for_expr(&mut self) -> BlockExpression {
-        // for (maybe-statement ; maybe-statement ; maybe-statement) block [else block]
+        // for (maybe-statement ; maybe-expression ; maybe-expression) block [else block]
         read_token!(self, Token::For);
 
         read_token!(self, Token::OpenParen);
@@ -778,13 +784,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
         let cond = match self.peek() {
             Some(Token::SemiColon(..)) => None,
-            _ => Some(Box::new(self.parse_statement(false))),
+            _ => Some(Box::new(self.parse_expression())),
         };
         read_token!(self, Token::SemiColon);
 
         let post_loop = match self.peek() {
             Some(Token::CloseParen(..)) => None,
-            _ => Some(Box::new(self.parse_statement(false))),
+            _ => Some(Box::new(self.parse_expression())),
         };
 
         read_token!(self, Token::CloseParen);
