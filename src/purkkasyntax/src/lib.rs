@@ -383,7 +383,7 @@ impl From<Param> for LambdaParam {
 pub enum IntermediateType {
     Exact(Box<TypeSignature>),
     Any(i128),
-    Number(IntermediateNumber),
+    Number(i128, IntermediateNumber),
 }
 
 #[derive(Clone, Debug, PartialEq)]

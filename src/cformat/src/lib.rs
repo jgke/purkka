@@ -550,6 +550,8 @@ impl Context {
         match tree {
             CastExpression::UnaryExpression(e) => self.unary_expression(e),
             CastExpression::OpenParen(op, ty, cp, e) => {
+                self.whitespace = true;
+                self.push("");
                 self.push_token(op);
                 self.type_name(&**ty);
                 self.push_token(cp);

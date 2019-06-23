@@ -133,7 +133,7 @@ pub fn walk_intermediate_type<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut I
     match s {
         IntermediateType::Exact(ref mut ty) => visitor.visit_ty(ty),
         IntermediateType::Any(_) => {}
-        IntermediateType::Number(_) => {}
+        IntermediateType::Number(_, _) => {}
     }
 }
 

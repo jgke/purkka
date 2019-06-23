@@ -1,0 +1,19 @@
+fun floats() {
+    let a = 1.0;
+    let b: float = 1.0;
+    let c = a + b;
+
+    let d = 2.0;
+    let e: double = 2.0;
+    let f = d + e;
+
+    let g: float = 3.0;
+    let h: double = 3.0;
+    let i = g as double + h;
+
+    let j: double = 3.0;
+    let k: float = 3.0;
+    let l = j as float + k;
+
+    return c as double + f + i + l as double;
+}

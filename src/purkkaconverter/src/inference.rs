@@ -144,13 +144,17 @@ impl TypeInferrer {
         panic!("Unknown identifier: {}", t);
     }
 
-    fn get_any_ty(&mut self) -> IntermediateType {
+    fn get_ty_index(&mut self) -> i128 {
         self.ty_index -= 1;
-        IntermediateType::Any(self.ty_index)
+        self.ty_index
+    }
+
+    fn get_any_ty(&mut self) -> IntermediateType {
+        IntermediateType::Any(self.get_ty_index())
     }
 
     fn get_number_ty(&mut self) -> IntermediateType {
-        IntermediateType::Number(IntermediateNumber::Indeterminate)
+        IntermediateType::Number(self.get_ty_index(), IntermediateNumber::Indeterminate)
     }
 
     fn get_type(&mut self, expression: &Expression) -> (IntermediateType, Vec<IntermediateType>) {
@@ -228,6 +232,7 @@ impl TypeInferrer {
                     otherwise => panic!("Not implemented: {:?}", otherwise),
                 }
             }
+            Expression::Cast(expr, ty) => (From::from(ty.clone()), self.get_type(expr).1),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
@@ -238,10 +243,8 @@ impl TypeInferrer {
     ) -> (IntermediateType, Vec<IntermediateType>) {
         match expr {
             PrimaryExpression::Identifier(t) => (self.get_ident_ty(t.as_ref()), Vec::new()),
-            PrimaryExpression::Literal(Literal::Integer(..)) => (
-                From::from(TypeSignature::Plain(From::from("int"))),
-                Vec::new(),
-            ),
+            PrimaryExpression::Literal(Literal::Integer(..)) => (self.get_number_ty(), Vec::new()),
+            PrimaryExpression::Literal(Literal::Float(..)) => (IntermediateType::Number(self.get_ty_index(), IntermediateNumber::Float), Vec::new()),
             PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block)) => {
                 if let TypeSignature::Infer(_id) = return_type {
                     self.push_block();
@@ -545,17 +548,60 @@ impl TypeInferrer {
                 }
             }
 
-            (IntermediateType::Number(..), IntermediateType::Number(..)) => {}
+            (IntermediateType::Number(id_1, num_1), IntermediateType::Number(id_2, num_2)) =>
+                self.make_equal_num(*id_1, num_1, *id_2, num_2),
 
-            (
-                IntermediateType::Exact(box TypeSignature::Plain(t)),
-                IntermediateType::Number(..),
-            ) => {
-                if t.as_ref() != "int" {
-                    unimplemented!()
+            (IntermediateType::Number(id, num), IntermediateType::Exact(ty))
+            | (IntermediateType::Exact(ty), IntermediateType::Number(id, num))
+                => self.make_num_exact(*id, num, ty),
+        }
+    }
+
+    fn make_num_exact(&mut self, id: i128, num: &IntermediateNumber, ty: &TypeSignature) {
+        if let Some(num_ty) = self.infer_map.get(&id).cloned() {
+            return self.make_equal(&num_ty, &IntermediateType::Exact(Box::new(ty.clone())));
+        }
+        let res_ty = match (num, ty) {
+            (_, TypeSignature::Infer(i)) => return self.make_equal(&IntermediateType::Number(id, num.clone()), i),
+            (IntermediateNumber::Indeterminate, TypeSignature::Plain(t)) => {
+                match t.as_ref() {
+                    "int" | "float" | "double" => TypeSignature::Plain(t.clone()),
+                    otherwise => panic!("Not implemented: {:?}", otherwise),
                 }
             }
+            (IntermediateNumber::Float, TypeSignature::Plain(t)) => {
+                match t.as_ref() {
+                    "float" | "double" => TypeSignature::Plain(t.clone()),
+                    otherwise => panic!("Not implemented: {:?}", otherwise),
+                }
+            }
+            otherwise => panic!("Not implemented: {:?}", otherwise),
+        };
 
+        self.infer_map.insert(id, IntermediateType::Exact(Box::new(res_ty)));
+    }
+
+    fn make_equal_num(&mut self,
+                      id_1: i128, num_1: &IntermediateNumber,
+                      id_2: i128, num_2: &IntermediateNumber) {
+        if let Some(ty) = self.infer_map.get(&id_1).cloned() {
+            return self.make_equal(&ty, &IntermediateType::Number(id_2, num_2.clone()));
+        } else if let Some(ty) = self.infer_map.get(&id_2).cloned() {
+            return self.make_equal(&IntermediateType::Number(id_1, num_1.clone()), &ty);
+        }
+        match (num_1, num_2) {
+            (IntermediateNumber::Indeterminate, t) => { self.infer_map.insert(id_1, IntermediateType::Number(id_2, t.clone())); }
+            (t, IntermediateNumber::Indeterminate) => { self.infer_map.insert(id_2, IntermediateType::Number(id_1, t.clone())); }
+            (IntermediateNumber::Float, IntermediateNumber::Float) => {}
+            (IntermediateNumber::Double, IntermediateNumber::Double) => {}
+            (IntermediateNumber::Float, IntermediateNumber::Double) => {
+                let id = self.get_ty_index();
+                self.infer_map.insert(id_1, IntermediateType::Number(id, IntermediateNumber::Double));
+            }
+            (IntermediateNumber::Double, IntermediateNumber::Float) => {
+                let id = self.get_ty_index();
+                self.infer_map.insert(id_2, IntermediateType::Number(id, IntermediateNumber::Double));
+            }
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
@@ -602,8 +648,15 @@ impl ASTVisitor for TypeInserter<'_> {
                     panic!("Did not find type for id {}", id);
                 }
             }
-            TypeSignature::Infer(IntermediateType::Number(_)) => {
-                *s = TypeSignature::Plain(From::from("int"));
+            TypeSignature::Infer(IntermediateType::Number(id, more)) => {
+                if let Some(ty) = self.infer_map.get(&id).cloned() {
+                    *s = From::from(ty);
+                    self.visit_ty(s);
+                } else {
+                    match more {
+                        _ => *s = TypeSignature::Plain(From::from("int"))
+                    }
+                }
             }
             _ => {}
         }

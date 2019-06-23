@@ -491,6 +491,16 @@ impl Context {
                     )),
                 ))
             }
+            pp::Expression::Cast(expr, ty) => {
+                cp::TernaryExpression::GeneralExpression(cp::GeneralExpression::CastExpression(
+                        Box::new(
+                        cp::CastExpression::OpenParen(
+                        ct::Token::OpenParen(0),
+                        Box::new(self.type_to_type_name(ty)),
+                        ct::Token::CloseParen(0),
+                        Box::new(self.expression_as_general(*expr))
+                        ))))
+            }
             other => panic!("Not implemented: {:?}", other),
         }
     }
@@ -536,6 +546,9 @@ impl Context {
             pp::PrimaryExpression::Literal(pp::Literal::Integer(pt::Token::Integer(_, i))) => {
                 cp::PrimaryExpression::Number(From::from(i.to_string()))
             }
+            pp::PrimaryExpression::Literal(pp::Literal::Float(pt::Token::Float(_, i))) => {
+                cp::PrimaryExpression::Number(From::from(i.to_string()))
+            }
             pp::PrimaryExpression::Identifier(i) => cp::PrimaryExpression::Identifier(i.clone()),
             other => panic!("Not implemented: {:?}", other),
         }
@@ -554,6 +567,27 @@ impl Context {
             TypeSignature::Pointer { ty, .. } => self.format_direct_decl(name, *ty),
             TypeSignature::Function(params, _ret_ty) => self
                 .function_pointer_from_params(name, params.into_iter().map(From::from).collect()),
+            other => panic!("Not implemented: {:?}", other),
+        }
+    }
+
+    pub fn type_to_type_name(&mut self, ty: TypeSignature) -> cp::TypeName {
+        cp::TypeName::TypeName(
+            Box::new(self.type_to_declaration_specifiers(ty.clone())),
+            Box::new(self.format_abstract_decl(ty)),
+        )
+    }
+
+    pub fn format_abstract_decl(&mut self, ty: TypeSignature) -> cp::AbstractDeclarator {
+        cp::AbstractDeclarator::AbstractDeclarator(
+            self.ty_to_pointer(ty.clone()),
+            Box::new(self.format_abstract_direct_decl(ty)),
+        )
+    }
+
+    pub fn format_abstract_direct_decl(&mut self, ty: TypeSignature) -> cp::DirectAbstractDeclarator {
+        match ty {
+            TypeSignature::Plain(_) => cp::DirectAbstractDeclarator::Epsilon(),
             other => panic!("Not implemented: {:?}", other),
         }
     }
