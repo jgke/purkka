@@ -127,8 +127,6 @@ pub enum Punctuation {
     OpenBrace,
     CloseBrace,
     Comma,
-    Colon,
-    Assign,
     Semicolon,
     Varargs,
     //Macro
@@ -273,3 +271,68 @@ pub static KEYWORDS: &[(&str, &Keyword)] = &[
     ("volatile", &Volatile),
     ("while", &While),
 ];
+
+impl std::fmt::Display for Operator {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let s = match &self {
+            Operator::BitShiftLeftAssign => "<<=",
+            Operator::BitShiftRightAssign => ">>=",
+            Operator::ModAssign => "%=",
+            Operator::BitAndAssign => "&=",
+            Operator::TimesAssign => "*=",
+            Operator::PlusAssign => "+=",
+            Operator::MinusAssign => "-=",
+            Operator::DivAssign => "/=",
+            Operator::BitXorAssign => "^=",
+            Operator::BitOrAssign => "|=",
+            Operator::Increment => "++",
+            Operator::Decrement => "--",
+            Operator::BitShiftLeft => "<<",
+            Operator::BitShiftRight => ">>",
+            Operator::Arrow => "->",
+            Operator::NotEquals => "!=",
+            Operator::And => "&&",
+            Operator::LessEqThan => "<=",
+            Operator::Equals => "==",
+            Operator::MoreEqThan => ">=",
+            Operator::Or => "||",
+            Operator::MacroPaste => "##",
+            Operator::Plus => "+",
+            Operator::Mod => "%",
+            Operator::BitAnd => "&",
+            Operator::Times => "*",
+            Operator::Divide => "/",
+            Operator::Minus => "-",
+            Operator::BitOr => "|",
+            Operator::BitXor => "^",
+            Operator::BitNot => "~",
+            Operator::Not => "!",
+            Operator::Ternary => "?",
+            Operator::TernaryAlternative => ":",
+            Operator::Dot => ".",
+            Operator::Comma => ",",
+            Operator::Macro => "#",
+            Operator::MoreThan => ">",
+            Operator::LessThan => "<",
+            Operator::Assign => "=",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+impl std::fmt::Display for Punctuation {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let s = match &self {
+            Punctuation::OpenBracket => "[",
+            Punctuation::CloseBracket => "]",
+            Punctuation::OpenParen => "(",
+            Punctuation::CloseParen => ")",
+            Punctuation::OpenBrace => "{",
+            Punctuation::CloseBrace => "}",
+            Punctuation::Comma => ",",
+            Punctuation::Semicolon => ";",
+            Punctuation::Varargs => "...",
+        };
+        write!(f, "{}", s)
+    }
+}

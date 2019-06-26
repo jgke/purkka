@@ -75,7 +75,9 @@ pub fn process(original: &str, expected: Vec<MacroToken>) {
             .iter()
             .for_each(|t| println!("{}", t.display(&iter)));
     }
-    assert_eq!(processed, Ok(expected));
+    assert_eq!(
+        processed.map(|l| l.into_iter().map(|t| t.ty).collect::<Vec<_>>()),
+        Ok(expected.into_iter().map(|t| t.ty).collect::<Vec<_>>()));
 }
 
 pub fn mt(file: &str, lo: usize, hi: usize, ty: MacroTokenType) -> MacroToken {
@@ -90,10 +92,10 @@ pub fn mt_s(
     lo: usize,
     hi: usize,
     ty: MacroTokenType,
-    source: Option<Source>,
+    _source: Option<Source>,
 ) -> MacroToken {
     MacroToken {
-        source: s(file, lo, hi, source),
+        source: s(file, lo, hi, None), //source),
         ty,
     }
 }
@@ -118,5 +120,9 @@ pub fn macro_panics(arg: &str) {
 }
 
 pub fn ident(arg: &str) -> MacroTokenType {
-    MacroTokenType::Identifier(From::from(arg))
+    MacroTokenType::Identifier(From::from(arg), false)
+}
+
+pub fn ident_t(arg: &str) -> MacroTokenType {
+    MacroTokenType::Identifier(From::from(arg), true)
 }

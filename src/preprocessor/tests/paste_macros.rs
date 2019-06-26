@@ -6,6 +6,7 @@ mod common;
 
 use common::*;
 use preprocessor::macrotoken::MacroTokenType;
+use preprocessor::tokentype::Punctuation;
 
 #[test]
 fn token_pasting() {
@@ -78,7 +79,7 @@ fn function_macro_with_expanded_argument() {
             "foo.c",
             15,
             20, // foo##a
-            ident("foobarbaz"),
+            ident("fooBAR"),
             Some(s(
                 "foo.c",
                 44,
@@ -88,7 +89,37 @@ fn function_macro_with_expanded_argument() {
                     None,
                 )),
             )),
-        )],
+        ), mt_s(
+            "foo.c",
+            15,
+            20, // foo##a
+            MacroTokenType::Punctuation(Punctuation::OpenParen),
+            None),
+            mt_s(
+            "foo.c",
+            15,
+            20, // foo##a
+            ident("bar"),
+            None),
+ mt_s(
+            "foo.c",
+            15,
+            20, // foo##a
+            MacroTokenType::Punctuation(Punctuation::Comma),
+            None),
+            mt_s(
+            "foo.c",
+            15,
+            20, // foo##a
+            ident("baz"),
+            None),
+                mt_s(
+            "foo.c",
+            15,
+            20, // foo##a
+            MacroTokenType::Punctuation(Punctuation::CloseParen),
+            None)
+        ],
     );
 }
 

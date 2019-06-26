@@ -7,7 +7,7 @@ use crate::tokentype::{Operator, Punctuation, OPERATORS, PUNCTUATION};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MacroTokenType {
-    Identifier(Rc<str>),
+    Identifier(Rc<str>, bool),
     Number(Rc<str>),
     StringLiteral(Rc<str>),
     Char(char),
@@ -69,7 +69,7 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
         MacroTokenType::Operator(Operator::Macro) => panic!("Macro token found: {:?}", t),
         MacroTokenType::Operator(Operator::MacroPaste) => panic!("Macro token found: {:?}", t),
 
-        MacroTokenType::Identifier(ident) => match ident.as_ref() {
+        MacroTokenType::Identifier(ident, _) => match ident.as_ref() {
             "asm" => Asm(index),
             "auto" => Auto(index),
             "break" => Break(index),
@@ -115,8 +115,6 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
         MacroTokenType::Punctuation(Punctuation::OpenBrace) => OpenBrace(index),
         MacroTokenType::Punctuation(Punctuation::CloseBrace) => CloseBrace(index),
         MacroTokenType::Punctuation(Punctuation::Comma) => Comma(index),
-        MacroTokenType::Punctuation(Punctuation::Colon) => Colon(index),
-        MacroTokenType::Punctuation(Punctuation::Assign) => Assign(index),
         MacroTokenType::Punctuation(Punctuation::Semicolon) => Semicolon(index),
         MacroTokenType::Punctuation(Punctuation::Varargs) => Varargs(index),
 
@@ -154,7 +152,7 @@ impl MacroToken {
                 .unwrap()
                 .to_string(),
 
-            MacroTokenType::Identifier(ident) => ident.to_string(),
+            MacroTokenType::Identifier(ident, _) => ident.to_string(),
 
             MacroTokenType::StringLiteral(s) => s.to_string(),
             MacroTokenType::Number(s) => s.to_string(),
@@ -195,25 +193,37 @@ impl MacroToken {
         }
     }
     pub(crate) fn respan_front(&mut self, source: &Source) {
+        self.source = source.clone();
+        /*
         let old_source = self.source.clone();
         let mut new_source = source.clone();
         new_source.merge(&old_source);
         self.source = new_source;
+        */
     }
-    pub(crate) fn respan_back(&mut self, source: &Source) {
+    pub(crate) fn respan_back(&mut self, _source: &Source) {
+        /*
         self.source.merge(source)
+        */
     }
 
     pub(crate) fn get_identifier_str(&self) -> Option<Rc<str>> {
         match &self.ty {
-            MacroTokenType::Identifier(ident) => Some(Rc::clone(ident)),
+            MacroTokenType::Identifier(ident, _) => Some(Rc::clone(ident)),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn get_identifier_color(&self) -> Option<bool> {
+        match &self.ty {
+            MacroTokenType::Identifier(_, color) => Some(*color),
             _ => None,
         }
     }
 
     pub(crate) fn get_macro_paste_str(&self) -> Option<Rc<str>> {
         match &self.ty {
-            MacroTokenType::Identifier(ident) => Some(Rc::clone(ident)),
+            MacroTokenType::Identifier(ident, _) => Some(Rc::clone(ident)),
             MacroTokenType::Number(num) => Some(Rc::clone(num)),
             MacroTokenType::StringLiteral(s) => Some(From::from(format!("\"{}\"", s))),
             _ => None,
@@ -229,4 +239,20 @@ macro_rules! matches_token {
             false
         }
     };
+}
+
+impl fmt::Display for MacroToken {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match &self.ty {
+            MacroTokenType::Identifier(t, b) => format!("{}({})", t, b),
+            MacroTokenType::Number(t) => t.to_string(),
+            MacroTokenType::StringLiteral(t) => t.to_string(),
+            MacroTokenType::Char(c) => c.to_string(),
+            MacroTokenType::Operator(op) => op.to_string(),
+            MacroTokenType::Punctuation(punc) => punc.to_string(),
+            MacroTokenType::Other(c) => c.to_string(),
+            MacroTokenType::Empty => "".to_string(),
+        };
+        write!(f, "{}", s)
+    }
 }

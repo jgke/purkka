@@ -99,13 +99,19 @@ pub struct Span {
 
 /// Source location for an expanded macro. This, too, can be a result of an expansion.
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Source {
     /// The file where the expansion originated in.
     /// Todo: change to a interned shared reference (eg. Rc<> with interning)
     pub filename: Rc<str>,
     /// The location in the file for the expansion.
     pub span: Span,
+}
+
+impl std::fmt::Debug for Source {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("Source").finish()
+    }
 }
 
 impl Source {

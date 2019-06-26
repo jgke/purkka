@@ -23,6 +23,60 @@ fn function_macro_constant() {
 }
 
 #[test]
+fn function_macro_two() {
+    process(
+        "#define BAR(a) a\n#define FOO() BAR(foo) BAR(foo)\nFOO()",
+        vec![mt_s(
+            "foo.c",
+            14,
+            16, // foo
+            ident("foo"),
+            Some(s("foo.c", 0, 17, None)),
+        ), mt_s(
+            "foo.c",
+            16,
+            18, // this is wrong
+            ident("foo"),
+            Some(s("foo.c", 0, 17, None)),
+        )
+        ],
+    );
+}
+
+#[test]
+fn function_macro_three() {
+    process(
+        "#define BAZ(a) a\n#define BAR(a) BAZ(a) BAZ(a)\n#define FOO() BAR(foo) BAR(foo)\nFOO()",
+        vec![mt_s(
+            "foo.c",
+            14,
+            16, // foo
+            ident("foo"),
+            Some(s("foo.c", 0, 17, None)),
+        ), mt_s(
+            "foo.c",
+            16,
+            18, // this is wrong
+            ident("foo"),
+            Some(s("foo.c", 0, 17, None)),
+        ), mt_s(
+            "foo.c",
+            16,
+            18, // this is wrong
+            ident("foo"),
+            Some(s("foo.c", 0, 17, None)),
+        ), mt_s(
+            "foo.c",
+            16,
+            18, // this is wrong
+            ident("foo"),
+            Some(s("foo.c", 0, 17, None)),
+        )
+        ],
+    );
+}
+
+#[test]
 fn function_macro_one_arg() {
     process(
         "#define FOO(a) a\nFOO(b)",
@@ -94,7 +148,7 @@ fn macro_expand_infinite_recursive() {
             "foo.c",
             15,
             17, // FOO
-            ident("FOO"),
+            ident_t("FOO"),
             Some(s(
                 "foo.c", 0, 18, // #define FOO(a) FOO
                 None,
@@ -423,8 +477,7 @@ fn invalid_macros() {
 
 #[test]
 fn weird_stuff() {
-    // this should work, but it doesn't because reasons
-    // process("#define ARGS(...) __VA_ARGS__\n#define BAR(a) \n#define FOO(...) BAR(ARGS(__VA_ARGS__))\nFOO(1, 2)", vec![]);
+    process("#define ARGS(...) __VA_ARGS__\n#define BAR(a) \n#define FOO(...) BAR(ARGS(__VA_ARGS__))\nFOO(1, 2)", vec![]);
     process("#define __and(x, y)	___and(x, y)", vec![]);
     //                          ^ \t
     process(
