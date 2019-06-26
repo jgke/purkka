@@ -1,6 +1,6 @@
 use crate::traits::TreeTransformer;
 use crate::Context;
-use purkkaparser::visitor::*;
+use purkkasyntax::visitor::*;
 /// Strip imports
 use purkkasyntax::*;
 

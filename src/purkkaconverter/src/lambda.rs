@@ -1,6 +1,6 @@
 use crate::traits::TreeTransformer;
 use crate::Context;
-use purkkaparser::visitor::*;
+use purkkasyntax::visitor::*;
 /// Convert lambdas to global functions, replacing them in expressions with identifiers
 use purkkasyntax::*;
 

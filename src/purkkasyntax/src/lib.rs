@@ -13,6 +13,8 @@ use std::ops::{Add, Div};
 
 use purkkatoken::token::Token;
 
+pub mod visitor;
+
 grammar! {
     S -> TranslationUnit;
 

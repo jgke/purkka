@@ -1,6 +1,6 @@
 use std::ops::DerefMut;
 
-use purkkasyntax::*;
+use super::*;
 
 pub trait ASTVisitor {
     fn visit_s(&mut self, s: &mut S) {

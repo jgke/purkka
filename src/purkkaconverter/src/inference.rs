@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use crate::traits::TreeTransformer;
 use crate::Context;
-use purkkaparser::visitor::*;
+use purkkasyntax::visitor::*;
 use purkkasyntax::*;
 use purkkatoken::token::Token;
 

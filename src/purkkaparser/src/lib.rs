@@ -1,5 +1,4 @@
 pub mod parser;
-pub mod visitor;
 
 use std::rc::Rc;
 
