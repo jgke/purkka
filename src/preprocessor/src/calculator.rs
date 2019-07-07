@@ -39,7 +39,7 @@ fn parse_number(num: &str) -> i64 {
 
 fn const_expr_token_from_macro(ty: &MacroTokenType) -> ConstExprToken {
     match ty {
-        MacroTokenType::Identifier(_, _) => Number(1),
+        MacroTokenType::Identifier(_) => Number(1),
         MacroTokenType::Number(num) => Number(parse_number(num)),
         MacroTokenType::StringLiteral(_) => panic!(),
         MacroTokenType::Char(c) => Number(*c as i64),
@@ -48,7 +48,7 @@ fn const_expr_token_from_macro(ty: &MacroTokenType) -> ConstExprToken {
         MacroTokenType::Punctuation(tokentype::Punctuation::CloseParen) => Paren(CloseParen),
         MacroTokenType::Punctuation(_) => panic!("Invalid character in expression: {:?}", ty),
         MacroTokenType::Other(_) => panic!("Invalid character in expression: {:?}", ty),
-        MacroTokenType::Empty => panic!(),
+        MacroTokenType::PopContext => panic!("Spurious pop-context left in stack"),
     }
 }
 

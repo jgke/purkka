@@ -2,7 +2,6 @@ mod common;
 
 use common::*;
 use debug::debug::DEBUG_VALS;
-use preprocessor::macrotoken::MacroTokenType;
 
 fn equals_str(src: &str, res: &str) {
     println!("\n----------------------------\nSource file: {}\n----------------------------\n", src);
@@ -22,19 +21,9 @@ fn equals_str(src: &str, res: &str) {
     assert_eq!(
         res_toks.into_iter()
         .map(|t| t.ty)
-        .map(|t| if let MacroTokenType::Identifier(ident, _) = t {
-            MacroTokenType::Identifier(ident, false)
-        } else {
-            t
-        })
         .collect::<Vec<_>>(),
         toks.into_iter()
         .map(|t| t.ty)
-        .map(|t| if let MacroTokenType::Identifier(ident, _) = t {
-            MacroTokenType::Identifier(ident, false)
-        } else {
-            t
-        })
         .collect::<Vec<_>>(),
     );
 }
@@ -120,7 +109,7 @@ BOOL()
 }
 
 #[test]
-fn cast_to_bool_3() {
+fn cast_to_bool_3_1() {
     equals_str(
         r#"
 #define SECOND(a, b, ...) b
@@ -145,9 +134,65 @@ fn cast_to_bool_3() {
 #define _IF_0_ELSE(...) __VA_ARGS__
 
 IF_ELSE(0)(it was non-zero)(it was zero)
+    "#, r#"it was zero"#);
+}
+
+#[test]
+fn cast_to_bool_3_2() {
+    equals_str(
+        r#"
+#define SECOND(a, b, ...) b
+
+#define IS_PROBE(...) SECOND(__VA_ARGS__, 0)
+#define PROBE() ~, 1
+
+#define CAT(a,b) a ## b
+
+#define NOT(x) IS_PROBE(CAT(_NOT_, x))
+#define _NOT_0 PROBE()
+
+#define BOOL(x) NOT(NOT(x))
+
+#define IF_ELSE(condition) _IF_ELSE(BOOL(condition))
+#define _IF_ELSE(condition) CAT(_IF_, condition)
+
+#define _IF_1(...) __VA_ARGS__ _IF_1_ELSE
+#define _IF_0(...)             _IF_0_ELSE
+
+#define _IF_1_ELSE(...)
+#define _IF_0_ELSE(...) __VA_ARGS__
+
 IF_ELSE(1)(it was non-zero)(it was zero)
+    "#, r#"it was non-zero"#);
+}
+
+#[test]
+fn cast_to_bool_3_3() {
+    equals_str(
+        r#"
+#define SECOND(a, b, ...) b
+
+#define IS_PROBE(...) SECOND(__VA_ARGS__, 0)
+#define PROBE() ~, 1
+
+#define CAT(a,b) a ## b
+
+#define NOT(x) IS_PROBE(CAT(_NOT_, x))
+#define _NOT_0 PROBE()
+
+#define BOOL(x) NOT(NOT(x))
+
+#define IF_ELSE(condition) _IF_ELSE(BOOL(condition))
+#define _IF_ELSE(condition) CAT(_IF_, condition)
+
+#define _IF_1(...) __VA_ARGS__ _IF_1_ELSE
+#define _IF_0(...)             _IF_0_ELSE
+
+#define _IF_1_ELSE(...)
+#define _IF_0_ELSE(...) __VA_ARGS__
+
 IF_ELSE(123)(it was non-zero)(it was zero)
-    "#, r#"it was zero it was non-zero it was non-zero"#);
+    "#, r#"it was non-zero"#);
 }
 
 #[test]
@@ -415,7 +460,7 @@ fn turning_recursion_into_an_iterator_3() {
 
 #define GREET(x) Hello, x!
 EVAL(MAP(GREET, Mum, Dad, Adam, Joe))
-"#, r#"Hello, Mum! MAP(GREET, Dad, Adam, Joe) a"#);
+"#, r#"Hello, Mum! MAP(GREET, Dad, Adam, Joe)"#);
 }
 
 #[test]

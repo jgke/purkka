@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fmt;
 use std::rc::Rc;
 
@@ -7,14 +8,14 @@ use crate::tokentype::{Operator, Punctuation, OPERATORS, PUNCTUATION};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MacroTokenType {
-    Identifier(Rc<str>, bool),
+    Identifier(Rc<str>),
     Number(Rc<str>),
     StringLiteral(Rc<str>),
     Char(char),
     Operator(Operator),
     Punctuation(Punctuation),
     Other(char),
-    Empty,
+    PopContext
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -68,8 +69,9 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
         MacroTokenType::Operator(Operator::Comma) => Comma(index),
         MacroTokenType::Operator(Operator::Macro) => panic!("Macro token found: {:?}", t),
         MacroTokenType::Operator(Operator::MacroPaste) => panic!("Macro token found: {:?}", t),
+        MacroTokenType::PopContext => panic!("Spurious pop-context left in stack"),
 
-        MacroTokenType::Identifier(ident, _) => match ident.as_ref() {
+        MacroTokenType::Identifier(ident) => match ident.as_ref() {
             "asm" => Asm(index),
             "auto" => Auto(index),
             "break" => Break(index),
@@ -126,7 +128,7 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
             c,
             context.source_to_str(&t.source)
         ),
-        MacroTokenType::Empty => panic!("Spurious empty token left in stream"),
+        MacroTokenType::PopContext => panic!("Spurious pop-context left in stack")
     }
 }
 
@@ -152,13 +154,13 @@ impl MacroToken {
                 .unwrap()
                 .to_string(),
 
-            MacroTokenType::Identifier(ident, _) => ident.to_string(),
+            MacroTokenType::Identifier(ident) => ident.to_string(),
 
             MacroTokenType::StringLiteral(s) => s.to_string(),
             MacroTokenType::Number(s) => s.to_string(),
             MacroTokenType::Char(c) => format!("'{}'", c),
             MacroTokenType::Other(c) => c.to_string(),
-            MacroTokenType::Empty => " ".to_string(),
+            MacroTokenType::PopContext => format!("[pop-context]")
         }
     }
 }
@@ -192,66 +194,33 @@ impl MacroToken {
             ty,
         }
     }
-    pub(crate) fn respan_front(&mut self, source: &Source) {
-        self.source = source.clone();
-        /*
-        let old_source = self.source.clone();
-        let mut new_source = source.clone();
-        new_source.merge(&old_source);
-        self.source = new_source;
-        */
-    }
-    pub(crate) fn respan_back(&mut self, _source: &Source) {
-        /*
-        self.source.merge(source)
-        */
-    }
 
     pub(crate) fn get_identifier_str(&self) -> Option<Rc<str>> {
         match &self.ty {
-            MacroTokenType::Identifier(ident, _) => Some(Rc::clone(ident)),
+            MacroTokenType::Identifier(ident) => Some(Rc::clone(ident)),
             _ => None,
         }
     }
 
-    pub(crate) fn get_identifier_color(&self) -> Option<bool> {
+    pub(crate) fn can_expand(&self, list: &HashSet<Rc<str>>) -> bool {
         match &self.ty {
-            MacroTokenType::Identifier(_, color) => Some(*color),
-            _ => None,
+            MacroTokenType::Identifier(ident) => !list.contains(ident),
+            _ => false
         }
     }
-
-    pub(crate) fn get_macro_paste_str(&self) -> Option<Rc<str>> {
-        match &self.ty {
-            MacroTokenType::Identifier(ident, _) => Some(Rc::clone(ident)),
-            MacroTokenType::Number(num) => Some(Rc::clone(num)),
-            MacroTokenType::StringLiteral(s) => Some(From::from(format!("\"{}\"", s))),
-            _ => None,
-        }
-    }
-}
-
-macro_rules! matches_token {
-    ($var:expr, $type:ident, $subtype:ident) => {
-        if let MacroTokenType::$type($type::$subtype) = &$var {
-            true
-        } else {
-            false
-        }
-    };
 }
 
 impl fmt::Display for MacroToken {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let s = match &self.ty {
-            MacroTokenType::Identifier(t, b) => format!("{}({})", t, b),
+            MacroTokenType::Identifier(t) => format!("{}", t),
             MacroTokenType::Number(t) => t.to_string(),
             MacroTokenType::StringLiteral(t) => t.to_string(),
             MacroTokenType::Char(c) => c.to_string(),
             MacroTokenType::Operator(op) => op.to_string(),
             MacroTokenType::Punctuation(punc) => punc.to_string(),
             MacroTokenType::Other(c) => c.to_string(),
-            MacroTokenType::Empty => "".to_string(),
+            MacroTokenType::PopContext => format!("[pop-context]")
         };
         write!(f, "{}", s)
     }

@@ -193,7 +193,7 @@ fn recursive_macro() {
             "foo.c",
             18,
             20,
-            ident_t("FOO"),
+            ident("FOO"),
             Some(s("foo.c", 2, 17, Some(s("foo.c", 14, 16, None)))),
         )],
     );
@@ -207,7 +207,7 @@ fn mutually_recursive_macros() {
             "foo.c",
             32,
             34,
-            ident_t("FOO"),
+            ident("FOO"),
             Some(s(
                 "foo.c",
                 16,

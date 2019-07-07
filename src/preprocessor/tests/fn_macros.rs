@@ -148,7 +148,7 @@ fn macro_expand_infinite_recursive() {
             "foo.c",
             15,
             17, // FOO
-            ident_t("FOO"),
+            ident("FOO"),
             Some(s(
                 "foo.c", 0, 18, // #define FOO(a) FOO
                 None,
