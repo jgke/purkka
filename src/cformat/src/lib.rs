@@ -839,6 +839,9 @@ impl Context {
             DirectDeclarator::Identifier(ident) => {
                 self.push_token(&Token::Identifier(0, ident.clone()))
             }
+            DirectDeclarator::AsmStatement(asm) => {
+                self.asm_statement(&*asm);
+            }
             DirectDeclarator::Parens(decl) => {
                 self.push_token(&Token::OpenParen(0));
                 self.declarator(decl);

@@ -570,12 +570,14 @@ grammar! {
 
     DirectDeclarator
        -> #Token::Identifier
+        | &AsmStatement
         | #Token::OpenParen &Declarator #Token::CloseParen
         | Array. DirectDeclarator #Token::OpenBracket MaybeGeneralExpression #Token::CloseBracket
         | FunctionParams. DirectDeclarator #Token::OpenParen FunctionParams #Token::CloseParen
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum DirectDeclarator {
             Identifier(Rc<str>),
+            AsmStatement(Box<AsmStatement>),
             Parens(Box<Declarator>),
             Array(Box<DirectDeclarator>, Option<Box<GeneralExpression>>),
             Function(Box<DirectDeclarator>, FunctionParams),

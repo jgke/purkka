@@ -620,15 +620,18 @@ where
     }
 
     fn parse_direct_declarator(&mut self) -> Box<DirectDeclarator> {
-        let mut decl = if let Some(Token::Identifier(..)) = self.peek() {
-            Box::new(DirectDeclarator::Identifier(
-                read_token!(self, Token::Identifier).get_ident_str().clone(),
-            ))
-        } else {
-            read_token!(self, Token::OpenParen);
-            let d = self.parse_declarator();
-            read_token!(self, Token::CloseParen);
-            Box::new(DirectDeclarator::Parens(Box::new(d)))
+        let mut decl = match self.peek() {
+            Some(Token::Identifier(..)) => Box::new(
+                DirectDeclarator::Identifier(
+                    read_token!(self, Token::Identifier).get_ident_str().clone())),
+            Some(Token::Asm(..)) => Box::new(
+                DirectDeclarator::AsmStatement(Box::new(self.parse_asm_statement()))),
+            _ =>  {
+                read_token!(self, Token::OpenParen);
+                let d = self.parse_declarator();
+                read_token!(self, Token::CloseParen);
+                Box::new(DirectDeclarator::Parens(Box::new(d)))
+            }
         };
         loop {
             match self.peek() {
@@ -1498,6 +1501,7 @@ where
     fn get_direct_decl_identifier(&self, direct_decl: &DirectDeclarator) -> Rc<str> {
         match direct_decl {
             DirectDeclarator::Identifier(ident) => ident.clone(),
+            DirectDeclarator::AsmStatement(_) => panic!(),
             DirectDeclarator::Parens(decl) => self.get_decl_identifier(decl),
             DirectDeclarator::Array(direct_decl, _) => self.get_direct_decl_identifier(direct_decl),
             DirectDeclarator::Function(direct_decl, _) => {

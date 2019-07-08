@@ -912,13 +912,13 @@ where
         while iter.peek().is_some() {
             self.flush_until_pound_or_newline(iter);
             let (next_row, line_src) = self.preprocess_get_macro_line(iter, true, true);
-            let mut sub_iter = FragmentIterator::with_offset(
-                &iter.current_filename(),
-                next_row,
-                line_src.span.lo,
-                &iter,
-            );
-            if let Some('#') = sub_iter.peek() {
+            if let Some('#') = next_row.get(0).map(|(_, c)| c) {
+                let mut sub_iter = FragmentIterator::with_offset(
+                    &iter.current_filename(),
+                    next_row,
+                    line_src.span.lo,
+                    &iter,
+                    );
                 match (skip_to, accept_else, self.get_macro_type(&mut sub_iter)) {
                     (0, true, (MacroType::Elif, mut sub_iter, _)) => {
                         self.handle_elif(iter, &mut sub_iter);
