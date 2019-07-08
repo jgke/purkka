@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fmt;
 use std::rc::Rc;
 
@@ -69,7 +68,6 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
         MacroTokenType::Operator(Operator::Comma) => Comma(index),
         MacroTokenType::Operator(Operator::Macro) => panic!("Macro token found: {:?}", t),
         MacroTokenType::Operator(Operator::MacroPaste) => panic!("Macro token found: {:?}", t),
-        MacroTokenType::PopContext => panic!("Spurious pop-context left in stack"),
 
         MacroTokenType::Identifier(ident) => match ident.as_ref() {
             "asm" => Asm(index),
@@ -160,7 +158,7 @@ impl MacroToken {
             MacroTokenType::Number(s) => s.to_string(),
             MacroTokenType::Char(c) => format!("'{}'", c),
             MacroTokenType::Other(c) => c.to_string(),
-            MacroTokenType::PopContext => format!("[pop-context]")
+            MacroTokenType::PopContext => "[pop-context]".to_string()
         }
     }
 }
@@ -201,26 +199,19 @@ impl MacroToken {
             _ => None,
         }
     }
-
-    pub(crate) fn can_expand(&self, list: &HashSet<Rc<str>>) -> bool {
-        match &self.ty {
-            MacroTokenType::Identifier(ident) => !list.contains(ident),
-            _ => false
-        }
-    }
 }
 
 impl fmt::Display for MacroToken {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let s = match &self.ty {
-            MacroTokenType::Identifier(t) => format!("{}", t),
+            MacroTokenType::Identifier(t) => t.to_string(),
             MacroTokenType::Number(t) => t.to_string(),
             MacroTokenType::StringLiteral(t) => t.to_string(),
             MacroTokenType::Char(c) => c.to_string(),
             MacroTokenType::Operator(op) => op.to_string(),
             MacroTokenType::Punctuation(punc) => punc.to_string(),
             MacroTokenType::Other(c) => c.to_string(),
-            MacroTokenType::PopContext => format!("[pop-context]")
+            MacroTokenType::PopContext => "[pop-context]".to_string()
         };
         write!(f, "{}", s)
     }

@@ -86,7 +86,7 @@ impl Clone for UnsafeStringInterner {
 }
 
 /// A span in the currently parsed file.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Span {
     /// Starting index of the span.
     pub lo: usize,
@@ -99,7 +99,7 @@ pub struct Span {
 
 /// Source location for an expanded macro. This, too, can be a result of an expansion.
 
-#[derive(Clone, Eq, Hash)]
+#[derive(Clone, Eq)]
 pub struct Source {
     /// The file where the expansion originated in.
     /// Todo: change to a interned shared reference (eg. Rc<> with interning)
@@ -115,7 +115,7 @@ impl std::fmt::Debug for Source {
 }
 
 impl std::cmp::PartialEq for Source {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(&self, _other: &Self) -> bool {
         true
     }
 }

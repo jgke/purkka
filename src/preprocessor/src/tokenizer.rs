@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use debug::debug::*;
@@ -970,7 +970,7 @@ where
     }
 
     fn is_macro(&self, s: &str) -> bool {
-        return self.symbols.contains_key(s);
+        self.symbols.contains_key(s)
     }
 
     /// Expand all macros from the argument list. Consumes tokens from `iter` in case of function
@@ -984,61 +984,69 @@ where
     ///
     /// Algorithm:
     /// ```text
-    /// expand(TS: token-sequence, ctx: expansion-context) {
+    /// expand(TS: token-sequence, CTX: expansion-context) {
     ///     if TS is empty, then
     ///         return [];
     ///     else if TS is T : TS' and T is pop-context, then
-    ///         pop ctx-stack
-    ///         return expand(TS');
+    ///         pop CTX
+    ///         return expand(TS', CTX);
     ///     else if TS is T : TS' and T is disabled, then
-    ///         return T : expand(TS');
-    ///     else if TS is T : TS' and T an object macro and in ctx, then
+    ///         return T : expand(TS', CTX);
+    ///     else if TS is T : TS' and T an object macro and in CTX, then
     ///         disable T
-    ///         return T : expand(TS');
-    ///     else if TS is T : '(' : TS' and T an function macro and in ctx, then
+    ///         return T : expand(TS', CTX);
+    ///     else if TS is T : '(' : TS' and T an function macro and in CTX, then
     ///         disable T
-    ///         return T : expand(TS');
+    ///         return T : expand(TS', CTX);
     ///     else if TS is T:TS' and T is an object macro, then
-    ///         let substituted = substitute(ts(T), [], [])
-    ///         add T to ctx-stack
-    ///         return expand(substituted : pop-context : TS', ctx);
+    ///         let substituted = substitute(ts(T), [], CTX, [])
+    ///         add T to CTX
+    ///         return expand(substituted : pop-context : TS', CTX);
     ///     else if TS is T : '(' : TS' and T is a function macro, then
     ///         let function-arguments : ')' : TS'' = TS'
-    ///         let substituted = substitute(ts(T), fp(T), function-arguments, [])
-    ///         add T to ctx-stack
-    ///         return expand(substituted : pop-context : :TS'', ctx);
+    ///         let substituted = substitute(ts(T), fp(T), function-arguments, CTX, [])
+    ///         add T to CTX
+    ///         return expand(substituted : pop-context : :TS'', CTX);
     ///     else TS is T : TS', and
-    ///         return T : expand(TS', ctx);
+    ///         return T : expand(TS', CTX);
     /// }
     ///
     /// substitute(IS: input-sequence, FP: function-parameters,
-    ///            AP: function-arguments, OS: output-sequence) {
+    ///            AP: function-arguments, CTX: expansion-context,
+    ///            OS: output-sequence) {
     ///     if IS is empty, then
     ///         return OS;
+    ///     else if IS is pop-context : IS', then
+    ///         pop CTX
+    ///         return substitute(IS', FP, AP, CTX, OS);
     ///     else if IS is '#' : T : IS' and T is FP[i], then
     ///         return substitute(IS', FP, AP, OS : stringize(AP[i]));
     ///     else if IS is '##' : T : IS' and T is FP[i], then
     ///         if AP[i] is empty, then
-    ///             return substitute(IS', FP, AP, OS);
+    ///             return substitute(IS', FP, AP, CTX, OS);
     ///         else
-    ///             return substitute(IS', FP, AP, glue(OS, AP[i]));
+    ///             return substitute(IS', FP, AP, CTX, glue(OS, AP[i]));
     ///     else if IS is '##' : T : IS', then
     ///         return substitute(IS', FP, AP, glue(OS, T));
     ///     else if IS is T : '##' : IS' and T is FP[i], then
     ///         if AP[i] is empty, then
     ///             if IS' is T' : IS'' and T' is FP[j], then
-    ///                 return substitute(IS'', FP, AP, OS : AP[j]);
+    ///                 return substitute(IS'', FP, AP, CTX, OS : AP[j]);
     ///             else
-    ///                 return substitute(IS', FP, AP, OS);
+    ///                 return substitute(IS', FP, AP, CTX, OS);
     ///         else
-    ///             return substitute('##' : IS', FP, AP, OS : AP[i]);
+    ///             return substitute('##' : IS', FP, AP, CTX, OS : AP[i]);
     ///     else if IS is T : IS' and T is FP[i], then
-    ///         return substitute(IS', FP, AP, OS : expand(AP[i]));
+    ///         return substitute(IS', FP, AP, CTX, OS : expand(AP[i], CTX));
     ///     else IS is T : IS', and
-    ///         return substitute(IS', FP, AP, OS : T);
+    ///         return substitute(IS', FP, AP, CTX, OS : T);
     /// }
     ///
     /// glue(LS: token-sequence, RS: token-sequence) {
+    ///     if LS is ',' : [] and RS is empty, then
+    ///         return [];
+    ///     else if LS is ',' : [], then
+    ///         return LS : RS
     ///     if LS is L : [] and RS is R : RS', then
     ///         combine L and R as T
     ///         T.HS = intersection of L.HS and R.HS
@@ -1059,16 +1067,17 @@ where
         expansion = self.expand(&expansion, &mut ctx, &mut Some(iter));
 
         let result: Vec<MacroToken> = expansion.into_iter().map(|t| t.0).collect();
-        if let Some(s) = ident {
-            println!(
-                "Expanded {} to {}",
-                s,
-                result
-                    .iter()
-                    .map(|t| format!("{} ", t))
-                    .collect::<String>()
-            )
-        }
+        if_debug(DebugVal::MacroExpand, || {
+            if let Some(s) = ident {
+                println!(
+                    "Expanded {} to {}",
+                    s,
+                    result
+                        .iter()
+                        .map(|t| format!("{} ", t))
+                        .collect::<String>());
+            }
+        });
         result
     }
 
@@ -1079,6 +1088,10 @@ where
         }, true)
     }
 
+    // These recursive functions have every recursive call in tail position, and _should_ be
+    // optimized nicely by the compiler.
+    //
+    // The expand() function is ordered slightly differently compared to the original algorithm.
     fn expand(&mut self, input: &[(MacroToken, bool)], ctx: &mut ExpansionHistory, iter: &mut Option<&mut FragmentIterator>) -> Vec<(MacroToken, bool)> {
         if_debug(DebugVal::MacroExpand, || {
             println!(
@@ -1135,7 +1148,7 @@ where
                 }
                 // else if TS is T : '(' : TS' and T is a function macro, then
                 Some((ident, Macro::Function(_span, args, body, varargs))) => {
-                    if self.next_is_open_paren(rest, ctx, iter) {
+                    if self.next_is_open_paren(rest, iter) {
                         let rest = self.flush_pop_context(rest, ctx);
                         if !ctx.contains(ident) {
                             let converted_body = body.clone()
@@ -1172,22 +1185,225 @@ where
             }
         }
 
-        // else TS is T : TS', and
-        //    return T : expand(TS');
         // else if TS is T : TS' and T is disabled, then
+        //    return T : expand(TS');
+        // else TS is T : TS', and
         //    return T : expand(TS');
         let mut out = vec![t];
         out.append(&mut self.expand(rest, ctx, iter));
         out
     }
 
+    fn substitute(&mut self, input: &[(MacroToken, bool)], iter: &mut Option<&mut FragmentIterator>,
+                  args: HashMap<Rc<str>, Vec<(MacroToken, bool)>>,
+                  ctx: &mut ExpansionHistory, mut output: Vec<(MacroToken, bool)>) -> Vec<(MacroToken, bool)> {
+        if_debug(DebugVal::MacroExpand, || {
+            println!(
+                "Substituting {}",
+                input
+                    .iter()
+                    .map(|t| format!("{} ", t.0))
+                    .collect::<String>()
+            )
+        });
+        if_debug(DebugVal::MacroExpand, || {
+            if !args.is_empty() {
+                print!("Current arguments:");
+                for (arg, val) in &args {
+                    print!(" {}: {}\n                  ",
+                           arg, val.iter().map(|t| format!("{} ", t.0)).collect::<String>());
+                }
+                println!();
+            }
+        });
+        if_debug(DebugVal::MacroExpand, || {
+            println!(
+                "Current output: {}",
+                output
+                    .iter()
+                    .map(|t| format!("{} ", t.0))
+                    .collect::<String>()
+            )
+        });
+        // if IS is empty, then
+        //    return OS;
+        if input.is_empty() {
+            return output;
+        }
+
+        match (&input[0].0.ty, input.get(1).as_ref().map(|t| &t.0.ty)) {
+            // else if IS is pop-context : IS', then
+            //     pop CTX
+            //     return substitute(IS', FP, AP, CTX, OS);
+            (MacroTokenType::PopContext, _) => {
+                let (_, rest) = input.split_first().unwrap();
+                ctx.pop_context();
+                self.substitute(rest, iter, args, ctx, output)
+            }
+            // else if IS is '#' : T : IS' and T is FP[i], then
+            //    return substitute(IS', FP, AP, CTX, OS : stringize(AP[i]));
+            (MacroTokenType::Operator(Operator::Macro), Some(MacroTokenType::Identifier(ident))) if args.contains_key(ident) => {
+                let (_, rest_0) = input.split_first().unwrap();
+                let (_, rest) = rest_0.split_first().unwrap();
+                let replacement = &args[ident];
+                let stringified = replacement.iter().map(|t| t.0.to_string()).collect::<String>();
+                let tok = MacroToken {
+                    source: Source::dummy(),
+                    ty: MacroTokenType::StringLiteral(From::from(stringified))
+                };
+                output.push((tok, true));
+                self.substitute(rest, iter, args, ctx, output)
+            }
+            // else if IS is '##' : T : IS' and T is FP[i], then
+            (MacroTokenType::Operator(Operator::MacroPaste), Some(MacroTokenType::Identifier(ident))) if args.contains_key(ident) => {
+                let replacement = args[ident].clone();
+                let (_, rest_0) = input.split_first().unwrap();
+                let (_, rest) = rest_0.split_first().unwrap();
+                // if AP[i] is empty, then
+                if replacement.is_empty() &&
+                    output.get(0).as_ref().map(|t| &t.0.ty) != Some(&MacroTokenType::Punctuation(Punctuation::Comma)) {
+                    // return substitute(IS', FP, AP, CTX, OS);
+                    self.substitute(rest, iter, args, ctx, output)
+                } else {
+                    // return substitute(IS', FP, AP, CTX, glue(OS, AP[i]));
+                    let glued = self.glue(iter, output, replacement);
+                    self.substitute(rest, iter, args, ctx, glued)
+                }
+            }
+            // else if IS is '##' : T : IS', then
+            //     return substitute(IS', FP, AP, CTX, glue(OS, T));
+            (MacroTokenType::Operator(Operator::MacroPaste), Some(_)) => {
+                let (_, rest_1) = input.split_first().unwrap();
+                let (t0, rest) = rest_1.split_first().unwrap();
+                let t = t0.clone();
+                let glued = self.glue(iter, output, vec![t]);
+                self.substitute(rest, iter, args, ctx, glued)
+            }
+            (MacroTokenType::Identifier(ident), Some(MacroTokenType::Operator(Operator::MacroPaste))) if args.contains_key(ident) => {
+                let replacement = args[ident].clone();
+                let (_, rest_0) = input.split_first().unwrap();
+                let (_, rest) = rest_0.split_first().unwrap();
+                // if AP[i] is empty, then
+                if replacement.is_empty() {
+                    match rest.get(0).as_ref().map(|t| &t.0.ty) {
+                        // if IS' is T' : IS'' and T' is FP[j], then
+                        //    return substitute(IS'', FP, AP, CTX, OS : AP[j]);
+                        Some(MacroTokenType::Identifier(ident)) if args.contains_key(ident) => {
+                            let (_, rest) = rest.split_first().unwrap();
+                            output.append(&mut args[ident].clone());
+                            self.substitute(rest, iter, args, ctx, output)
+                        }
+                        // else
+                        //    return substitute(IS', FP, AP, CTX, OS);
+                        _ => {
+                            self.substitute(rest, iter, args, ctx, output)
+                        }
+                    }
+                } else {
+                    // return substitute('##' : IS', FP, AP, CTX, OS : expand(AP[i], CTX));
+                    let (_, rest) = input.split_first().unwrap();
+                    let mut expanded = self.expand(&args[ident].clone(), ctx, &mut None);
+                    output.append(&mut expanded);
+                    self.substitute(rest, iter, args, ctx, output)
+                }
+            }
+            // else if IS is T : IS' and T is FP[i], then
+            //     return substitute(IS', FP, AP, CTX, OS : expand(AP[i], CTX));
+            (MacroTokenType::Identifier(ident), _) if args.contains_key(ident) => {
+                let (_, rest) = input.split_first().unwrap();
+                let mut expanded = self.expand(&args[ident].clone(), ctx, &mut None);
+                output.append(&mut expanded);
+                self.substitute(rest, iter, args, ctx, output)
+            }
+            // else IS is T : IS', and
+            //     return substitute(IS', FP, AP, CTX, OS : T);
+            _ => {
+                let (t0, rest) = input.split_first().unwrap();
+                let t = t0.clone();
+
+                output.push(t);
+                self.substitute(rest, iter, args, ctx, output)
+            }
+        }
+    }
+
+    fn glue(&self, iter: &mut Option<&mut FragmentIterator>, mut left: Vec<(MacroToken, bool)>, mut right: Vec<(MacroToken, bool)>) -> Vec<(MacroToken, bool)> {
+        //     if LS is ',' : []
+        if left.len() == 1 && left[0].0.ty == MacroTokenType::Punctuation(Punctuation::Comma) {
+            // and RS is empty, then
+            //         return [];
+            if right.is_empty() {
+                right
+            } else {
+                // else if LS is ',' : [], then
+                //     return LS : RS
+                left.append(&mut right);
+                left
+            }
+        }
+        // if LS is L : [] and RS is R : RS', then
+        else if left.len() == 1 && !right.is_empty() {
+            // combine L and R as T
+            // T.HS = intersection of L.HS and R.HS
+            // return T:RS';
+            let left_t = &left[0];
+            let (right_t, rest) = right.split_first().unwrap();
+
+            let combined = format!("{}{}", left_t.0, right_t.0);
+            let mut tmp_iter = FragmentIterator::new(&iter.as_mut().map(|i| i.current_filename()).unwrap_or(""), &combined);
+            let parsed_token = MacroContext {
+                get_file: unreachable_file_open,
+                if_stack: Vec::new(),
+                symbols: HashMap::new(),
+                iter: None,
+                intern: StringInterner::new(),
+            }
+            .get_token(&mut tmp_iter, false);
+            if tmp_iter.peek().is_some() {
+                panic!("Could not properly parse a token from '{}'", combined);
+            }
+            assert!(parsed_token.0.is_some());
+            if_debug(DebugVal::MacroExpand, || {
+                println!(
+                    "Combined {} and {} to {}",
+                    left_t.0, right_t.0, parsed_token.0.as_ref().unwrap())
+            });
+            let tok = MacroToken {
+                source: Source::dummy(),
+                ty: parsed_token.0.unwrap().ty,
+            };
+
+            let mut out = vec![(tok, left_t.1 && right_t.1)];
+            out.append(&mut rest.to_vec());
+            out
+        } else if left.is_empty() {
+            right
+        } else {
+            // else LS is L : LS', and
+            //    return L : glue(LS', RS);
+            let (t0, rest) = left.split_first().unwrap();
+            let mut out = vec![t0.clone()];
+            let mut glued = self.glue(iter, rest.to_vec(), right);
+            out.append(&mut glued);
+            out
+        }
+    }
+
+    fn flush_pop_context<'a>(&self, mut list: &'a [(MacroToken, bool)], ctx: &mut ExpansionHistory) -> &'a [(MacroToken, bool)] {
+        while let Some(MacroTokenType::PopContext) = list.get(0).as_ref().map(|t| &t.0.ty) {
+            list = list.split_first().unwrap().1;
+            ctx.pop_context();
+        }
+        list
+    }
+
+    #[allow(clippy::type_complexity)]
     fn parse_arguments<'a>(&mut self, mut input: &'a [(MacroToken, bool)], iter: &mut Option<&mut FragmentIterator>,
                        args: &[Rc<str>], varargs: Option<&Rc<str>>) -> (&'a [(MacroToken, bool)], HashMap<Rc<str>, Vec<(MacroToken, bool)>>) {
         let has_varargs = varargs.is_some();
 
         let mut depth = 0;
         let mut argc = 0;
-        //let mut out = HashMap::new();
         let mut result = Vec::new();
         let mut row = Vec::new();
         let mut consumed = Vec::new();
@@ -1283,7 +1499,7 @@ where
         (input, output)
     }
 
-    fn next_is_open_paren(&mut self, input: &[(MacroToken, bool)], ctx: &mut ExpansionHistory, iter: &mut Option<&mut FragmentIterator>) -> bool {
+    fn next_is_open_paren(&mut self, input: &[(MacroToken, bool)], iter: &mut Option<&mut FragmentIterator>) -> bool {
         let mut index = 0;
 
         loop {
@@ -1306,195 +1522,6 @@ where
                 }
             }
         }
-    }
-
-    fn substitute(&mut self, input: &[(MacroToken, bool)], iter: &mut Option<&mut FragmentIterator>,
-                  args: HashMap<Rc<str>, Vec<(MacroToken, bool)>>,
-                  ctx: &mut ExpansionHistory, mut output: Vec<(MacroToken, bool)>) -> Vec<(MacroToken, bool)> {
-        if_debug(DebugVal::MacroExpand, || {
-            println!(
-                "Substituting {}",
-                input
-                    .iter()
-                    .map(|t| format!("{} ", t.0))
-                    .collect::<String>()
-            )
-        });
-        if_debug(DebugVal::MacroExpand, || {
-            if !args.is_empty() {
-                print!("Current arguments:");
-                for (arg, val) in &args {
-                    print!(" {}: {}\n                  ",
-                           arg, val.iter().map(|t| format!("{} ", t.0)).collect::<String>());
-                }
-                println!();
-            }
-        });
-        if_debug(DebugVal::MacroExpand, || {
-            println!(
-                "Current output: {}",
-                output
-                    .iter()
-                    .map(|t| format!("{} ", t.0))
-                    .collect::<String>()
-            )
-        });
-        // if IS is empty, then
-        //    return OS;
-        if input.is_empty() {
-            return output;
-        }
-
-        match (&input[0].0.ty, input.get(1).as_ref().map(|t| &t.0.ty)) {
-            // else if IS is '#' : T : IS' and T is FP[i], then
-            //    return substitute(IS', FP, AP, CTX, OS : stringize(AP[i]));
-            (MacroTokenType::Operator(Operator::Macro), Some(MacroTokenType::Identifier(ident))) if args.contains_key(ident) => {
-                let (_, rest_0) = input.split_first().unwrap();
-                let (_, rest) = rest_0.split_first().unwrap();
-                let replacement = &args[ident];
-                let stringified = replacement.iter().map(|t| t.0.to_string()).collect::<String>();
-                let tok = MacroToken {
-                    source: Source::dummy(),
-                    ty: MacroTokenType::StringLiteral(From::from(stringified))
-                };
-                output.push((tok, true));
-                return self.substitute(rest, iter, args, ctx, output);
-            }
-            // else if IS is '##' : T : IS' and T is FP[i], then
-            (MacroTokenType::Operator(Operator::MacroPaste), Some(MacroTokenType::Identifier(ident))) if args.contains_key(ident) => {
-                let replacement = args[ident].clone();
-                let (_, rest_0) = input.split_first().unwrap();
-                let (_, rest) = rest_0.split_first().unwrap();
-                // if AP[i] is empty, then
-                if replacement.is_empty() &&
-                    output.get(0).as_ref().map(|t| &t.0.ty) != Some(&MacroTokenType::Punctuation(Punctuation::Comma)) {
-                    // return substitute(IS', FP, AP, CTX, OS);
-                    return self.substitute(rest, iter, args, ctx, output);
-                } else {
-                    // return substitute(IS', FP, AP, CTX, glue(OS, AP[i]));
-                    let glued = self.glue(iter, output, replacement);
-                    return self.substitute(rest, iter, args, ctx, glued);
-                }
-            }
-            // else if IS is '##' : T : IS', then
-            //     return substitute(IS', FP, AP, CTX, glue(OS, T));
-            (MacroTokenType::Operator(Operator::MacroPaste), Some(_)) => {
-                let (_, rest_1) = input.split_first().unwrap();
-                let (t0, rest) = rest_1.split_first().unwrap();
-                let t = t0.clone();
-                let glued = self.glue(iter, output, vec![t]);
-                self.substitute(rest, iter, args, ctx, glued)
-            }
-            (MacroTokenType::Identifier(ident), Some(MacroTokenType::Operator(Operator::MacroPaste))) if args.contains_key(ident) => {
-                let replacement = args[ident].clone();
-                let (_, rest_0) = input.split_first().unwrap();
-                let (_, rest) = rest_0.split_first().unwrap();
-                // if AP[i] is empty, then
-                if replacement.is_empty() {
-                    match rest.get(0).as_ref().map(|t| &t.0.ty) {
-                        // if IS' is T' : IS'' and T' is FP[j], then
-                        //    return substitute(IS'', FP, AP, OS : AP[j]);
-                        Some(MacroTokenType::Identifier(ident)) if args.contains_key(ident) => {
-                            unimplemented!();
-                        }
-                        // else
-                        //    return substitute(IS', FP, AP, OS);
-                        _ => {
-                            return self.substitute(rest, iter, args, ctx, output);
-                        }
-                    }
-                } else {
-                    // return substitute('##' : IS', FP, AP, OS : expand(AP[i]));
-                    let (_, rest) = input.split_first().unwrap();
-                    let mut expanded = self.expand(&args[ident].clone(), &mut ctx.clone(), &mut None);
-                    output.append(&mut expanded.into_iter().filter(|(m, _)| m.ty != MacroTokenType::PopContext).collect());
-                    return self.substitute(rest, iter, args, ctx, output);
-                }
-            }
-            (MacroTokenType::Identifier(ident), _) if args.contains_key(ident) => {
-                let (_, rest) = input.split_first().unwrap();
-                let mut expanded = self.expand(&args[ident].clone(), ctx, &mut None);
-                output.append(&mut expanded);
-                return self.substitute(rest, iter, args, ctx, output);
-            }
-            (MacroTokenType::PopContext, _) => {
-                let (_, rest) = input.split_first().unwrap();
-                ctx.pop_context();
-                self.substitute(rest, iter, args, ctx, output)
-            }
-            _ => {
-                let (t0, rest) = input.split_first().unwrap();
-                let t = t0.clone();
-
-                output.push(t);
-                self.substitute(rest, iter, args, ctx, output)
-            }
-        }
-    }
-
-    fn glue(&self, iter: &mut Option<&mut FragmentIterator>, mut left: Vec<(MacroToken, bool)>, mut right: Vec<(MacroToken, bool)>) -> Vec<(MacroToken, bool)> {
-        if left.len() == 1 && left[0].0.ty == MacroTokenType::Punctuation(Punctuation::Comma) {
-            if right.len() == 0 {
-                return right;
-            } else {
-                left.append(&mut right);
-                return left;
-            }
-        }
-        // if LS is L : [] and RS is R : RS', then
-        else if left.len() == 1 && !right.is_empty() {
-            // combine L and R as T
-            // T.HS = intersection of L.HS and R.HS
-            // return T:RS';
-            let left_t = &left[0];
-            let (right_t, rest) = right.split_first().unwrap();
-
-            let combined = format!("{}{}", left_t.0, right_t.0);
-            let mut tmp_iter = FragmentIterator::new(&iter.as_mut().map(|i| i.current_filename()).unwrap_or(""), &combined);
-            let parsed_token = MacroContext {
-                get_file: unreachable_file_open,
-                if_stack: Vec::new(),
-                symbols: HashMap::new(),
-                iter: None,
-                intern: StringInterner::new(),
-            }
-            .get_token(&mut tmp_iter, false);
-            if tmp_iter.peek().is_some() {
-                panic!("Could not properly parse a token from '{}'", combined);
-            }
-            assert!(parsed_token.0.is_some());
-            if_debug(DebugVal::MacroExpand, || {
-                println!(
-                    "Combined {} and {} to {}",
-                    left_t.0, right_t.0, (&parsed_token).0.as_ref().unwrap())
-            });
-            let tok = MacroToken {
-                source: Source::dummy(),
-                ty: parsed_token.0.unwrap().ty,
-            };
-
-            let mut out = vec![(tok, left_t.1 && right_t.1)];
-            out.append(&mut rest.to_vec());
-            return out;
-        } else if left.is_empty() {
-            return right;
-        } else {
-            // else LS is L : LS', and
-            //    return L : glue(LS', RS);
-            let (t0, rest) = left.split_first().unwrap();
-            let mut out = vec![t0.clone()];
-            let mut glued = self.glue(iter, rest.to_vec(), right);
-            out.append(&mut glued);
-            out
-        }
-    }
-
-    fn flush_pop_context<'a>(&self, mut list: &'a [(MacroToken, bool)], ctx: &mut ExpansionHistory) -> &'a [(MacroToken, bool)] {
-        while let Some(MacroTokenType::PopContext) = list.get(0).as_ref().map(|t| &t.0.ty) {
-            list = list.split_first().unwrap().1;
-            ctx.pop_context();
-        }
-        list
     }
 }
 

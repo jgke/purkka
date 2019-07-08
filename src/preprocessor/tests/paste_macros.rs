@@ -228,3 +228,20 @@ fn stringify_function_macro_no_expand() {
         ],
     );
 }
+
+#[test]
+fn paste_right_arg_to_empty() {
+    process(
+        "#define FOO(a, b) a##b\nFOO(, foo)",
+        vec![mt_s(
+            "foo.c",
+            22,
+            24, // foo
+            MacroTokenType::Identifier(From::from("foo")),
+            Some(s(
+                "foo.c", 0, 17, // #define FOO(a) #a
+                None,
+            )),
+        )],
+    );
+}

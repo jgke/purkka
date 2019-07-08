@@ -18,6 +18,7 @@ pub static DEBUG_VALS: &[&str] = &[
     "DEBUG_CPARSER_TOKEN",
 ];
 
+#[cfg(debug_assertions)]
 pub fn is_debug_enabled(ident: DebugVal) -> bool {
     if let Ok("1") = env::var(DEBUG_VALS[ident as usize])
         .as_ref()
@@ -27,6 +28,11 @@ pub fn is_debug_enabled(ident: DebugVal) -> bool {
     } else {
         false
     }
+}
+
+#[cfg(not(debug_assertions))]
+pub fn is_debug_enabled(_ident: DebugVal) -> bool {
+    false
 }
 
 pub fn if_debug<CB>(ident: DebugVal, cb: CB)

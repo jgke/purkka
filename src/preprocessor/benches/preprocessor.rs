@@ -56,3 +56,27 @@ BAZ(\"Complex\", stream, of, various, 123elements, which_should, /* work */ just
         ";
     b.iter(|| process_files(vec![("main.c", file)], "main.c"))
 }
+
+#[bench]
+fn exponential_bench(b: &mut Bencher) {
+    let file = "
+#define FOO1(a, b, c, d, e, f, g, h) FOO1(a, b, c, d, e, f, g, h)
+#define FOO2(a, b, c, d, e, f, g, h) \
+        FOO1(a, b, c, d, e, f, g, h) \
+        FOO1(a, b, c, d, e, f, g, h) \
+#define FOO3(a, b, c, d, e, f, g, h) \
+        FOO2(a, b, c, d, e, f, g, h) \
+        FOO2(a, b, c, d, e, f, g, h) \
+#define FOO4(a, b, c, d, e, f, g, h) \
+        FOO3(a, b, c, d, e, f, g, h) \
+        FOO3(a, b, c, d, e, f, g, h) \
+#define FOO5(a, b, c, d, e, f, g, h) \
+        FOO4(a, b, c, d, e, f, g, h) \
+        FOO4(a, b, c, d, e, f, g, h) \
+#define FOO6(a, b, c, d, e, f, g, h) \
+        FOO5(a, b, c, d, e, f, g, h) \
+        FOO5(a, b, c, d, e, f, g, h) \
+FOO6(lots, of, different, strings, to, expand, for, debugs)
+        ";
+    b.iter(|| process_files(vec![("main.c", file)], "main.c"))
+}
