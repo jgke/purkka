@@ -1,5 +1,3 @@
-use std::env;
-
 pub enum DebugVal {
     IncludeName,
     DumpLalrTable,
@@ -20,7 +18,7 @@ pub static DEBUG_VALS: &[&str] = &[
 
 #[cfg(debug_assertions)]
 pub fn is_debug_enabled(ident: DebugVal) -> bool {
-    if let Ok("1") = env::var(DEBUG_VALS[ident as usize])
+    if let Ok("1") = std::env::var(DEBUG_VALS[ident as usize])
         .as_ref()
         .map(String::as_str)
     {
