@@ -26,19 +26,21 @@ fn function_macro_constant() {
 fn function_macro_two() {
     process(
         "#define BAR(a) a\n#define FOO() BAR(foo) BAR(foo)\nFOO()",
-        vec![mt_s(
-            "foo.c",
-            14,
-            16, // foo
-            ident("foo"),
-            Some(s("foo.c", 0, 17, None)),
-        ), mt_s(
-            "foo.c",
-            16,
-            18, // this is wrong
-            ident("foo"),
-            Some(s("foo.c", 0, 17, None)),
-        )
+        vec![
+            mt_s(
+                "foo.c",
+                14,
+                16, // foo
+                ident("foo"),
+                Some(s("foo.c", 0, 17, None)),
+            ),
+            mt_s(
+                "foo.c",
+                16,
+                18, // this is wrong
+                ident("foo"),
+                Some(s("foo.c", 0, 17, None)),
+            ),
         ],
     );
 }
@@ -47,31 +49,35 @@ fn function_macro_two() {
 fn function_macro_three() {
     process(
         "#define BAZ(a) a\n#define BAR(a) BAZ(a) BAZ(a)\n#define FOO() BAR(foo) BAR(foo)\nFOO()",
-        vec![mt_s(
-            "foo.c",
-            14,
-            16, // foo
-            ident("foo"),
-            Some(s("foo.c", 0, 17, None)),
-        ), mt_s(
-            "foo.c",
-            16,
-            18, // this is wrong
-            ident("foo"),
-            Some(s("foo.c", 0, 17, None)),
-        ), mt_s(
-            "foo.c",
-            16,
-            18, // this is wrong
-            ident("foo"),
-            Some(s("foo.c", 0, 17, None)),
-        ), mt_s(
-            "foo.c",
-            16,
-            18, // this is wrong
-            ident("foo"),
-            Some(s("foo.c", 0, 17, None)),
-        )
+        vec![
+            mt_s(
+                "foo.c",
+                14,
+                16, // foo
+                ident("foo"),
+                Some(s("foo.c", 0, 17, None)),
+            ),
+            mt_s(
+                "foo.c",
+                16,
+                18, // this is wrong
+                ident("foo"),
+                Some(s("foo.c", 0, 17, None)),
+            ),
+            mt_s(
+                "foo.c",
+                16,
+                18, // this is wrong
+                ident("foo"),
+                Some(s("foo.c", 0, 17, None)),
+            ),
+            mt_s(
+                "foo.c",
+                16,
+                18, // this is wrong
+                ident("foo"),
+                Some(s("foo.c", 0, 17, None)),
+            ),
         ],
     );
 }

@@ -75,50 +75,57 @@ fn token_pasting_with_function_macro() {
 fn function_macro_with_expanded_argument() {
     process(
         "#define FOO(a) foo##a\n#define BAR(a,b) a##b\nFOO(BAR(bar,baz))",
-        vec![mt_s(
-            "foo.c",
-            15,
-            20, // foo##a
-            ident("fooBAR"),
-            Some(s(
+        vec![
+            mt_s(
                 "foo.c",
-                44,
-                60, // FOO(BAR(bar,baz))
+                15,
+                20, // foo##a
+                ident("fooBAR"),
                 Some(s(
-                    "foo.c", 0, 21, // #define FOO(a) foo##a
-                    None,
+                    "foo.c",
+                    44,
+                    60, // FOO(BAR(bar,baz))
+                    Some(s(
+                        "foo.c", 0, 21, // #define FOO(a) foo##a
+                        None,
+                    )),
                 )),
-            )),
-        ), mt_s(
-            "foo.c",
-            15,
-            20, // foo##a
-            MacroTokenType::Punctuation(Punctuation::OpenParen),
-            None),
+            ),
             mt_s(
-            "foo.c",
-            15,
-            20, // foo##a
-            ident("bar"),
-            None),
- mt_s(
-            "foo.c",
-            15,
-            20, // foo##a
-            MacroTokenType::Punctuation(Punctuation::Comma),
-            None),
+                "foo.c",
+                15,
+                20, // foo##a
+                MacroTokenType::Punctuation(Punctuation::OpenParen),
+                None,
+            ),
             mt_s(
-            "foo.c",
-            15,
-            20, // foo##a
-            ident("baz"),
-            None),
-                mt_s(
-            "foo.c",
-            15,
-            20, // foo##a
-            MacroTokenType::Punctuation(Punctuation::CloseParen),
-            None)
+                "foo.c",
+                15,
+                20, // foo##a
+                ident("bar"),
+                None,
+            ),
+            mt_s(
+                "foo.c",
+                15,
+                20, // foo##a
+                MacroTokenType::Punctuation(Punctuation::Comma),
+                None,
+            ),
+            mt_s(
+                "foo.c",
+                15,
+                20, // foo##a
+                ident("baz"),
+                None,
+            ),
+            mt_s(
+                "foo.c",
+                15,
+                20, // foo##a
+                MacroTokenType::Punctuation(Punctuation::CloseParen),
+                None,
+            ),
         ],
     );
 }

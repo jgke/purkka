@@ -4,11 +4,17 @@ use common::*;
 use debug::debug::DEBUG_VALS;
 
 fn equals_str(src: &str, res: &str) {
-    println!("\n----------------------------\nSource file: {}\n----------------------------\n", src);
+    println!(
+        "\n----------------------------\nSource file: {}\n----------------------------\n",
+        src
+    );
     let toks = preprocess_string("main.c", src).unwrap();
 
     // turn off debugs while parsing the expected result
-    let list = DEBUG_VALS.iter().map(|t| (t, std::env::var(t).unwrap())).collect::<Vec<_>>();
+    let list = DEBUG_VALS
+        .iter()
+        .map(|t| (t, std::env::var(t).unwrap()))
+        .collect::<Vec<_>>();
     for s in DEBUG_VALS {
         std::env::set_var(s, "0");
     }
@@ -19,12 +25,8 @@ fn equals_str(src: &str, res: &str) {
 
     println!("\n\nleft=expected, right=got");
     assert_eq!(
-        res_toks.into_iter()
-        .map(|t| t.ty)
-        .collect::<Vec<_>>(),
-        toks.into_iter()
-        .map(|t| t.ty)
-        .collect::<Vec<_>>(),
+        res_toks.into_iter().map(|t| t.ty).collect::<Vec<_>>(),
+        toks.into_iter().map(|t| t.ty).collect::<Vec<_>>(),
     );
 }
 
@@ -35,17 +37,23 @@ fn humble_define() {
         r#"
     #define VERSION 123
     printf("Version: %d\n", VERSION);
-    "#, r#"printf("Version: %d\n", 123);"#);
+    "#,
+        r#"printf("Version: %d\n", 123);"#,
+    );
     equals_str(
         r#"
     #define MULTIPLY(a, b) ((a) * (b))
     printf("%d\n", MULTIPLY(4 + 2, 2 + 8) * 2);
-    "#, r#"printf("%d\n", ((4 + 2) * (2 + 8)) * 2);"#);
+    "#,
+        r#"printf("%d\n", ((4 + 2) * (2 + 8)) * 2);"#,
+    );
     equals_str(
         r#"
     #define DEBUG(...) fprintf(stderr, __VA_ARGS__)
     DEBUG("Something went wrong in iteration: %d", i);
-    "#, r#"fprintf(stderr, "Something went wrong in iteration: %d", i);"#);
+    "#,
+        r#"fprintf(stderr, "Something went wrong in iteration: %d", i);"#,
+    );
 }
 
 #[test]
@@ -60,7 +68,8 @@ fn pattern_matching() {
 #define _IF_0_ELSE(...) __VA_ARGS__
 IF_ELSE(1)(it was one)(it was zero)
     "#,
-    r#"it was one"#);
+        r#"it was one"#,
+    );
     equals_str(
         r#"
 #define IF_ELSE(condition) _IF_ ## condition
@@ -71,7 +80,8 @@ IF_ELSE(1)(it was one)(it was zero)
 #define _IF_0_ELSE(...) __VA_ARGS__
 IF_ELSE(0)(it was one)(it was zero)
     "#,
-    r#"it was zero"#);
+        r#"it was zero"#,
+    );
 }
 
 #[test]
@@ -84,7 +94,9 @@ fn cast_to_bool_1() {
     SECOND(1,2,3)
     IS_PROBE(123)
     IS_PROBE(PROBE())
-    "#, r#"2 0 1"#);
+    "#,
+        r#"2 0 1"#,
+    );
 }
 
 #[test]
@@ -105,7 +117,9 @@ BOOL(123)
 BOOL(not zero)
 BOOL()
 
-    "#, r#"0 1 1 1 1"#);
+    "#,
+        r#"0 1 1 1 1"#,
+    );
 }
 
 #[test]
@@ -134,7 +148,9 @@ fn cast_to_bool_3_1() {
 #define _IF_0_ELSE(...) __VA_ARGS__
 
 IF_ELSE(0)(it was non-zero)(it was zero)
-    "#, r#"it was zero"#);
+    "#,
+        r#"it was zero"#,
+    );
 }
 
 #[test]
@@ -163,7 +179,9 @@ fn cast_to_bool_3_2() {
 #define _IF_0_ELSE(...) __VA_ARGS__
 
 IF_ELSE(1)(it was non-zero)(it was zero)
-    "#, r#"it was non-zero"#);
+    "#,
+        r#"it was non-zero"#,
+    );
 }
 
 #[test]
@@ -192,12 +210,17 @@ fn cast_to_bool_3_3() {
 #define _IF_0_ELSE(...) __VA_ARGS__
 
 IF_ELSE(123)(it was non-zero)(it was zero)
-    "#, r#"it was non-zero"#);
+    "#,
+        r#"it was non-zero"#,
+    );
 }
 
 #[test]
 fn iterators() {
-    equals_str("#define RECURSIVE() I am RECURSIVE()\nRECURSIVE()", "I am RECURSIVE()");
+    equals_str(
+        "#define RECURSIVE() I am RECURSIVE()\nRECURSIVE()",
+        "I am RECURSIVE()",
+    );
 }
 
 #[test]
@@ -209,7 +232,9 @@ fn forcing_cpp_to_make_multiple_passes() {
     
     A (123)
     A EMPTY() (123)
-    "#, "I like the number 123 A (123)");
+    "#,
+        "I like the number 123 A (123)",
+    );
     equals_str(
         r#"
 #define EMPTY()
@@ -218,7 +243,9 @@ fn forcing_cpp_to_make_multiple_passes() {
 #define EVAL1(...) __VA_ARGS__
 
 A EMPTY() (123)
-    "#, "A (123)");
+    "#,
+        "A (123)",
+    );
     equals_str(
         r#"
 #define EMPTY()
@@ -227,7 +254,9 @@ A EMPTY() (123)
 #define EVAL1(...) __VA_ARGS__
 
 EVAL1(A EMPTY() (123))
-    "#, "I like the number 123");
+    "#,
+        "I like the number 123",
+    );
 }
 
 #[test]
@@ -239,9 +268,11 @@ fn turning_multiple_expansion_passes_to_recursion_0() {
 #define DEFER1(m) m EMPTY()
 
 I am recursive, look: DEFER1(_RECURSE)()()
-"#, r#"
+"#,
+        r#"
 I am recursive, look: _RECURSE ()()
-"#);
+"#,
+    );
 }
 
 #[test]
@@ -256,9 +287,11 @@ fn turning_multiple_expansion_passes_to_recursion_1() {
 #define _RECURSE() RECURSE
 
 No EVAL: RECURSE()
-"#, r#"
+"#,
+        r#"
 No EVAL: I am recursive, look: _RECURSE ()()
-"#);
+"#,
+    );
 }
 
 #[test]
@@ -275,9 +308,11 @@ fn turning_multiple_expansion_passes_to_recursion_2() {
 #define _RECURSE() RECURSE
 
 With EVAL1: EVAL1(RECURSE())
-"#, r#"
+"#,
+        r#"
 With EVAL1: I am recursive, look: I am recursive, look: _RECURSE ()()
-"#);
+"#,
+    );
 }
 
 #[test]
@@ -366,7 +401,9 @@ No args: HAS_ARGS()
 One arg: HAS_ARGS(0)
 Two args: HAS_ARGS(0, 2)
 Three args: HAS_ARGS(0, 1, 2)
-"#, r#"0 0 0 0 No args: 0 One arg: 1 Two args: 1 Three args: 1"#);
+"#,
+        r#"0 0 0 0 No args: 0 One arg: 1 Two args: 1 Three args: 1"#,
+    );
 }
 
 #[test]
@@ -390,7 +427,9 @@ fn turning_recursion_into_an_iterator_2_2() {
 #define _END_OF_ARGUMENTS_() 0
 
 HAS_ARGS()
-"#, "0");
+"#,
+        "0",
+    );
 }
 
 #[test]
@@ -403,7 +442,9 @@ fn turning_recursion_into_an_iterator_3_2() {
 
 #define FOO(x) x
 EVAL(MAP(FOO, A, B))
-"#, r#"MAP(FOO, B)"#);
+"#,
+        r#"MAP(FOO, B)"#,
+    );
 }
 
 #[test]
@@ -460,7 +501,9 @@ fn turning_recursion_into_an_iterator_3() {
 
 #define GREET(x) Hello, x!
 EVAL(MAP(GREET, Mum, Dad, Adam, Joe))
-"#, r#"Hello, Mum! MAP(GREET, Dad, Adam, Joe)"#);
+"#,
+        r#"Hello, Mum! MAP(GREET, Dad, Adam, Joe)"#,
+    );
 }
 
 #[test]
@@ -523,5 +566,7 @@ fn turning_recursion_into_an_iterator_4() {
 
 #define GREET(x) Hello, x!
 EVAL(MAP(GREET, Mum, Dad, Adam, Joe))
-"#, r#"Hello, Mum! Hello, Dad! Hello, Adam! Hello, Joe!"#);
+"#,
+        r#"Hello, Mum! Hello, Dad! Hello, Adam! Hello, Joe!"#,
+    );
 }

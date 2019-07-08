@@ -76,9 +76,9 @@ pub fn process(original: &str, expected: Vec<MacroToken>) {
             .for_each(|t| println!("{}", t.display(&iter)));
     }
     assert_eq!(
-        processed.map(
-            |t| t.into_iter().map(|tt| tt.ty).collect::<Vec<_>>()),
-            Ok(expected.into_iter().map(|t| t.ty).collect::<Vec<_>>()));
+        processed.map(|t| t.into_iter().map(|tt| tt.ty).collect::<Vec<_>>()),
+        Ok(expected.into_iter().map(|t| t.ty).collect::<Vec<_>>())
+    );
 }
 
 pub fn mt(file: &str, lo: usize, hi: usize, ty: MacroTokenType) -> MacroToken {

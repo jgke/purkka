@@ -491,16 +491,14 @@ impl Context {
                     )),
                 ))
             }
-            pp::Expression::Cast(expr, ty) => {
-                cp::TernaryExpression::GeneralExpression(cp::GeneralExpression::CastExpression(
-                        Box::new(
-                        cp::CastExpression::OpenParen(
-                        ct::Token::OpenParen(0),
-                        Box::new(self.type_to_type_name(ty)),
-                        ct::Token::CloseParen(0),
-                        Box::new(self.expression_as_general(*expr))
-                        ))))
-            }
+            pp::Expression::Cast(expr, ty) => cp::TernaryExpression::GeneralExpression(
+                cp::GeneralExpression::CastExpression(Box::new(cp::CastExpression::OpenParen(
+                    ct::Token::OpenParen(0),
+                    Box::new(self.type_to_type_name(ty)),
+                    ct::Token::CloseParen(0),
+                    Box::new(self.expression_as_general(*expr)),
+                ))),
+            ),
             other => panic!("Not implemented: {:?}", other),
         }
     }
@@ -585,7 +583,10 @@ impl Context {
         )
     }
 
-    pub fn format_abstract_direct_decl(&mut self, ty: TypeSignature) -> cp::DirectAbstractDeclarator {
+    pub fn format_abstract_direct_decl(
+        &mut self,
+        ty: TypeSignature,
+    ) -> cp::DirectAbstractDeclarator {
         match ty {
             TypeSignature::Plain(_) => cp::DirectAbstractDeclarator::Epsilon(),
             other => panic!("Not implemented: {:?}", other),

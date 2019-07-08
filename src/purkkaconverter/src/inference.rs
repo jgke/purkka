@@ -244,7 +244,10 @@ impl TypeInferrer {
         match expr {
             PrimaryExpression::Identifier(t) => (self.get_ident_ty(t.as_ref()), Vec::new()),
             PrimaryExpression::Literal(Literal::Integer(..)) => (self.get_number_ty(), Vec::new()),
-            PrimaryExpression::Literal(Literal::Float(..)) => (IntermediateType::Number(self.get_ty_index(), IntermediateNumber::Float), Vec::new()),
+            PrimaryExpression::Literal(Literal::Float(..)) => (
+                IntermediateType::Number(self.get_ty_index(), IntermediateNumber::Float),
+                Vec::new(),
+            ),
             PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block)) => {
                 if let TypeSignature::Infer(_id) = return_type {
                     self.push_block();
@@ -548,12 +551,14 @@ impl TypeInferrer {
                 }
             }
 
-            (IntermediateType::Number(id_1, num_1), IntermediateType::Number(id_2, num_2)) =>
-                self.make_equal_num(*id_1, num_1, *id_2, num_2),
+            (IntermediateType::Number(id_1, num_1), IntermediateType::Number(id_2, num_2)) => {
+                self.make_equal_num(*id_1, num_1, *id_2, num_2)
+            }
 
             (IntermediateType::Number(id, num), IntermediateType::Exact(ty))
-            | (IntermediateType::Exact(ty), IntermediateType::Number(id, num))
-                => self.make_num_exact(*id, num, ty),
+            | (IntermediateType::Exact(ty), IntermediateType::Number(id, num)) => {
+                self.make_num_exact(*id, num, ty)
+            }
         }
     }
 
@@ -562,45 +567,60 @@ impl TypeInferrer {
             return self.make_equal(&num_ty, &IntermediateType::Exact(Box::new(ty.clone())));
         }
         let res_ty = match (num, ty) {
-            (_, TypeSignature::Infer(i)) => return self.make_equal(&IntermediateType::Number(id, num.clone()), i),
-            (IntermediateNumber::Indeterminate, TypeSignature::Plain(t)) => {
-                match t.as_ref() {
-                    "int" | "float" | "double" => TypeSignature::Plain(t.clone()),
-                    otherwise => panic!("Not implemented: {:?}", otherwise),
-                }
+            (_, TypeSignature::Infer(i)) => {
+                return self.make_equal(&IntermediateType::Number(id, num.clone()), i)
             }
-            (IntermediateNumber::Float, TypeSignature::Plain(t)) => {
-                match t.as_ref() {
-                    "float" | "double" => TypeSignature::Plain(t.clone()),
-                    otherwise => panic!("Not implemented: {:?}", otherwise),
-                }
-            }
+            (IntermediateNumber::Indeterminate, TypeSignature::Plain(t)) => match t.as_ref() {
+                "int" | "float" | "double" => TypeSignature::Plain(t.clone()),
+                otherwise => panic!("Not implemented: {:?}", otherwise),
+            },
+            (IntermediateNumber::Float, TypeSignature::Plain(t)) => match t.as_ref() {
+                "float" | "double" => TypeSignature::Plain(t.clone()),
+                otherwise => panic!("Not implemented: {:?}", otherwise),
+            },
             otherwise => panic!("Not implemented: {:?}", otherwise),
         };
 
-        self.infer_map.insert(id, IntermediateType::Exact(Box::new(res_ty)));
+        self.infer_map
+            .insert(id, IntermediateType::Exact(Box::new(res_ty)));
     }
 
-    fn make_equal_num(&mut self,
-                      id_1: i128, num_1: &IntermediateNumber,
-                      id_2: i128, num_2: &IntermediateNumber) {
+    fn make_equal_num(
+        &mut self,
+        id_1: i128,
+        num_1: &IntermediateNumber,
+        id_2: i128,
+        num_2: &IntermediateNumber,
+    ) {
         if let Some(ty) = self.infer_map.get(&id_1).cloned() {
             return self.make_equal(&ty, &IntermediateType::Number(id_2, num_2.clone()));
         } else if let Some(ty) = self.infer_map.get(&id_2).cloned() {
             return self.make_equal(&IntermediateType::Number(id_1, num_1.clone()), &ty);
         }
         match (num_1, num_2) {
-            (IntermediateNumber::Indeterminate, t) => { self.infer_map.insert(id_1, IntermediateType::Number(id_2, t.clone())); }
-            (t, IntermediateNumber::Indeterminate) => { self.infer_map.insert(id_2, IntermediateType::Number(id_1, t.clone())); }
+            (IntermediateNumber::Indeterminate, t) => {
+                self.infer_map
+                    .insert(id_1, IntermediateType::Number(id_2, t.clone()));
+            }
+            (t, IntermediateNumber::Indeterminate) => {
+                self.infer_map
+                    .insert(id_2, IntermediateType::Number(id_1, t.clone()));
+            }
             (IntermediateNumber::Float, IntermediateNumber::Float) => {}
             (IntermediateNumber::Double, IntermediateNumber::Double) => {}
             (IntermediateNumber::Float, IntermediateNumber::Double) => {
                 let id = self.get_ty_index();
-                self.infer_map.insert(id_1, IntermediateType::Number(id, IntermediateNumber::Double));
+                self.infer_map.insert(
+                    id_1,
+                    IntermediateType::Number(id, IntermediateNumber::Double),
+                );
             }
             (IntermediateNumber::Double, IntermediateNumber::Float) => {
                 let id = self.get_ty_index();
-                self.infer_map.insert(id_2, IntermediateType::Number(id, IntermediateNumber::Double));
+                self.infer_map.insert(
+                    id_2,
+                    IntermediateType::Number(id, IntermediateNumber::Double),
+                );
             }
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
@@ -654,7 +674,7 @@ impl ASTVisitor for TypeInserter<'_> {
                     self.visit_ty(s);
                 } else {
                     match more {
-                        _ => *s = TypeSignature::Plain(From::from("int"))
+                        _ => *s = TypeSignature::Plain(From::from("int")),
                     }
                 }
             }

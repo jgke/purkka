@@ -14,7 +14,7 @@ pub enum MacroTokenType {
     Operator(Operator),
     Punctuation(Punctuation),
     Other(char),
-    PopContext
+    PopContext,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -126,7 +126,7 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
             c,
             context.source_to_str(&t.source)
         ),
-        MacroTokenType::PopContext => panic!("Spurious pop-context left in stack")
+        MacroTokenType::PopContext => panic!("Spurious pop-context left in stack"),
     }
 }
 
@@ -158,7 +158,7 @@ impl MacroToken {
             MacroTokenType::Number(s) => s.to_string(),
             MacroTokenType::Char(c) => format!("'{}'", c),
             MacroTokenType::Other(c) => c.to_string(),
-            MacroTokenType::PopContext => "[pop-context]".to_string()
+            MacroTokenType::PopContext => "[pop-context]".to_string(),
         }
     }
 }
@@ -211,7 +211,7 @@ impl fmt::Display for MacroToken {
             MacroTokenType::Operator(op) => op.to_string(),
             MacroTokenType::Punctuation(punc) => punc.to_string(),
             MacroTokenType::Other(c) => c.to_string(),
-            MacroTokenType::PopContext => "[pop-context]".to_string()
+            MacroTokenType::PopContext => "[pop-context]".to_string(),
         };
         write!(f, "{}", s)
     }
