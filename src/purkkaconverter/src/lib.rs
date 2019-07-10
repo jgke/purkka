@@ -511,7 +511,28 @@ impl Context {
 
     pub fn assignment_expression(&mut self, expr: pp::Expression) -> cp::AssignmentExpression {
         match expr {
-            pp::Expression::Op(ref op, _) if self.is_assignment_op(op) => unimplemented!(),
+            pp::Expression::Op(ref op, ref expr_list) if self.is_assignment_op(op) => {
+                let pp::ExprList::List(list) = expr_list;
+                assert_eq!(list.len(), 2);
+                let left = Box::new(self.unary_expression(list[0].clone()));
+                let right = Box::new(self.assignment_expression(list[1].clone()));
+                let tok = match op.as_ref() {
+                    "=" => cp::AssignmentOperator::Assign(ct::Token::Assign(0)),
+                    "*=" => cp::AssignmentOperator::TimesAssign(ct::Token::TimesAssign(0)),
+                    "/=" => cp::AssignmentOperator::DivAssign(ct::Token::DivAssign(0)),
+                    "%=" => cp::AssignmentOperator::ModAssign(ct::Token::ModAssign(0)),
+                    "+=" => cp::AssignmentOperator::PlusAssign(ct::Token::PlusAssign(0)),
+                    "-=" => cp::AssignmentOperator::MinusAssign(ct::Token::MinusAssign(0)),
+                    "<<=" => cp::AssignmentOperator::BitShiftLeftAssign(ct::Token::BitShiftLeftAssign(0)),
+                    ">>=" => cp::AssignmentOperator::BitShiftRightAssign(ct::Token::BitShiftRightAssign(0)),
+                    "&=" => cp::AssignmentOperator::BitAndAssign(ct::Token::BitAndAssign(0)),
+                    "^=" => cp::AssignmentOperator::BitXorAssign(ct::Token::BitXorAssign(0)),
+                    "|=" => cp::AssignmentOperator::BitOrAssign(ct::Token::BitOrAssign(0)),
+
+                    _ => unimplemented!()
+                };
+                cp::AssignmentExpression::Assignment(left, tok, right)
+            }
             _ => cp::AssignmentExpression::TernaryExpression(self.ternary_expression(expr))
         }
     }
@@ -535,15 +556,30 @@ impl Context {
         match k {
             pp::Expression::Op(ref op, ref expr_list) if self.is_general_op(op) => {
                 let pp::ExprList::List(list) = expr_list;
+                assert_eq!(list.len(), 2);
                 let left = Box::new(self.general_expression(list[0].clone()));
                 let right = Box::new(self.general_expression(list[1].clone()));
                 match op.as_ref() {
-                    "+" => cp::GeneralExpression::Plus(left, ct::Token::Plus(0), right),
-                    "-" => cp::GeneralExpression::Minus(left, ct::Token::Minus(0), right),
                     "*" => cp::GeneralExpression::Times(left, ct::Token::Times(0), right),
                     "/" => cp::GeneralExpression::Divide(left, ct::Token::Divide(0), right),
+                    "%" => cp::GeneralExpression::Mod(left, ct::Token::Mod(0), right),
+                    "+" => cp::GeneralExpression::Plus(left, ct::Token::Plus(0), right),
+                    "-" => cp::GeneralExpression::Minus(left, ct::Token::Minus(0), right),
+                    "<<" => cp::GeneralExpression::BitShiftLeft(left, ct::Token::BitShiftLeft(0), right),
+                    ">>" => cp::GeneralExpression::BitShiftRight(left, ct::Token::BitShiftRight(0), right),
                     "<" => cp::GeneralExpression::LessThan(left, ct::Token::LessThan(0), right),
-                    _ => unimplemented!()
+                    ">" => cp::GeneralExpression::MoreThan(left, ct::Token::MoreThan(0), right),
+                    "<=" => cp::GeneralExpression::LessEqThan(left, ct::Token::LessEqThan(0), right),
+                    ">=" => cp::GeneralExpression::MoreEqThan(left, ct::Token::MoreEqThan(0), right),
+                    "==" => cp::GeneralExpression::Equals(left, ct::Token::Equals(0), right),
+                    "!=" => cp::GeneralExpression::NotEquals(left, ct::Token::NotEquals(0), right),
+                    "&" => cp::GeneralExpression::BitAnd(left, ct::Token::BitAnd(0), right),
+                    "^" => cp::GeneralExpression::BitXor(left, ct::Token::BitXor(0), right),
+                    "|" => cp::GeneralExpression::BitOr(left, ct::Token::BitOr(0), right),
+                    "&&" => cp::GeneralExpression::And(left, ct::Token::And(0), right),
+                    "||" => cp::GeneralExpression::Or(left, ct::Token::Or(0), right),
+
+                    _ => unreachable!()
                 }
             }
             _ => cp::GeneralExpression::CastExpression(Box::new(self.cast_expression(k)))
@@ -562,9 +598,38 @@ impl Context {
         }
     }
 
+    fn increment_or_decrement(&mut self, op: &str) -> cp::IncrementOrDecrement {
+        match op {
+            "++" => cp::IncrementOrDecrement::Increment(ct::Token::Increment(0)),
+            "--" => cp::IncrementOrDecrement::Decrement(ct::Token::Decrement(0)),
+            _ => unreachable!()
+        }
+    }
+
     pub fn unary_expression(&mut self, k: pp::Expression) -> cp::UnaryExpression {
         match k {
-            pp::Expression::Unary(..) => unimplemented!(),
+            pp::Expression::Unary(op, list) => {
+                let pp::ExprList::List(list) = list;
+                assert_eq!(list.len(), 1);
+                let arg = list[0].clone();
+                match op.as_ref() {
+                    "++" | "--" => cp::UnaryExpression::IncrementOrDecrement(
+                        self.increment_or_decrement(op.as_ref()),
+                        Box::new(self.unary_expression(arg))),
+                    op => {
+                        let unary_op = match op {
+                            "&" => cp::UnaryOperator::BitAnd(ct::Token::BitAnd(0)),
+                            "*" => cp::UnaryOperator::Times(ct::Token::Times(0)),
+                            "+" => cp::UnaryOperator::Plus(ct::Token::Plus(0)),
+                            "-" => cp::UnaryOperator::Minus(ct::Token::Minus(0)),
+                            "~" => cp::UnaryOperator::BitNot(ct::Token::BitNot(0)),
+                            "!" => cp::UnaryOperator::Not(ct::Token::Not(0)),
+                            _ => unreachable!()
+                        };
+                        cp::UnaryExpression::UnaryOperator(unary_op, Box::new(self.cast_expression(arg)))
+                    }
+                }
+            }
             _ => cp::UnaryExpression::PostfixExpression(Box::new(self.postfix_expression(k)))
         }
     }
