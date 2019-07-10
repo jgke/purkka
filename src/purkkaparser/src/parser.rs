@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::iter::Peekable;
 use std::rc::Rc;
@@ -65,135 +65,196 @@ macro_rules! read_token {
     };
 }
 
-type PrecedenceMap = HashMap<Rc<str>, Precedence>;
-
-fn default_bin_ops() -> PrecedenceMap {
-    let mut precedence = HashMap::new();
-
-    // Assignment
-    precedence.insert(From::from("="), Precedence::binop_right(1));
-    precedence.insert(From::from("&="), Precedence::binop_right(1));
-    precedence.insert(From::from("+="), Precedence::binop_right(1));
-
-    // Ternary
-    precedence.insert(From::from("?"), Precedence::binop_right(2));
-    precedence.insert(From::from(":"), Precedence::binop_right(2));
-
-    // Logical operations: or, and, eq, neq, leq, meq, less, more
-    precedence.insert(From::from("||"), Precedence::binop(3));
-    precedence.insert(From::from("&&"), Precedence::binop(4));
-    precedence.insert(From::from("=="), Precedence::binop(5));
-    precedence.insert(From::from("!="), Precedence::binop(5));
-    precedence.insert(From::from("<="), Precedence::binop(6));
-    precedence.insert(From::from(">="), Precedence::binop(6));
-    precedence.insert(From::from("<"), Precedence::binop(6));
-    precedence.insert(From::from(">"), Precedence::binop(6));
-
-    // Bitwise operations: or, xor, and, shl, shr, rotating bitshifts
-    precedence.insert(From::from("|"), Precedence::binop(7));
-    precedence.insert(From::from("^"), Precedence::binop(8));
-    precedence.insert(From::from("&"), Precedence::binop(9));
-    precedence.insert(From::from("<<"), Precedence::binop(10));
-    precedence.insert(From::from(">>"), Precedence::binop(10));
-    precedence.insert(From::from("<<<"), Precedence::binop(10));
-    precedence.insert(From::from(">>>"), Precedence::binop(10));
-
-    // Standard arithmetic: plus, minus, mod, times, div, pow
-    precedence.insert(From::from("+"), Precedence::binop(11));
-    precedence.insert(From::from("-"), Precedence::binop(11));
-    precedence.insert(From::from("%"), Precedence::binop(12));
-    precedence.insert(From::from("*"), Precedence::binop(12));
-    precedence.insert(From::from("/"), Precedence::binop(12));
-    precedence.insert(From::from("**"), Precedence::binop_right(13));
-
-    precedence
+macro_rules! read_identifier_str {
+    ($iter:expr) => {
+        if let Token::Identifier(_, s) = read_token!($iter, Token::Identifier) {
+            s
+        } else {
+            unreachable!()
+        }
+    };
 }
 
-fn default_unary_ops() -> PrecedenceMap {
-    let mut precedence = HashMap::new();
+#[derive(Debug, Clone)]
+pub struct Operator {
+    pub precedence: usize,
+    pub param_count: usize,
+    pub left_associative: bool,
+
+    pub ty: TypeSignature,
+    pub handler: Option<Expression>
+}
+
+pub type OperatorMap = HashMap<Rc<str>, Operator>;
+
+#[derive(Debug, Clone)]
+pub struct Operators {
+    pub unary: OperatorMap,
+    pub infix: OperatorMap,
+    pub postfix: OperatorMap,
+}
+
+fn unary_num_to_bool() -> TypeSignature {
+    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate); 
+    let num = Box::new(TypeSignature::Infer(intermediate));
+    TypeSignature::Function(
+        vec![Param::TypeOnly(num.clone())],
+        Box::new(TypeSignature::Plain(From::from("int")))
+    )
+}
+
+fn unary_num_to_num() -> TypeSignature {
+    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate); 
+    let num = Box::new(TypeSignature::Infer(intermediate));
+    TypeSignature::Function(
+        vec![Param::TypeOnly(num.clone())],
+        num.clone()
+    )
+}
+
+fn bin_num_to_bool() -> TypeSignature {
+    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate); 
+    let num = Box::new(TypeSignature::Infer(intermediate));
+    TypeSignature::Function(
+        vec![Param::TypeOnly(num.clone()), Param::TypeOnly(num.clone())],
+        Box::new(TypeSignature::Plain(From::from("int")))
+    )
+}
+
+fn bin_num_to_num() -> TypeSignature {
+    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate); 
+    let num = Box::new(TypeSignature::Infer(intermediate));
+    TypeSignature::Function(
+        vec![Param::TypeOnly(num.clone()), Param::TypeOnly(num.clone())],
+        num.clone()
+    )
+}
+
+
+fn default_bin_ops() -> OperatorMap {
+    let mut infix_operators = HashMap::new();
+
+    // Assignment
+    infix_operators.insert(From::from("="), Operator::binop_right(1, bin_num_to_num(), None));
+    infix_operators.insert(From::from("&="), Operator::binop_right(1, bin_num_to_num(), None));
+    infix_operators.insert(From::from("+="), Operator::binop_right(1, bin_num_to_num(), None));
+
+    // Ternary
+    infix_operators.insert(From::from("?"), Operator::binop_right(2, bin_num_to_num(), None));
+
+    // Logical operations: or, and, eq, neq, leq, meq, less, more
+    infix_operators.insert(From::from("||"), Operator::binop(3, bin_num_to_bool(), None));
+    infix_operators.insert(From::from("&&"), Operator::binop(4, bin_num_to_bool(), None));
+    infix_operators.insert(From::from("=="), Operator::binop(5, bin_num_to_bool(), None));
+    infix_operators.insert(From::from("!="), Operator::binop(5, bin_num_to_bool(), None));
+    infix_operators.insert(From::from("<="), Operator::binop(6, bin_num_to_bool(), None));
+    infix_operators.insert(From::from(">="), Operator::binop(6, bin_num_to_bool(), None));
+    infix_operators.insert(From::from("<"), Operator::binop(6, bin_num_to_bool(), None));
+    infix_operators.insert(From::from(">"), Operator::binop(6, bin_num_to_bool(), None));
+
+    // Bitwise operations: or, xor, and, shl, shr, rotating bitshifts
+    infix_operators.insert(From::from("|"), Operator::binop(7, bin_num_to_num(), None));
+    infix_operators.insert(From::from("^"), Operator::binop(8, bin_num_to_num(), None));
+    infix_operators.insert(From::from("&"), Operator::binop(9, bin_num_to_num(), None));
+    infix_operators.insert(From::from("<<"), Operator::binop(10, bin_num_to_num(), None));
+    infix_operators.insert(From::from(">>"), Operator::binop(10, bin_num_to_num(), None));
+    infix_operators.insert(From::from("<<<"), Operator::binop(10, bin_num_to_num(), None));
+    infix_operators.insert(From::from(">>>"), Operator::binop(10, bin_num_to_num(), None));
+
+    // Standard arithmetic: plus, minus, mod, times, div, pow
+    infix_operators.insert(From::from("+"), Operator::binop(11, bin_num_to_num(), None));
+    infix_operators.insert(From::from("-"), Operator::binop(11, bin_num_to_num(), None));
+    infix_operators.insert(From::from("%"), Operator::binop(12, bin_num_to_num(), None));
+    infix_operators.insert(From::from("*"), Operator::binop(12, bin_num_to_num(), None));
+    infix_operators.insert(From::from("/"), Operator::binop(12, bin_num_to_num(), None));
+    infix_operators.insert(From::from("**"), Operator::binop_right(13, bin_num_to_num(), None));
+
+    infix_operators
+}
+
+fn default_unary_ops() -> OperatorMap {
+    let mut unary_operators = HashMap::new();
 
     // Unary plus (nop), unary minus (negation), logical not (!= 0), bitwise not,
     // addressof, prefix increment/decrement
-    precedence.insert(From::from("+"), Precedence::unary());
-    precedence.insert(From::from("-"), Precedence::unary());
-    precedence.insert(From::from("!"), Precedence::unary());
-    precedence.insert(From::from("~"), Precedence::unary());
-    precedence.insert(From::from("&"), Precedence::unary());
-    precedence.insert(From::from("++"), Precedence::unary());
-    precedence.insert(From::from("--"), Precedence::unary());
+    unary_operators.insert(From::from("+"), Operator::unary(unary_num_to_num(), None));
+    unary_operators.insert(From::from("-"), Operator::unary(unary_num_to_num(), None));
+    unary_operators.insert(From::from("!"), Operator::unary(unary_num_to_bool(), None));
+    unary_operators.insert(From::from("~"), Operator::unary(unary_num_to_num(), None));
+    unary_operators.insert(From::from("&"), Operator::unary(unary_num_to_num(), None));
+    unary_operators.insert(From::from("++"), Operator::unary(unary_num_to_num(), None));
+    unary_operators.insert(From::from("--"), Operator::unary(unary_num_to_num(), None));
 
-    precedence
+    unary_operators
 }
 
-fn default_postfix_ops() -> PrecedenceMap {
-    let mut precedence = HashMap::new();
+fn default_postfix_ops() -> OperatorMap {
+    let mut postfix_operators = HashMap::new();
 
     // Postfix increment, decrement
-    precedence.insert(From::from("++"), Precedence::unary_right());
-    precedence.insert(From::from("--"), Precedence::unary_right());
+    postfix_operators.insert(From::from("++"), Operator::unary_right(unary_num_to_num(), None));
+    postfix_operators.insert(From::from("--"), Operator::unary_right(unary_num_to_num(), None));
 
-    precedence
+    postfix_operators
 }
+
+pub type Types = HashMap<Rc<str>, TypeSignature>;
 
 fn default_types() -> HashMap<Rc<str>, TypeSignature> {
-    let mut types = HashMap::new();
-
-    types.insert(
-        From::from("__m128d"),
-        TypeSignature::Plain(From::from("__m128d")),
-    );
-
-    types
+    HashMap::new()
 }
 
-pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator) -> S {
+pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator) -> (S, Operators, Types) {
     let mut context = ParseContext {
-        unary_precedence: default_unary_ops(),
-        postfix_precedence: default_postfix_ops(),
-        precedence: default_bin_ops(),
+        operators: Operators {
+            unary: default_unary_ops(),
+            postfix: default_postfix_ops(),
+            infix: default_bin_ops(),
+        },
         iter,
         fragment: fragment_iter,
         sources,
         types: default_types(),
-        infer_id: 0,
     };
-    S::TranslationUnit(context.parse_translation_unit())
+    let tu = S::TranslationUnit(context.parse_translation_unit());
+    (tu, context.operators, context.types)
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Precedence {
-    precedence: usize,
-    param_count: usize,
-    left_associative: bool,
-}
-
-impl Precedence {
-    fn binop(precedence: usize) -> Precedence {
-        Precedence {
+impl Operator {
+    fn binop(precedence: usize, ty: TypeSignature, handler: Option<Expression>) -> Operator {
+        Operator {
             precedence,
             param_count: 2,
             left_associative: true,
+            ty,
+            handler,
         }
     }
-    fn binop_right(precedence: usize) -> Precedence {
-        Precedence {
+    fn binop_right(precedence: usize, ty: TypeSignature, handler: Option<Expression>) -> Operator {
+        Operator {
             precedence,
             param_count: 2,
             left_associative: false,
+            ty,
+            handler,
         }
     }
-    fn unary() -> Precedence {
-        Precedence {
+    fn unary(ty: TypeSignature, handler: Option<Expression>) -> Operator {
+        Operator {
             precedence: 1,
             param_count: 1,
             left_associative: true,
+            ty,
+            handler,
         }
     }
-    fn unary_right() -> Precedence {
-        Precedence {
+    fn unary_right(ty: TypeSignature, handler: Option<Expression>) -> Operator {
+        Operator {
             precedence: 1,
             param_count: 1,
             left_associative: false,
+            ty,
+            handler,
         }
     }
 }
@@ -201,14 +262,11 @@ impl Precedence {
 pub(crate) type Iter<'a, 'b> = &'a mut Peekable<std::slice::Iter<'b, Token>>;
 
 struct ParseContext<'a, 'b> {
-    unary_precedence: PrecedenceMap,
-    postfix_precedence: PrecedenceMap,
-    precedence: PrecedenceMap,
+    operators: Operators,
     iter: Iter<'a, 'b>,
     fragment: &'a FragmentIterator,
     sources: &'a [Source],
     types: HashMap<Rc<str>, TypeSignature>,
-    infer_id: i128,
 }
 
 impl<'a, 'b> ParseContext<'a, 'b> {
@@ -232,18 +290,21 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         self.types.contains_key(s)
     }
 
-    fn push_operator(&mut self, left_associative: bool, precedence: usize, s: Rc<str>) {
+    fn push_operator(&mut self, left_associative: bool, precedence: usize, s: Rc<str>, ty: TypeSignature, body: Expression) {
+        if self.operators.infix.contains_key(&s)  {
+            panic!("Operator {} already defined", s);
+        }
+
         if left_associative {
-            self.precedence.insert(s, Precedence::binop(precedence));
+            self.operators.infix.insert(s, Operator::binop(precedence, ty, Some(body)));
         } else {
-            self.precedence
-                .insert(s, Precedence::binop_right(precedence));
+            self.operators.infix
+                .insert(s, Operator::binop_right(precedence, ty, Some(body)));
         }
     }
 
     fn get_inferred_type(&mut self) -> TypeSignature {
-        self.infer_id += 1;
-        TypeSignature::Infer(IntermediateType::Any(self.infer_id))
+        TypeSignature::Infer(IntermediateType::new_any())
     }
 
     fn parse_unit(&mut self) -> Unit {
@@ -254,6 +315,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Declaration => Unit::Declaration(Box::new(self.parse_declaration(true))),
             OperatorOverload => Unit::OperatorOverload(Box::new(self.parse_new_operator())),
             ImportFile => Unit::ImportFile(Box::new(self.parse_include())),
+            Typedef => Unit::Typedef(Box::new(self.parse_typedef())),
         )
     }
 
@@ -284,8 +346,8 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             t => unexpected_token!(t, self),
         };
         let ty = match self.peek() {
-            Some(Token::Operator(_, t)) if &**t == ":" => {
-                read_token!(self, Token::Operator);
+            Some(Token::Colon(_)) => {
+                read_token!(self, Token::Colon);
                 Box::new(self.parse_type())
             }
             _ => Box::new(self.get_inferred_type()),
@@ -448,7 +510,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let ty = self.parse_type();
                 if let TypeSignature::Plain(_) = &ty {
                     match self.peek() {
-                        Some(Token::Operator(_, t)) if &**t == ":" => {
+                        Some(Token::Colon(_)) => {
                             self.next();
                             let ty = self.parse_type();
                             Some(Param::Param(ident.clone(), Box::new(ty)))
@@ -471,7 +533,15 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_struct_list(&mut self) -> Vec<StructField> {
-        self.parse_comma_delimited_to_vec(Self::parse_struct_field)
+        let vec = self.parse_comma_delimited_to_vec(Self::parse_struct_field);
+        let mut names = HashSet::new();
+        for StructField::Field { name, .. } in &vec {
+            if names.contains(&name) {
+                panic!("Duplicate field name {}", name);
+            }
+            names.insert(name);
+        }
+        vec
     }
 
     fn parse_enum_list(&mut self) -> Vec<EnumField> {
@@ -482,7 +552,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         match self.peek() {
             Some(Token::Identifier(_, _)) => {
                 let name = self.next().identifier_s().unwrap().clone();
-                read_token!(self, Token::Operator);
+                read_token!(self, Token::Colon);
                 let ty = Box::new(self.parse_type());
                 Some(StructField::Field { name, ty })
             }
@@ -556,8 +626,8 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             params.iter().cloned().map(From::from).collect(),
             Box::new(return_type.clone()),
         );
-        let body = self.lambda_to_expr(params, return_type, block);
-        self.push_operator(left_associative, precedence, op.clone());
+        let body = self.lambda_to_expr(params, return_type, block) ;
+        self.push_operator(left_associative, precedence, op.clone(), ty.clone(), body.clone());
         OperatorOverload::OperatorOverload(op, Box::new(ty), Box::new(body))
     }
 
@@ -584,14 +654,38 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         ImportFile::Import(file, ffi)
     }
 
+    fn parse_typedef(&mut self) -> Typedef {
+        match self.peek() {
+            Some(Token::Struct(..)) => {
+                read_token!(self, Token::Struct);
+                let name = read_identifier_str!(self);
+                read_token!(self, Token::OpenBrace);
+                let fields = self.parse_struct_list();
+                read_token!(self, Token::CloseBrace);
+                self.types.insert(name.clone(), TypeSignature::Struct(Some(name.clone()), fields.clone()));
+                Typedef::Struct(name, fields)
+            }
+            Some(Token::Enum(..)) => unimplemented!(),
+            Some(Token::Type(..)) => {
+                read_token!(self, Token::Type);
+                let name = read_identifier_str!(self);
+                let ty = self.parse_type();
+                read_token!(self, Token::SemiColon);
+                self.types.insert(name.clone(), ty.clone());
+                Typedef::Alias(true, name, Box::new(ty))
+            }
+            _ => unexpected_token!(self.peek(), self),
+        }
+    }
+
     fn parse_expression(&mut self) -> Expression {
         self.parse_expression_(1)
     }
 
     fn parse_expression_(&mut self, precedence: usize) -> Expression {
         if let Some(Token::Operator(_, op)) = self.peek() {
-            match self.unary_precedence.get(op).copied() {
-                Some(n) if n.left_associative => {
+            match self.operators.unary.get(op).cloned() {
+                Some(ref n) if n.left_associative => {
                     assert_eq!(n.left_associative, true);
                     read_token!(self, Token::Operator);
                     let exprs = (0..n.param_count)
@@ -616,21 +710,34 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     read_token!(self, Token::CloseBracket);
                     expr = Expression::ArrayAccess(Box::new(expr), inner_expr);
                 }
+                Some(Token::Dot(..)) => {
+                    read_token!(self, Token::Dot);
+                    let ident = read_identifier_str!(self);
+                    expr = Expression::StructAccess(Box::new(expr), ident);
+                }
                 Some(Token::OpenParen(..)) => {
                     expr = Expression::Call(Box::new(expr), self.parse_args())
                 }
-                Some(Token::Operator(_, op)) => match self.precedence.get(op).copied() {
-                    Some(n) if precedence <= n.precedence => {
+                Some(Token::Operator(_, op)) => match self.operators.infix.get(op).cloned() {
+                    Some(ref n) if precedence <= n.precedence => {
                         let mut left = vec![expr];
                         read_token!(self, Token::Operator);
-                        let mut tail = (1..n.param_count)
-                            .map(|_| self.parse_expression_(n.precedence))
-                            .collect();
-                        left.append(&mut tail);
-                        expr = Expression::Op(op.clone(), ExprList::List(left));
+                        if op.as_ref() == "?" {
+                            let right_t = self.parse_expression_(n.precedence);
+                            read_token!(self, Token::Colon);
+                            let right_f = self.parse_expression_(n.precedence);
+                            left.append(&mut vec![right_t, right_f]);
+                            expr = Expression::Op(op.clone(), ExprList::List(left));
+                        } else {
+                            let mut tail = (1..n.param_count)
+                                .map(|_| self.parse_expression_(n.precedence))
+                                .collect();
+                            left.append(&mut tail);
+                            expr = Expression::Op(op.clone(), ExprList::List(left));
+                        }
                     }
                     Some(_) => break,
-                    None => match self.postfix_precedence.get(op) {
+                    None => match self.operators.postfix.get(op) {
                         Some(_) => {
                             read_token!(self, Token::Operator);
                             expr = Expression::PostFix(Box::new(expr), op.clone());
@@ -650,10 +757,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let t = self.next().identifier_s().unwrap().clone();
                 let is_ty = self.is_ty(&t);
                 match self.peek() {
-                    Some(Token::OpenBrace(..)) if is_ty => PrimaryExpression::StructInitialization(
-                        t,
-                        self.parse_initialization_fields(),
-                    ),
+                    Some(Token::OpenBrace(..)) if is_ty => {
+                        let fields = self.parse_initialization_fields(&t);
+                        PrimaryExpression::StructInitialization(t, fields)
+                    }
                     _ => PrimaryExpression::Identifier(t),
                 }
             }
@@ -712,8 +819,8 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Identifier(..)) => {
                 let ident = self.next().identifier_s().unwrap().clone();
                 match self.peek() {
-                    Some(Token::Operator(_, t)) if &**t == ":" => {
-                        read_token!(self, Token::Operator);
+                    Some(Token::Colon(_)) => {
+                        read_token!(self, Token::Colon);
                         let ty = self.parse_type();
                         Some(LambdaParam::LambdaParam(ident, Box::new(ty)))
                     }
@@ -919,7 +1026,20 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         ArgList::Args(args)
     }
 
-    fn parse_initialization_fields(&mut self) -> Vec<StructInitializationField> {
+    fn parse_initialization_fields(&mut self, ty: &Rc<str>) -> Vec<StructInitializationField> {
+        let struct_fields = if let TypeSignature::Struct(_, fields) = &self.types[ty] {
+            fields
+        } else {
+            panic!("Cannot instantiate non-struct type {} as struct", ty);
+        };
+
+        let mut remaining_names = struct_fields.iter()
+            .map(|StructField::Field { name, .. }| name.clone())
+            .rev()
+            .collect::<Vec<_>>();
+
+        let mut used_names = HashSet::new();
+
         let mut fields = Vec::new();
 
         read_token!(self, Token::OpenBrace);
@@ -932,24 +1052,52 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 Some(_) => {
                     let expr = self.parse_expression();
                     match self.peek() {
-                        Some(Token::Operator(i, p)) if &**p == ":" => {
+                        Some(Token::Colon(i)) => {
                             if let Expression::PrimaryExpression(PrimaryExpression::Identifier(
                                 ident,
                             )) = expr
                             {
-                                read_token!(self, Token::Operator);
+                                read_token!(self, Token::Colon);
                                 let expr = self.parse_expression();
+                                if !remaining_names.contains(&ident) {
+                                    if used_names.contains(&ident) {
+                                        panic!("Cannot instantiate field {} more than once", ident);
+                                    } else {
+                                        panic!("Field {} does not exist in struct {}", ident, ty);
+                                    }
+                                }
+
+                                remaining_names.iter()
+                                    .position(|name| name == &ident)
+                                    .map(|i| remaining_names.remove(i));
+
+                                used_names.insert(ident.clone());
+
                                 fields.push(StructInitializationField::StructInitializationField(
-                                    Some(ident),
+                                    ident,
                                     Box::new(expr),
                                 ));
                             } else {
-                                unexpected_token!(Some(&Token::Operator(*i, p.clone())), self);
+                                unexpected_token!(Some(&Token::Colon(*i)), self);
+                            }
+
+                            match self.peek() {
+                                Some(Token::Comma(..)) => {
+                                    read_token!(self, Token::Comma);
+                                }
+                                Some(Token::CloseBrace(..)) => {
+                                    read_token!(self, Token::CloseBrace);
+                                    break;
+                                }
+                                t => unexpected_token!(t, self),
                             }
                         }
                         Some(Token::Comma(..)) => {
+                            let ident = remaining_names.pop()
+                                .expect(&format!("Struct {} has only {} fields", ty, used_names.len()));
+                            used_names.insert(ident.clone());
                             fields.push(StructInitializationField::StructInitializationField(
-                                None,
+                                ident.clone(),
                                 Box::new(expr),
                             ));
                             read_token!(self, Token::Comma);
@@ -974,15 +1122,19 @@ mod tests {
     use super::*;
     use purkkatoken::token::Token;
 
-    fn to_token(prec: &PrecedenceMap, s: &str) -> Token {
+    fn to_token(prec: &OperatorMap, s: &str) -> Token {
         prec.get(s)
             .map(|_| Token::Operator(0, From::from(s)))
+            .or_else(|| if s == ":" { Some(Token::Colon(0)) } else { None } )
             .unwrap_or_else(|| Token::Integer(0, s.parse().unwrap()))
     }
 
     macro_rules! eval_bin {
         ($list:ident, $op:tt) => {
-            eval_tree(&$list[0]) $op eval_tree(&$list[1])
+            {
+                assert_eq!($list.len(), 2);
+                eval_tree(&$list[0]) $op eval_tree(&$list[1])
+            }
         }
     }
 
@@ -1003,17 +1155,11 @@ mod tests {
                 "^" => eval_bin!(list, ^),
                 "**" => eval_tree(&list[0]).pow(eval_tree(&list[1]) as u32),
                 "?" => {
-                    if let Expression::Op(op, ExprList::List(res_list)) = &list[1] {
-                        if op.as_ref() != ":" {
-                            unreachable!();
-                        }
-                        if eval_tree(&list[0]) != 0 {
-                            eval_tree(&res_list[0])
-                        } else {
-                            eval_tree(&res_list[1])
-                        }
+                    assert_eq!(list.len(), 3);
+                    if eval_tree(&list[0]) != 0 {
+                        eval_tree(&list[1])
                     } else {
-                        unreachable!()
+                        eval_tree(&list[2])
                     }
                 }
                 _ => unreachable!(),
@@ -1029,28 +1175,30 @@ mod tests {
             },
             Expression::Call(..) => unreachable!(),
             Expression::ArrayAccess(..) => unreachable!(),
+            Expression::StructAccess(..) => unreachable!(),
         }
     }
 
     fn check(expr: &str, expected: i128) {
-        let unary_precedence = default_unary_ops();
-        let postfix_precedence = default_unary_ops();
-        let precedence = default_bin_ops();
-        let both = unary_precedence
+        let unary = default_unary_ops();
+        let postfix = default_unary_ops();
+        let infix = default_bin_ops();
+        let both = unary
             .clone()
             .into_iter()
-            .chain(precedence.clone().into_iter())
+            .chain(infix.clone().into_iter())
             .collect();
         let vec: Vec<Token> = expr.split(' ').map(|t| to_token(&both, t)).collect();
         let mut context = ParseContext {
-            precedence,
-            unary_precedence,
-            postfix_precedence,
+            operators: Operators {
+                infix,
+                unary,
+                postfix,
+            },
             iter: &mut vec.iter().peekable(),
             fragment: &FragmentIterator::new("", ""),
             sources: &Vec::new(),
             types: default_types(),
-            infer_id: 0,
         };
         let result = eval_tree(&context.parse_expression());
         println!("{} = {} (expected: {})", expr, result, expected);
@@ -1088,7 +1236,7 @@ mod tests {
             &mut list.iter().peekable(),
             &vec![],
             &FragmentIterator::new("", ""),
-        )
+        ).0
     }
 
     #[test]

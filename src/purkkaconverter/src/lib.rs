@@ -5,17 +5,20 @@ use std::rc::Rc;
 
 use cparser::grammar as cp;
 use ctoken::token as ct;
+use purkkaparser::parser::{Operators, Types};
 use purkkasyntax as pp;
 use purkkasyntax::TypeSignature;
 use purkkatoken::token as pt;
 
-mod traits;
+pub mod traits;
 
 mod array;
 mod declarations;
 mod imports;
-mod inference;
+pub mod inference;
 mod lambda;
+mod operator;
+mod typedef;
 
 use traits::TreeTransformer;
 
@@ -24,20 +27,31 @@ use declarations::FetchDeclarations;
 use imports::StripImports;
 use inference::TypeInferrer;
 use lambda::StripLambda;
+use operator::InlineOperators;
+use typedef::InlineTypedef;
 
 #[derive(Clone, Debug)]
 pub struct Context {
     pub functions: HashMap<Rc<str>, pp::Lambda>,
     pub global_includes: HashSet<Rc<str>>,
     pub local_includes: HashSet<Rc<str>>,
+    pub operators: Operators,
+    pub types: Types,
 }
 
-pub fn convert(mut purkka_tree: pp::S) -> (cp::S, Context) {
-    let mut context = Context::new();
-    TypeInferrer::new(&mut context).transform(&mut purkka_tree);
-    ArrayToPointer::new(&mut context).transform(&mut purkka_tree);
-    StripLambda::new(&mut context).transform(&mut purkka_tree);
-    StripImports::new(&mut context).transform(&mut purkka_tree);
+pub fn transform(purkka_tree: &mut pp::S, operators: Operators, types: Types) -> Context {
+    let mut context = Context::new(operators, types);
+    InlineTypedef::new(&mut context).transform(purkka_tree);
+    InlineOperators::new(&mut context).transform(purkka_tree);
+    TypeInferrer::new(&mut context).transform(purkka_tree);
+    ArrayToPointer::new(&mut context).transform(purkka_tree);
+    StripLambda::new(&mut context).transform(purkka_tree);
+    StripImports::new(&mut context).transform(purkka_tree);
+    context
+}
+
+pub fn convert(mut purkka_tree: pp::S, operators: Operators, types: Types) -> (cp::S, Context) {
+    let mut context = transform(&mut purkka_tree, operators, types);
     (context.s(purkka_tree), context)
 }
 
@@ -52,11 +66,13 @@ pub fn fetch_identifiers_from_c(_tree: &mut cp::S) -> HashMap<Rc<str>, pp::Decla
 }
 
 impl Context {
-    fn new() -> Context {
+    fn new(operators: Operators, types: Types) -> Context {
         Context {
             functions: HashMap::new(),
             global_includes: HashSet::new(),
             local_includes: HashSet::new(),
+            operators,
+            types
         }
     }
 
@@ -344,8 +360,29 @@ impl Context {
             pp::Unit::Declaration(decl) => {
                 cp::ExternalDeclaration::Declaration(Box::new(self.convert_declaration(*decl)))
             }
+            pp::Unit::Typedef(ty) => {
+                match *ty {
+                    pp::Typedef::Alias(..) => unreachable!(),
+                    pp::Typedef::Struct(name, fields) => {
+                        let c_ty = cp::CType::Compound(cp::CompoundType::Struct(name, Some(
+                                    fields.into_iter().map(|field| self.struct_field(field)).collect()
+                        )));
+                        cp::ExternalDeclaration::Declaration(
+                            Box::new(cp::Declaration::Declaration(
+                                Box::new(cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))),
+                                Vec::new())))
+                    }
+                    other => panic!("Not implemented: {:?}", other),
+                }
+            }
             other => panic!("Not implemented: {:?}", other),
         }
+    }
+
+    pub fn struct_field(&mut self, pp::StructField::Field {name, ty }: pp::StructField) -> cp::StructField {
+        let c_ty = self.type_to_declaration_specifiers(*ty.clone());
+        let decl = self.format_decl(name, *ty);
+        (Box::new(c_ty), Some(vec![(cp::EitherDeclarator::Declarator(decl), None)]))
     }
 
     pub fn convert_declaration(&mut self, k: pp::Declaration) -> cp::Declaration {
@@ -381,9 +418,15 @@ impl Context {
         match ty {
             TypeSignature::Plain(ty) => {
                 let c_ty = match ty.as_ref() {
+                    "void" => cp::CType::Void,
                     "int" => cp::CType::Primitive(None, cp::PrimitiveType::Int),
+                    "long" => cp::CType::Primitive(None, cp::PrimitiveType::Long),
                     "char" => cp::CType::Primitive(None, cp::PrimitiveType::Char),
-                    _ => cp::CType::Custom(ty),
+                    "float" => cp::CType::Primitive(None, cp::PrimitiveType::Float),
+                    "double" => cp::CType::Primitive(None, cp::PrimitiveType::Double),
+                    t if self.types.contains_key(t) =>
+                        return self.type_to_declaration_specifiers(self.types[t].clone()),
+                    other => panic!("Not implemented: {:?}", other),
                 };
                 cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))
             }
@@ -392,6 +435,10 @@ impl Context {
             TypeSignature::Pointer { ty, .. } => self.type_to_declaration_specifiers(*ty),
             TypeSignature::Function(_params, ret_ty) => {
                 self.type_to_declaration_specifiers(*ret_ty)
+            }
+            TypeSignature::Struct(Some(name), _) => {
+                let c_ty = cp::CType::Compound(cp::CompoundType::Struct(name, None));
+                cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))
             }
             other => panic!("Not implemented: {:?}", other),
         }
@@ -499,6 +546,16 @@ impl Context {
                     Box::new(self.expression_as_general(*expr)),
                 ))),
             ),
+            pp::Expression::StructAccess(expr, field) => {
+                let expr = Box::new(self.expression_as_postfix(*expr));
+                let access = cp::MemberAccess::Dot(ct::Token::Dot(0));
+                let e = cp::PostfixExpression::Member(expr, access, ct::Token::Identifier(0, field));
+                cp::TernaryExpression::GeneralExpression(cp::GeneralExpression::CastExpression(
+                    Box::new(cp::CastExpression::UnaryExpression(
+                        cp::UnaryExpression::PostfixExpression(Box::new(e)),
+                    )),
+                ))
+            }
             other => panic!("Not implemented: {:?}", other),
         }
     }
@@ -548,6 +605,19 @@ impl Context {
                 cp::PrimaryExpression::Number(From::from(i.to_string()))
             }
             pp::PrimaryExpression::Identifier(i) => cp::PrimaryExpression::Identifier(i.clone()),
+            pp::PrimaryExpression::StructInitialization(name, fields) => {
+                let c_ty = self.type_to_type_name(pp::TypeSignature::Struct(Some(name), Vec::new()));
+                let initializers = fields.iter()
+                    .map(|pp::StructInitializationField::StructInitializationField(name, expr)| (name, expr))
+                    .map(|(name, field)| (name, self.assignment_expression(*field.clone())))
+                    .map(|(name, expr)|
+                         cp::Initializer::Initializer(
+                             Some(name.clone()),
+                             Box::new(cp::AssignmentOrInitializerList::AssignmentExpression(expr))))
+                    .collect();
+
+                cp::PrimaryExpression::StructValue(Box::new(c_ty), initializers)
+            }
             other => panic!("Not implemented: {:?}", other),
         }
     }
@@ -561,7 +631,7 @@ impl Context {
 
     pub fn format_direct_decl(&mut self, name: Rc<str>, ty: TypeSignature) -> cp::DirectDeclarator {
         match ty {
-            TypeSignature::Plain(_) => cp::DirectDeclarator::Identifier(name),
+            TypeSignature::Plain(_) | TypeSignature::Struct(_, _) => cp::DirectDeclarator::Identifier(name),
             TypeSignature::Pointer { ty, .. } => self.format_direct_decl(name, *ty),
             TypeSignature::Function(params, _ret_ty) => self
                 .function_pointer_from_params(name, params.into_iter().map(From::from).collect()),
@@ -589,6 +659,7 @@ impl Context {
     ) -> cp::DirectAbstractDeclarator {
         match ty {
             TypeSignature::Plain(_) => cp::DirectAbstractDeclarator::Epsilon(),
+            TypeSignature::Struct(_, _) => cp::DirectAbstractDeclarator::Epsilon(),
             other => panic!("Not implemented: {:?}", other),
         }
     }

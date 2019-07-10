@@ -47,9 +47,9 @@ impl ASTVisitor for StripLambda<'_> {
                             unreachable!()
                         }
                     });
-                units.iter_mut().for_each(|u| self.visit_unit(u));
             }
         }
+        walk_translation_unit(self, e);
     }
 
     fn visit_primary_expression(&mut self, e: &mut PrimaryExpression) {

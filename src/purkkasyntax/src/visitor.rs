@@ -13,6 +13,9 @@ pub trait ASTVisitor {
         walk_unit(self, s);
     }
     fn visit_import(&mut self, _s: &mut ImportFile) {}
+    fn visit_typedef(&mut self, s: &mut Typedef) {
+        walk_typedef(self, s);
+    }
     fn visit_operator_overload(&mut self, s: &mut OperatorOverload) {
         walk_operator_overload(self, s);
     }
@@ -75,7 +78,19 @@ pub fn walk_unit<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Unit) {
         Unit::Declaration(decl) => visitor.visit_declaration(decl),
         Unit::ImportFile(import) => visitor.visit_import(import),
         Unit::OperatorOverload(op) => visitor.visit_operator_overload(op),
-        Unit::Typedef(_) => unimplemented!(),
+        Unit::Typedef(ty) => visitor.visit_typedef(ty),
+    }
+}
+
+pub fn walk_typedef<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Typedef) {
+    match s {
+        Typedef::Alias(_, _, ty) => visitor.visit_ty(ty),
+        Typedef::Struct(_, ref mut fields) => fields
+            .iter_mut()
+            .for_each(|ref mut f| visitor.visit_struct_field(f.deref_mut())),
+        Typedef::Enum(_, ref mut fields) => fields
+            .iter_mut()
+            .for_each(|ref mut f| visitor.visit_enum_field(f.deref_mut())),
     }
 }
 
@@ -177,6 +192,9 @@ pub fn walk_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Expressi
         Expression::ArrayAccess(array_expr, index_expr) => {
             visitor.visit_expression(array_expr.deref_mut());
             visitor.visit_expression(index_expr.deref_mut());
+        }
+        Expression::StructAccess(expr, _ident) => {
+            visitor.visit_expression(expr.deref_mut());
         }
     }
 }

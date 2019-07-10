@@ -6,6 +6,7 @@
 #![allow(non_camel_case_types)]
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicI64, Ordering};
 
 use std::rc::Rc;
 
@@ -58,7 +59,15 @@ grammar! {
         ;
 
     Typedef
-       -> Newtype. Visibility #Token::Type #Token::Identifier TypeSignature
+       -> #Token::Type #Token::Identifier TypeSignature #Token::SemiColon
+        | #Token::Struct #Token::Identifier #Token::OpenBrace StructFieldList #Token::CloseBrace
+        | #Token::Enum #Token::Identifier #Token::OpenBrace EnumFieldList #Token::CloseBrace
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum Typedef { 
+            Alias(bool, Rc<str>, Box<TypeSignature>),
+            Struct(Rc<str>, Vec<StructField>),
+            Enum(Rc<str>, Vec<EnumField>),
+        }
         ;
 
     MaybeType
@@ -185,7 +194,6 @@ grammar! {
         | Call. PrimaryExpression ArgList
         | Literal
         | StructInitialization. #Token::Identifier /* ident:typename */ #Token::OpenBrace InitializationFields #Token::CloseBrace
-        | ArrayAccess. PrimaryExpression #Token::OpenBracket Expression #Token::CloseBracket
         | BlockExpression
         | Expression. #Token::OpenParen Expression #Token::CloseParen
         | Lambda
@@ -211,7 +219,7 @@ grammar! {
         | #Token::Identifier Token::Operator Expression
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum StructInitializationField {
-            StructInitializationField(Option<Rc<str>>, Box<Expression>)
+            StructInitializationField(Rc<str>, Box<Expression>)
         }
         ;
 
@@ -267,6 +275,7 @@ grammar! {
         | Cast. Expression #Token::As TypeSignature
         | Call. &PrimaryExpression ArgList
         | ArrayAccess. &PrimaryExpression #Token::OpenBracket &Expression #Token::CloseBracket
+        | StructAccess. PrimaryExpression #Token::Dot #Token::Identifier
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Expression {
             PrimaryExpression(PrimaryExpression),
@@ -276,6 +285,7 @@ grammar! {
             Cast(Box<Expression>, TypeSignature),
             Call(Box<Expression>, ArgList),
             ArrayAccess(Box<Expression>, Box<Expression>),
+            StructAccess(Box<Expression>, Rc<str>),
         }
         ;
 
@@ -388,7 +398,27 @@ pub enum IntermediateType {
     Number(i128, IntermediateNumber),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+static TYPE_COUNTER: AtomicI64 = AtomicI64::new(1);
+
+impl IntermediateType {
+    pub fn new_any() -> IntermediateType {
+        IntermediateType::Any(TYPE_COUNTER.fetch_add(1, Ordering::Relaxed).into())
+    }
+
+    pub fn new_number(num: IntermediateNumber) -> IntermediateType {
+        IntermediateType::Number(TYPE_COUNTER.fetch_add(1, Ordering::Relaxed).into(), num)
+    }
+
+    pub fn generic_any() -> IntermediateType {
+        IntermediateType::Any(0)
+    }
+
+    pub fn generic_number(num: IntermediateNumber) -> IntermediateType {
+        IntermediateType::Number(0, num)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum IntermediateNumber {
     Float,
     Double,
@@ -417,6 +447,22 @@ pub enum EnumField {
         value: Option<i128>,
         ty: Option<TypeSignature>,
     },
+}
+
+impl Param {
+    pub fn ty_field(&self) -> &TypeSignature {
+        match self {
+            Param::Param(_, ty) => &*ty,
+            Param::TypeOnly(ty) => &*ty,
+        }
+    }
+
+    pub fn set_ty(&mut self, new_ty: TypeSignature) {
+        match self {
+            Param::Param(_, ty) => **ty = new_ty,
+            Param::TypeOnly(ty) => **ty = new_ty,
+        }
+    }
 }
 
 impl From<Param> for TypeSignature {

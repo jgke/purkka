@@ -29,6 +29,18 @@ pub fn format_c<H: std::hash::BuildHasher>(tree: &S, includes: HashSet<Rc<str>, 
         whitespace: false,
         buf,
     };
+
+    let S::TranslationUnit(TranslationUnit::Units(units)) = tree;
+    for unit in units {
+        if let ExternalDeclaration::Declaration(decl) = unit  {
+            match &**decl {
+                Declaration::Declaration(_, list) if list.is_empty() => {
+                    context.declaration(&**decl);
+                }
+                _ => {}
+            }
+        }
+    }
     context.s(tree);
     context.buf
 }
@@ -238,6 +250,8 @@ impl Context {
 
     fn external_declaration(&mut self, tree: &ExternalDeclaration) {
         match tree {
+            // rendered already in format_c()
+            ExternalDeclaration::Declaration(box Declaration::Declaration(_, list)) if list.is_empty() => {},
             ExternalDeclaration::Declaration(decl) => self.declaration(decl),
             ExternalDeclaration::FunctionDefinition(def) => self.function_definition(def),
             f => panic!("Not implemented.: {:?}", f),
@@ -698,15 +712,20 @@ impl Context {
                 self.push_token(&Token::CloseParen(0));
             }
             PrimaryExpression::StructValue(ty, list) => {
+                self.push("");
                 self.push_token(&Token::OpenParen(0));
                 self.type_name(&**ty);
                 self.push_token(&Token::CloseParen(0));
                 self.push_token(&Token::OpenBrace(0));
                 if let Some((last, rest)) = list.split_last() {
                     for init in rest {
+                        self.newline = true;
+                        self.push("");
                         self.initializer(init);
                         self.push_token(&Token::Comma(0));
                     }
+                    self.newline = true;
+                    self.push("");
                     self.initializer(last);
                 }
                 self.push_token(&Token::CloseBrace(0));

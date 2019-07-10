@@ -11,3 +11,6 @@ purkkasyntax = { path="../purkkasyntax" }
 purkkatoken = { path="../purkkatoken" }
 shared = { path="../shared" }
 regex = "1.1.6"
+
+[dev-dependencies]
+purkkaconverter = { path="../purkkaconverter" }

@@ -5,9 +5,9 @@ use std::rc::Rc;
 use purkkasyntax::*;
 use purkkatoken::tokenizer::tokenize;
 
-use parser::parse;
+use parser::{parse, Operators, Types};
 
-pub fn parse_file(filename: &str, content: &str) -> S {
+pub fn parse_file(filename: &str, content: &str) -> (S, Operators, Types) {
     let (tokens, _interner, fragment, sources) = tokenize(content, filename);
     parse(&mut tokens.iter().peekable(), &sources, &fragment)
 }

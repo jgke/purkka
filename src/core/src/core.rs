@@ -34,9 +34,9 @@ pub fn get_file_cb<'a>(
         }
 
         if full_path.to_lowercase().ends_with(".prk") {
-            let prk_tree = purkkaparser::parse_file(&full_path, &content);
+            let (prk_tree, operators, types) = purkkaparser::parse_file(&full_path, &content);
             let declarations = purkkaparser::get_declarations(&prk_tree, false);
-            let (parsed, context) = purkkaconverter::convert(prk_tree);
+            let (parsed, context) = purkkaconverter::convert(prk_tree, operators, types);
             let formatted = cformat::format_c(&parsed, context.local_includes);
             ResolveResult {
                 full_path,

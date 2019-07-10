@@ -1,0 +1,10 @@
+struct Foo {
+    bar: int,
+    baz: int
+}
+
+fun main() {
+    let a = Foo { bar: 0, baz: 1 };
+
+    return a.bar + a.baz;
+}

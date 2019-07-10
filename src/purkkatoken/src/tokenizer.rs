@@ -265,8 +265,8 @@ fn read_other(
     let peeked = iter.peek();
 
     let (content, source) = iter.collect_while(|c| match c {
-        '!' | '#' | '$' | '%' | '&' | '*' | '+' | '.' | '/' | '<' | '=' | '>' | '?' | '@'
-        | '\\' | '^' | '|' | '-' | '~' | ':' => true,
+        '!' | '#' | '$' | '%' | '&' | '*' | '+' | '/' | '<' | '=' | '>' | '?' | '@'
+        | '\\' | '^' | '|' | '-' | '~' => true,
         _ => false,
     });
     if !content.is_empty() {

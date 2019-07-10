@@ -1,13 +1,24 @@
+extern crate purkkaconverter;
+
 use fragment::fragment::FragmentIterator;
 use purkkaparser::parse_file;
 use purkkaparser::parser::parse;
 use purkkasyntax::*;
 use purkkatoken::token::Token;
+use purkkaconverter::transform;
 
 fn test_parse_file(s: &str) -> S {
     println!("Testing following file:\n------\n{}\n------", s);
-    parse_file("file.prk", s)
+    parse_file("file.prk", s).0
 }
+
+fn test_convert_parse_file(s: &str) -> S {
+    println!("Testing following file:\n------\n{}\n------", s);
+    let (mut tree, op, ty) = parse_file("file.prk", s);
+    transform(&mut tree, op, ty);
+    tree
+}
+
 
 #[test]
 fn parse_simple() {
@@ -108,11 +119,11 @@ fn parse_nested_if_else() {
 
 #[test]
 fn parse_main() {
-    let fun = test_parse_file(
+    let fun = test_convert_parse_file(
         "fun main(argc: int, argv: [[char]]) -> int {
 };",
     );
-    let lambda = test_parse_file(
+    let lambda = test_convert_parse_file(
         "const main = fun (argc: int, argv: [[char]]) -> int {
 };",
     );
@@ -121,12 +132,12 @@ fn parse_main() {
 
 #[test]
 fn parse_terse_fn() {
-    let normal = test_parse_file(
+    let normal = test_convert_parse_file(
         "fun fn(arg: int) -> int {
     return arg;
 };",
     );
-    let terse = test_parse_file("fun fn(arg: int) -> int => arg;");
+    let terse = test_convert_parse_file("fun fn(arg: int) -> int => arg;");
     assert_eq!(normal, terse);
 }
 

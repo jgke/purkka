@@ -32,6 +32,7 @@
 //!
 //! This module contains utilities to help tracking the spans and files.
 
+use std::cell::RefCell;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::fmt;
@@ -70,6 +71,12 @@ impl UnsafeStringInterner {
                 Box::from_raw(p);
             }
         }
+    }
+}
+
+impl Drop for UnsafeStringInterner {
+    fn drop(&mut self) {
+        self.free();
     }
 }
 
@@ -224,12 +231,12 @@ pub struct FragmentIterator {
     char_iter: CharIndices<'static>,
     /// Iterator for the current fragments.
     vec_iter: (Vec<(usize, char)>, usize),
-    /// All inserted files
-    contents: HashMap<String, String>,
+    /// All inserted files. Rc<RefCell> for faster 'copies'.
+    contents: Rc<RefCell<HashMap<String, String>>>,
     /// Hack: (unsafe) list of interned strings. Fragments actually point to a leaked Box<String>.
-    interner: UnsafeStringInterner,
+    interner: Rc<RefCell<UnsafeStringInterner>>,
     /// Interned filenames for Sources. Safe.
-    file_interner: StringInterner,
+    file_interner: Rc<RefCell<StringInterner>>,
     /// Debug output is enabled (env DEBUG_FRAGMENT is defined)
     debug: Option<String>,
 }
@@ -265,16 +272,18 @@ impl Iterator for FragmentIterator {
     }
 }
 
-impl Drop for FragmentIterator {
-    fn drop(&mut self) {
-        self.interner.free();
-    }
-}
-
 impl FragmentIterator {
     /// Initialize the iterator.
     pub fn new(filename: &str, content: &str) -> FragmentIterator {
-        FragmentIterator::_with_offset(filename, content, 0, vec![], HashMap::new())
+        FragmentIterator::_with_offset(
+            filename,
+            content,
+            0,
+            vec![],
+            Rc::new(RefCell::new(HashMap::new())),
+            Rc::new(RefCell::new(UnsafeStringInterner { strs: Vec::new() })),
+            Rc::new(RefCell::new(StringInterner::new())),
+        )
     }
 
     /// Initialize the iterator with a predetermined offset.
@@ -284,7 +293,15 @@ impl FragmentIterator {
         offset: usize,
         parent: &FragmentIterator,
     ) -> FragmentIterator {
-        FragmentIterator::_with_offset(filename, "", offset, content, parent.contents.clone())
+        FragmentIterator::_with_offset(
+            filename,
+            "",
+            offset,
+            content,
+            Rc::clone(&parent.contents),
+            Rc::clone(&parent.interner),
+            Rc::clone(&parent.file_interner),
+        )
     }
 
     /// Initialize the iterator with a predetermined offset.
@@ -293,16 +310,17 @@ impl FragmentIterator {
         content: &str,
         offset: usize,
         vec_iter: Vec<(usize, char)>,
-        mut contents: HashMap<String, String>,
+        contents_: Rc<RefCell<HashMap<String, String>>>,
+        interner: Rc<RefCell<UnsafeStringInterner>>,
+        file_interner: Rc<RefCell<StringInterner>>,
     ) -> FragmentIterator {
-        let mut interner = UnsafeStringInterner { strs: Vec::new() };
-        let mut file_interner = StringInterner::new();
-        let static_content = interner.intern_str(content);
+        let static_content = interner.borrow_mut().intern_str(content);
         let mut fragments = Vec::new();
         fragments.push(Fragment {
             content: static_content,
             offset,
         });
+        let mut contents = contents_.borrow_mut();
         if !contents.contains_key(filename) {
             contents.insert(filename.to_string(), content.to_string());
         }
@@ -319,14 +337,18 @@ impl FragmentIterator {
             None
         };
 
+        let filename = file_interner.borrow_mut().get_ref(filename);
+
+        std::mem::drop(contents);
+
         FragmentIterator {
             fragments,
             current_fragment: 0,
             char_iter: iter,
             vec_iter: (vec_iter, 0),
-            contents,
+            contents: contents_,
             current_source: Source {
-                filename: file_interner.get_ref(filename),
+                filename,
                 span: Span {
                     lo: offset,
                     hi: offset,
@@ -376,7 +398,7 @@ impl FragmentIterator {
     pub fn split_and_push_file(&mut self, filename: &str, content: &str) {
         // The new frag
         let frag = Fragment {
-            content: self.interner.intern_str(content),
+            content: self.interner.borrow_mut().intern_str(content),
             offset: 0,
         };
 
@@ -406,7 +428,7 @@ impl FragmentIterator {
 
         // We want to nest the span here.
         self.current_source = Source {
-            filename: self.file_interner.get_ref(filename),
+            filename: self.file_interner.borrow_mut().get_ref(filename),
             span: Span {
                 lo: 0,
                 hi: 0,
@@ -414,10 +436,11 @@ impl FragmentIterator {
             },
         };
 
+        let mut cts = self.contents.borrow_mut();
+
         // Insert the file to the content table, if not present.
-        if !self.contents.contains_key(filename) {
-            self.contents
-                .insert(filename.to_string(), content.to_string());
+        if !cts.contains_key(filename) {
+            cts.insert(filename.to_string(), content.to_string());
         }
     }
 
@@ -625,10 +648,12 @@ impl FragmentIterator {
         let mut lines: Vec<(String, (&str, usize, usize))> = Vec::new();
         let mut out = "".to_string();
 
-        if !self.contents.contains_key(source.filename.as_ref()) {
+        let cts = self.contents.borrow_mut();
+
+        if !cts.contains_key(source.filename.as_ref()) {
             lines.push((builtin.clone(), (&source.filename, 0, 0)));
         } else {
-            let s = &self.contents[source.filename.as_ref()];
+            let s = &cts[source.filename.as_ref()];
             out.push_str(s[source.span.lo..=source.span.hi].trim());
             lines.push((
                 s[source.span.lo..=source.span.hi].trim().to_string(),
@@ -637,10 +662,10 @@ impl FragmentIterator {
         }
         let mut current_source = &source.span.source;
         while let Some(src) = current_source {
-            if src.is_dummy() || !self.contents.contains_key(src.filename.as_ref()) {
+            if src.is_dummy() || !cts.contains_key(src.filename.as_ref()) {
                 lines.push((builtin.clone(), (&src.filename, 0, 0)));
             } else {
-                let s = &self.contents[src.filename.as_ref()];
+                let s = &cts[src.filename.as_ref()];
                 lines.push((
                     s[src.span.lo..=src.span.hi].trim().to_string(),
                     (src.filename.as_ref(), src.span.lo, src.span.hi),
@@ -699,13 +724,13 @@ impl FragmentIterator {
         if source.span.lo == source.span.hi && source.span.lo == usize::max_value() {
             return "".to_string();
         }
-        let s = &self.contents[source.filename.as_ref()];
+        let s = &self.contents.borrow()[source.filename.as_ref()];
         s[source.span.lo..=source.span.hi].trim().to_string()
     }
 
     /// Get the current content
     pub fn get_current_content(&self) -> String {
-        let s = &self.contents[self.current_source().filename.as_ref()];
+        let s = &self.contents.borrow()[self.current_source().filename.as_ref()];
         s.to_string()
     }
 }
@@ -717,7 +742,7 @@ impl fmt::Debug for FragmentIterator {
             .field("current_fragment", &self.current_fragment)
             .field("current_source", &self.current_source)
             .field("iter", &self.as_str())
-            .field("contents", &self.contents)
+            .field("contents", &self.contents.borrow())
             .field("debug", &self.debug)
             .finish()
     }

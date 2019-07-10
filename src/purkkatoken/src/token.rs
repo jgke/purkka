@@ -10,14 +10,16 @@ pub enum Token {
     Char(usize, char),
     Operator(usize, Rc<str>),
 
-    // Delimiters: ( ) { } [ ] , ;
+    // Delimiters: ( ) { } [ ] . , : ;
     OpenParen(usize),
     CloseParen(usize),
     OpenBrace(usize),
     CloseBrace(usize),
     OpenBracket(usize),
     CloseBracket(usize),
+    Dot(usize),
     Comma(usize),
+    Colon(usize),
     SemiColon(usize),
 
     // Keywords
@@ -46,7 +48,9 @@ use Token::*;
 type TokenConstructor = fn(usize) -> Token;
 
 pub static TOKEN_TYPES: &[(&str, TokenConstructor)] = &[
+    (":", Colon),
     (";", SemiColon),
+    (".", Dot),
     (",", Comma),
     ("(", OpenParen),
     (")", CloseParen),
@@ -91,7 +95,9 @@ impl Token {
             CloseBrace(i, ..) => i,
             OpenBracket(i, ..) => i,
             CloseBracket(i, ..) => i,
+            Dot(i, ..) => i,
             Comma(i, ..) => i,
+            Colon(i, ..) => i,
             SemiColon(i, ..) => i,
             Pub(i, ..) => i,
             Const(i, ..) => i,

@@ -46,10 +46,11 @@ fn run_test(prefix: &str) {
 fn testcase_runner() {
     let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     d.push("tests/testcases");
-    let paths = read_dir(d).unwrap();
+    let mut paths = read_dir(d).unwrap().map(|r| r.unwrap()).collect::<Vec<_>>();
+    paths.sort_by_key(|dir| dir.path());
 
     for path in paths {
-        let readable_path = path.unwrap().path().display().to_string();
+        let readable_path = path.path().display().to_string();
         if readable_path.ends_with(".prk") {
             let mut parts = readable_path.split(".prk");
             run_test(parts.next().unwrap());

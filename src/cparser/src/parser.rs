@@ -621,12 +621,13 @@ where
 
     fn parse_direct_declarator(&mut self) -> Box<DirectDeclarator> {
         let mut decl = match self.peek() {
-            Some(Token::Identifier(..)) => Box::new(
-                DirectDeclarator::Identifier(
-                    read_token!(self, Token::Identifier).get_ident_str().clone())),
-            Some(Token::Asm(..)) => Box::new(
-                DirectDeclarator::AsmStatement(Box::new(self.parse_asm_statement()))),
-            _ =>  {
+            Some(Token::Identifier(..)) => Box::new(DirectDeclarator::Identifier(
+                read_token!(self, Token::Identifier).get_ident_str().clone(),
+            )),
+            Some(Token::Asm(..)) => Box::new(DirectDeclarator::AsmStatement(Box::new(
+                self.parse_asm_statement(),
+            ))),
+            _ => {
                 read_token!(self, Token::OpenParen);
                 let d = self.parse_declarator();
                 read_token!(self, Token::CloseParen);
