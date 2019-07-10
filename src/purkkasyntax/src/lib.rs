@@ -191,7 +191,6 @@ grammar! {
 
     PrimaryExpression
        -> #Token::Identifier
-        | Call. PrimaryExpression ArgList
         | Literal
         | StructInitialization. #Token::Identifier /* ident:typename */ #Token::OpenBrace InitializationFields #Token::CloseBrace
         | BlockExpression
