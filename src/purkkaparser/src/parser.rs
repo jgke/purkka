@@ -176,7 +176,6 @@ fn default_bin_ops() -> OperatorMap {
     infix_operators.insert(From::from("%"), Operator::binop(12, bin_num_to_num(), None));
     infix_operators.insert(From::from("*"), Operator::binop(12, bin_num_to_num(), None));
     infix_operators.insert(From::from("/"), Operator::binop(12, bin_num_to_num(), None));
-    infix_operators.insert(From::from("**"), Operator::binop_right(13, bin_num_to_num(), None));
 
     infix_operators
 }
@@ -185,12 +184,13 @@ fn default_unary_ops() -> OperatorMap {
     let mut unary_operators = HashMap::new();
 
     // Unary plus (nop), unary minus (negation), logical not (!= 0), bitwise not,
-    // addressof, prefix increment/decrement
+    // addressof, dereference, prefix increment/decrement
     unary_operators.insert(From::from("+"), Operator::unary(unary_num_to_num(), None));
     unary_operators.insert(From::from("-"), Operator::unary(unary_num_to_num(), None));
     unary_operators.insert(From::from("!"), Operator::unary(unary_num_to_bool(), None));
     unary_operators.insert(From::from("~"), Operator::unary(unary_num_to_num(), None));
     unary_operators.insert(From::from("&"), Operator::unary(unary_num_to_num(), None));
+    unary_operators.insert(From::from("*"), Operator::unary(unary_num_to_num(), None));
     unary_operators.insert(From::from("++"), Operator::unary(unary_num_to_num(), None));
     unary_operators.insert(From::from("--"), Operator::unary(unary_num_to_num(), None));
 
@@ -250,7 +250,7 @@ impl Operator {
     }
     fn unary(ty: TypeSignature, handler: Option<Expression>) -> Operator {
         Operator {
-            precedence: 1,
+            precedence: 15,
             param_count: 1,
             left_associative: true,
             ty,
@@ -259,7 +259,7 @@ impl Operator {
     }
     fn unary_right(ty: TypeSignature, handler: Option<Expression>) -> Operator {
         Operator {
-            precedence: 1,
+            precedence: 15,
             param_count: 1,
             left_associative: false,
             ty,
@@ -692,7 +692,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_expression_(&mut self, precedence: usize) -> Expression {
-        if let Some(Token::Operator(_, op)) = self.peek() {
+        let mut expr = if let Some(Token::Operator(_, op)) = self.peek() {
             match self.operators.unary.get(op).cloned() {
                 Some(ref n) if n.left_associative => {
                     assert_eq!(n.left_associative, true);
@@ -700,12 +700,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     let exprs = (0..n.param_count)
                         .map(|_| self.parse_expression_(n.precedence))
                         .collect();
-                    return Expression::Unary(op.clone(), ExprList::List(exprs));
+                    Expression::Unary(op.clone(), ExprList::List(exprs))
                 }
                 _ => panic!("Unknown prefix operator: {:?}", op),
             }
-        }
-        let mut expr = Expression::PrimaryExpression(self.parse_primary_expression());
+        } else {
+            Expression::PrimaryExpression(self.parse_primary_expression())
+        };
         loop {
             match self.peek() {
                 Some(Token::As(..)) => {
@@ -1162,7 +1163,6 @@ mod tests {
                 "&" => eval_bin!(list, &),
                 "|" => eval_bin!(list, |),
                 "^" => eval_bin!(list, ^),
-                "**" => eval_tree(&list[0]).pow(eval_tree(&list[1]) as u32),
                 "?" => {
                     assert_eq!(list.len(), 3);
                     if eval_tree(&list[0]) != 0 {
@@ -1190,7 +1190,7 @@ mod tests {
 
     fn check(expr: &str, expected: i128) {
         let unary = default_unary_ops();
-        let postfix = default_unary_ops();
+        let postfix = default_postfix_ops();
         let infix = default_bin_ops();
         let both = unary
             .clone()
@@ -1224,8 +1224,6 @@ mod tests {
         check("1 * - 1", -1);
         check("1 + 2 * 2", 5);
         check("1 - 2 * 2", -3);
-        check("2 ** 3", 8);
-        check("- 2 ** 4", -16);
         check("1 ? 2 : 3", 2);
         check("0 ? 2 : 3", 3);
         check("1 ? 2 : 0 ? 3 : 4", 2); // no horses here

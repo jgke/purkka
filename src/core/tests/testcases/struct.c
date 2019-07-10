@@ -1,3 +1,4 @@
+struct Foo;
 struct Foo {
     int bar;
     int baz;

@@ -278,7 +278,6 @@ impl TypeInferrer<'_> {
         let mut ty = match expression {
             Expression::PrimaryExpression(expr) => self.get_primary_expr_type(expr),
             Expression::Op(op, ExprList::List(list)) => {
-                dbg!(&expression);
                 let (params, ret) = self.get_operator_instance(op);
 
                 assert_eq!(params.len(), list.len());
@@ -407,7 +406,6 @@ impl TypeInferrer<'_> {
             }
             PrimaryExpression::Expression(expr) => self.get_type(expr),
             PrimaryExpression::StructInitialization(ident, fields) => {
-                dbg!(&ident, &fields);
                 let struct_ty = &self.context.types[ident];
                 if let TypeSignature::Struct(_, struct_fields) = struct_ty {
                     let mut struct_field_tys = struct_fields.iter()

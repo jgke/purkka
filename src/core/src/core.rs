@@ -114,7 +114,7 @@ pub fn real_main() {
         .map(|v| v.map(ToString::to_string).collect())
         .unwrap();
 
-    let output: Option<String> = matches.value_of("input").map(ToString::to_string);
+    let output: Option<String> = matches.value_of("output").map(ToString::to_string);
 
     let include_path: Vec<String> = matches
         .values_of("include")
@@ -192,6 +192,16 @@ pub fn real_main() {
 
     let get_file = get_file_cb(&options, &get_file_content);
     for file in &input {
-        println!("{:?}", get_file(FileQuery::new(".", file, true, false)))
+        let result = get_file(FileQuery::new(".", file, true, false));
+        println!("{:?}", result);
+        if let Some(file) = &output {
+            let path = path::PathBuf::from(file);
+            if let Ok(_) = File::open(path.clone()) {
+                panic!("File {} exists, exiting", file);
+            } else {
+                let mut file = File::create(path).unwrap();
+                file.write_all(result.c_content.as_bytes()).unwrap();
+            }
+        }
     }
 }

@@ -1,19 +1,18 @@
 /// Fetch all declarations from the file
-use std::collections::HashMap;
-use std::rc::Rc;
-
 use purkkasyntax::visitor::*;
 use purkkasyntax::*;
 
 #[derive(Debug)]
 pub struct FetchDeclarations {
-    pub declarations: HashMap<Rc<str>, Declaration>,
+    pub declarations: Vec<Declaration>,
+    pub types: Vec<Typedef>,
 }
 
 impl FetchDeclarations {
     pub fn new() -> FetchDeclarations {
         FetchDeclarations {
-            declarations: HashMap::new(),
+            declarations: Vec::new(),
+            types: Vec::new(),
         }
     }
     pub fn fetch_declarations(&mut self, s: &mut S) {
@@ -24,9 +23,14 @@ impl FetchDeclarations {
 impl ASTVisitor for FetchDeclarations {
     fn visit_declaration(&mut self, e: &mut Declaration) {
         match e {
-            Declaration::Declaration(_, _, name, _, _) => {
-                self.declarations.insert(name.clone(), e.clone());
-            }
+            Declaration::Declaration(..) => self.declarations.push(e.clone()),
+        }
+    }
+    fn visit_typedef(&mut self, e: &mut Typedef) {
+        match e {
+            Typedef::Struct(..) => self.types.push(e.clone()),
+            Typedef::Enum(..) => self.types.push(e.clone()),
+            Typedef::Alias(..) => {}
         }
     }
 }

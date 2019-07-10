@@ -1,5 +1,6 @@
 #![feature(box_patterns, drain_filter)]
 
+use std::convert::TryInto;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -15,10 +16,10 @@ pub mod traits;
 mod array;
 mod declarations;
 mod imports;
-pub mod inference;
 mod lambda;
 mod operator;
 mod typedef;
+pub mod inference;
 
 use traits::TreeTransformer;
 
@@ -32,7 +33,7 @@ use typedef::InlineTypedef;
 
 #[derive(Clone, Debug)]
 pub struct Context {
-    pub functions: HashMap<Rc<str>, pp::Lambda>,
+    pub functions: Vec<(Rc<str>, pp::Lambda)>,
     pub global_includes: HashSet<Rc<str>>,
     pub local_includes: HashSet<Rc<str>>,
     pub operators: Operators,
@@ -58,7 +59,12 @@ pub fn convert(mut purkka_tree: pp::S, operators: Operators, types: Types) -> (c
 pub fn fetch_identifiers_from_prk(tree: &mut pp::S) -> HashMap<Rc<str>, pp::Declaration> {
     let mut decls = FetchDeclarations::new();
     decls.fetch_declarations(tree);
-    decls.declarations
+    decls.declarations.into_iter()
+        .map(|decl| {
+             let pp::Declaration::Declaration(_, _, name, _, _) = &decl;
+             (name.clone(), decl)
+        })
+        .collect()
 }
 
 pub fn fetch_identifiers_from_c(_tree: &mut cp::S) -> HashMap<Rc<str>, pp::Declaration> {
@@ -68,7 +74,7 @@ pub fn fetch_identifiers_from_c(_tree: &mut cp::S) -> HashMap<Rc<str>, pp::Decla
 impl Context {
     fn new(operators: Operators, types: Types) -> Context {
         Context {
-            functions: HashMap::new(),
+            functions: Vec::new(),
             global_includes: HashSet::new(),
             local_includes: HashSet::new(),
             operators,
@@ -77,15 +83,12 @@ impl Context {
     }
 
     fn push_function(&mut self, name: Rc<str>, lambda: pp::Lambda) {
-        if self.functions.contains_key(&name) {
-            panic!("Duplicate function: {}", name);
-        }
-        self.functions.insert(name, lambda);
+        self.functions.push((name, lambda));
     }
 
     fn push_anonymous_function(&mut self, lambda: pp::Lambda) -> Rc<str> {
         let name: Rc<str> = From::from(format!("_lambda_{}", self.functions.len()));
-        self.functions.insert(name.clone(), lambda);
+        self.functions.push((name.clone(), lambda));
         name
     }
 
@@ -100,15 +103,16 @@ impl Context {
     pub fn translation_unit(&mut self, k: pp::TranslationUnit) -> cp::TranslationUnit {
         match k {
             pp::TranslationUnit::Units(u) => {
-                let mut drain = self.functions.drain().collect::<Vec<_>>();
-                drain.sort_by(|(left, _), (right, _)| left.cmp(right));
-                let funcs = drain
-                    .into_iter()
+                let tys = self.types.clone().into_iter()
+                    .map(|ty| self.format_type_as_external_decl(ty.1))
+                    .collect::<Vec<_>>();
+                let funcs = self.functions.drain(..)
+                    .collect::<Vec<_>>().into_iter()
                     .map(|(n, u)| self.format_lambda_as_external_decl(n.clone(), u.clone()))
                     .collect::<Vec<_>>();
                 cp::TranslationUnit::Units(
-                    funcs
-                        .into_iter()
+                    tys.into_iter()
+                        .chain(funcs.into_iter())
                         .chain(u.into_iter().map(|u| self.unit_to_external_decl(u)))
                         .collect(),
                 )
@@ -131,6 +135,16 @@ impl Context {
                 Box::new(self.block_expression_to_compound_statement(block)),
             ),
         ))
+    }
+
+    fn format_type_as_external_decl(
+        &mut self,
+        ty: pp::TypeSignature
+    ) -> cp::ExternalDeclaration {
+        cp::ExternalDeclaration::Declaration(
+            Box::new(cp::Declaration::Declaration(
+                Box::new(self.type_to_declaration_specifiers(ty.clone())),
+                vec![])))
     }
 
     pub fn cond_and_block_to_selection_statement(
@@ -198,6 +212,17 @@ impl Context {
                             second.map(|t| *t),
                             third.map(|t| *t),
                         ),
+                        ct::Token::CloseParen(0),
+                        Box::new(self.block_to_statement(*block)),
+                    ))),
+                )])
+            }
+            pp::BlockExpression::While(expr, block, None) => {
+                cp::CompoundStatement::Statements(vec![cp::StatementOrDeclaration::Statement(
+                    cp::Statement::IterationStatement(Box::new(cp::IterationStatement::While(
+                        ct::Token::While(0),
+                        ct::Token::OpenParen(0),
+                        Box::new(self.expression(*expr)),
                         ct::Token::CloseParen(0),
                         Box::new(self.block_to_statement(*block)),
                     ))),
@@ -431,7 +456,7 @@ impl Context {
                 cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))
             }
             TypeSignature::Infer(..) => unreachable!(),
-            TypeSignature::Array(ty, _) => self.type_to_declaration_specifiers(*ty),
+            TypeSignature::Array(ty, _) | TypeSignature::DynamicArray(ty, _) => self.type_to_declaration_specifiers(*ty),
             TypeSignature::Pointer { ty, .. } => self.type_to_declaration_specifiers(*ty),
             TypeSignature::Function(_params, ret_ty) => {
                 self.type_to_declaration_specifiers(*ret_ty)
@@ -466,6 +491,18 @@ impl Context {
             TypeSignature::Pointer { ty, .. } => self.format_direct_decl(name, *ty),
             TypeSignature::Function(params, _ret_ty) => self
                 .function_pointer_from_params(name, params.into_iter().map(From::from).collect()),
+            TypeSignature::Array(ty, size) => cp::DirectDeclarator::Array(
+                Box::new(self.format_direct_decl(name, *ty)),
+                size.map(|lit| Box::new(self.general_expression(
+                            pp::Expression::PrimaryExpression(
+                                pp::PrimaryExpression::Literal(
+                                    pp::Literal::Integer(
+                                        pt::Token::Integer(0, lit.try_into().unwrap())))))))
+            ),
+            TypeSignature::DynamicArray(ty, expr) => cp::DirectDeclarator::Array(
+                Box::new(self.format_direct_decl(name, *ty)),
+                Some(Box::new(self.general_expression(*expr)))
+            ),
             other => panic!("Not implemented: {:?}", other),
         }
     }
@@ -491,6 +528,7 @@ impl Context {
         match ty {
             TypeSignature::Plain(_) => cp::DirectAbstractDeclarator::Epsilon(),
             TypeSignature::Struct(_, _) => cp::DirectAbstractDeclarator::Epsilon(),
+            TypeSignature::Pointer { ty, .. } => self.format_abstract_direct_decl(*ty),
             other => panic!("Not implemented: {:?}", other),
         }
     }

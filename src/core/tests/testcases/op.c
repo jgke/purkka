@@ -1,3 +1,4 @@
+struct Tuple;
 struct Tuple {
     int left;
     int right;
