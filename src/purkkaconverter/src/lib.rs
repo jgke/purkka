@@ -503,22 +503,57 @@ impl Context {
                 ))
             }
             pp::Expression::PrimaryExpression(primary_expr) => {
-                cp::TernaryExpression::GeneralExpression(cp::GeneralExpression::CastExpression(
-                    Box::new(cp::CastExpression::UnaryExpression(
-                        cp::UnaryExpression::PostfixExpression(Box::new(
-                            cp::PostfixExpression::PrimaryExpression(
-                                self.primary_expr(primary_expr),
-                            ),
+                cp::TernaryExpression::GeneralExpression(
+                    cp::GeneralExpression::CastExpression(
+                        Box::new(cp::CastExpression::UnaryExpression(
+                            cp::UnaryExpression::PostfixExpression(
+                                Box::new(cp::PostfixExpression::PrimaryExpression(
+                                        self.primary_expr(primary_expr),
+                                ),
+                            )),
                         )),
-                    )),
-                ))
+                    )
+                )
             }
             pp::Expression::Op(op, pp::ExprList::List(list)) => {
                 let left = Box::new(self.expression_as_general(list[0].clone()));
                 let right = Box::new(self.expression_as_general(list[1].clone()));
                 let e = match op.as_ref() {
                     "+" => cp::GeneralExpression::Plus(left, ct::Token::Plus(0), right),
+                    "-" => cp::GeneralExpression::Minus(left, ct::Token::Minus(0), right),
+                    "*" => cp::GeneralExpression::Times(left, ct::Token::Times(0), right),
+                    "/" => cp::GeneralExpression::Divide(left, ct::Token::Divide(0), right),
                     "<" => cp::GeneralExpression::LessThan(left, ct::Token::LessThan(0), right),
+                    "=" => {
+                        let unary = Box::new(cp::UnaryExpression::PostfixExpression(
+                            Box::new(self.expression_as_postfix(list[0].clone()))));
+                        let assignment = cp::AssignmentExpression::TernaryExpression(
+                            cp::TernaryExpression::GeneralExpression(
+                                cp::GeneralExpression::CastExpression(
+                                    Box::new(cp::CastExpression::UnaryExpression(
+                                        cp::UnaryExpression::PostfixExpression(
+                                            Box::new(self.expression_as_postfix(list[0].clone()))
+                                        )
+                                    )),
+                                ),
+                            )
+                        );
+                    cp::GeneralExpression::CastExpression(
+                        Box::new(cp::CastExpression::UnaryExpression(
+                            cp::UnaryExpression::PostfixExpression(
+                                Box::new(cp::PostfixExpression::PrimaryExpression(
+                                        cp::PrimaryExpression::Expression(
+                                            Box::new(cp::Expression::Expression(vec![
+                                                cp::AssignmentExpression::Assignment(
+                                                    unary, cp::AssignmentOperator::Assign(ct::Token::Assign(0)), Box::new(assignment)
+                                                )]
+                                            )
+                                        ))
+                                ),
+                            )),
+                        )),
+                    )
+                    }
                     other => panic!("Not implemented: {:?}", other),
                 };
                 cp::TernaryExpression::GeneralExpression(e)
@@ -617,6 +652,9 @@ impl Context {
                     .collect();
 
                 cp::PrimaryExpression::StructValue(Box::new(c_ty), initializers)
+            }
+            pp::PrimaryExpression::Expression(expr) => {
+                cp::PrimaryExpression::Expression(Box::new(self.expression(*expr)))
             }
             other => panic!("Not implemented: {:?}", other),
         }

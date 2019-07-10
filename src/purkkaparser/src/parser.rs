@@ -130,12 +130,21 @@ fn bin_num_to_num() -> TypeSignature {
     )
 }
 
+fn bin_any_to_any() -> TypeSignature {
+    let intermediate = IntermediateType::generic_any();
+    let num = Box::new(TypeSignature::Infer(intermediate));
+    TypeSignature::Function(
+        vec![Param::TypeOnly(num.clone()), Param::TypeOnly(num.clone())],
+        num.clone()
+    )
+}
+
 
 fn default_bin_ops() -> OperatorMap {
     let mut infix_operators = HashMap::new();
 
     // Assignment
-    infix_operators.insert(From::from("="), Operator::binop_right(1, bin_num_to_num(), None));
+    infix_operators.insert(From::from("="), Operator::binop_right(1, bin_any_to_any(), None));
     infix_operators.insert(From::from("&="), Operator::binop_right(1, bin_num_to_num(), None));
     infix_operators.insert(From::from("+="), Operator::binop_right(1, bin_num_to_num(), None));
 

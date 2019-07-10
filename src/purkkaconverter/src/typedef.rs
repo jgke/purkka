@@ -48,7 +48,6 @@ impl ASTVisitor for InlineTypedef<'_> {
     fn visit_ty(&mut self, e: &mut TypeSignature) {
         match e {
             TypeSignature::Plain(ident) if self.typedefs.contains_key(ident) => {
-                dbg!(&ident, &self.typedefs[ident]);
                 *e = self.typedefs[ident].clone();
             }
             _ => {}
