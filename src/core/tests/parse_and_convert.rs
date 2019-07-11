@@ -27,7 +27,7 @@ fn parse(content: &str) -> ResolveResult {
 fn simple_constant() {
     assert!(parse(
         "
-let foo: int = 1;
+let foo: i32 = 1;
 "
     )
     .is_ok());

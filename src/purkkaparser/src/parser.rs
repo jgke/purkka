@@ -99,7 +99,7 @@ fn unary_num_to_bool() -> TypeSignature {
     let num = Box::new(TypeSignature::Infer(intermediate));
     TypeSignature::Function(
         vec![Param::TypeOnly(num.clone())],
-        Box::new(TypeSignature::Plain(From::from("int")))
+        Box::new(TypeSignature::Primitive(Primitive::Int(32)))
     )
 }
 
@@ -117,7 +117,7 @@ fn bin_num_to_bool() -> TypeSignature {
     let num = Box::new(TypeSignature::Infer(intermediate));
     TypeSignature::Function(
         vec![Param::TypeOnly(num.clone()), Param::TypeOnly(num.clone())],
-        Box::new(TypeSignature::Plain(From::from("int")))
+        Box::new(TypeSignature::Primitive(Primitive::Int(32)))
     )
 }
 
@@ -387,8 +387,29 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             /* int */
             /* int -> int */
             Some(Token::Identifier(..)) => {
-                let t = self.next().identifier_s().unwrap().clone();
-                TypeSignature::Plain(t)
+                let t = read_identifier_str!(self);
+                match t.as_ref() {
+                    "void" => TypeSignature::Primitive(Primitive::Void),
+                    "char" => TypeSignature::Primitive(Primitive::Int(8)),
+                    "float" => TypeSignature::Primitive(Primitive::Float),
+                    "double" => TypeSignature::Primitive(Primitive::Double),
+                    "int" | "long" => panic!("Use i32 and i64 instead of int/long"),
+                    _ => {
+                        let first = t.chars().next();
+                        if first == Some('i') || first == Some('u') {
+                            let (_, len) = t.split_at(1);
+                            len.parse::<usize>()
+                                .map(|size| match first {
+                                    Some('i') => TypeSignature::Primitive(Primitive::Int(size)),
+                                    Some('u') => TypeSignature::Primitive(Primitive::UInt(size)),
+                                    _ => unreachable!()
+                                })
+                            .unwrap_or_else(|_| TypeSignature::Plain(t))
+                        } else {
+                            TypeSignature::Plain(t)
+                        }
+                    }
+                }
             }
             /* (foo, bar: int) -> int */
             /* (int, int) */

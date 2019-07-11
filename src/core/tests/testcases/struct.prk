@@ -1,6 +1,6 @@
 struct Foo {
-    bar: int,
-    baz: int
+    bar: i32,
+    baz: i32
 }
 
 fun main() {

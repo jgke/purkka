@@ -8,7 +8,7 @@ use cparser::grammar as cp;
 use ctoken::token as ct;
 use purkkaparser::parser::{Operators, Types};
 use purkkasyntax as pp;
-use purkkasyntax::TypeSignature;
+use purkkasyntax::{TypeSignature, Primitive};
 use purkkatoken::token as pt;
 
 pub mod traits;
@@ -455,6 +455,18 @@ impl Context {
                 };
                 cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))
             }
+            TypeSignature::Primitive(prim) => {
+                let c_ty = match prim {
+                    Primitive::Void => cp::CType::Void,
+                    Primitive::Int(32) => cp::CType::Primitive(None, cp::PrimitiveType::Int),
+                    Primitive::Int(64) => cp::CType::Primitive(None, cp::PrimitiveType::Long),
+                    Primitive::Int(8) => cp::CType::Primitive(None, cp::PrimitiveType::Char),
+                    Primitive::Float => cp::CType::Primitive(None, cp::PrimitiveType::Float),
+                    Primitive::Double => cp::CType::Primitive(None, cp::PrimitiveType::Double),
+                    other => panic!("Not implemented: {:?}", other),
+                };
+                cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))
+            }
             TypeSignature::Infer(..) => unreachable!(),
             TypeSignature::Array(ty, _) | TypeSignature::DynamicArray(ty, _) => self.type_to_declaration_specifiers(*ty),
             TypeSignature::Pointer { ty, .. } => self.type_to_declaration_specifiers(*ty),
@@ -487,7 +499,8 @@ impl Context {
 
     pub fn format_direct_decl(&mut self, name: Rc<str>, ty: TypeSignature) -> cp::DirectDeclarator {
         match ty {
-            TypeSignature::Plain(_) | TypeSignature::Struct(_, _) => cp::DirectDeclarator::Identifier(name),
+            TypeSignature::Plain(_) | TypeSignature::Primitive(_) | TypeSignature::Struct(_, _) =>
+                cp::DirectDeclarator::Identifier(name),
             TypeSignature::Pointer { ty, .. } => self.format_direct_decl(name, *ty),
             TypeSignature::Function(params, _ret_ty) => self
                 .function_pointer_from_params(name, params.into_iter().map(From::from).collect()),
@@ -526,7 +539,7 @@ impl Context {
         ty: TypeSignature,
     ) -> cp::DirectAbstractDeclarator {
         match ty {
-            TypeSignature::Plain(_) => cp::DirectAbstractDeclarator::Epsilon(),
+            TypeSignature::Plain(_) | TypeSignature::Primitive(_) => cp::DirectAbstractDeclarator::Epsilon(),
             TypeSignature::Struct(_, _) => cp::DirectAbstractDeclarator::Epsilon(),
             TypeSignature::Pointer { ty, .. } => self.format_abstract_direct_decl(*ty),
             other => panic!("Not implemented: {:?}", other),
@@ -567,7 +580,7 @@ impl Context {
                     "^=" => cp::AssignmentOperator::BitXorAssign(ct::Token::BitXorAssign(0)),
                     "|=" => cp::AssignmentOperator::BitOrAssign(ct::Token::BitOrAssign(0)),
 
-                    _ => unimplemented!()
+                    _ => unreachable!()
                 };
                 cp::AssignmentExpression::Assignment(left, tok, right)
             }
@@ -577,7 +590,19 @@ impl Context {
 
     pub fn ternary_expression(&mut self, k: pp::Expression) -> cp::TernaryExpression {
         match k {
-            pp::Expression::Op(ref op, _) if op.as_ref() == "?" => unimplemented!(),
+            pp::Expression::Op(ref op, ref list) if op.as_ref() == "?" => {
+                let pp::ExprList::List(list) = list;
+                let cond = self.general_expression(list[0].clone());
+                let if_t = self.expression(list[1].clone());
+                let if_f = self.ternary_expression(list[2].clone());
+                cp::TernaryExpression::Ternary(
+                    cond,
+                    ct::Token::Ternary(0),
+                    Box::new(if_t),
+                    ct::Token::Colon(0),
+                    Box::new(if_f),
+                )
+            }
             _ => cp::TernaryExpression::GeneralExpression(self.general_expression(k))
         }
     }

@@ -342,6 +342,7 @@ impl_enter!(Token, Identifier, "Rc<str>", identifier_s, 2);
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeSignature {
     Plain(Rc<str>),
+    Primitive(Primitive),
     Pointer {
         nullable: bool,
         ty: Box<TypeSignature>,
@@ -355,6 +356,27 @@ pub enum TypeSignature {
 
     Function(Vec<Param>, Box<TypeSignature>),
     Infer(IntermediateType),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Primitive {
+    Void,
+    Int(usize),
+    UInt(usize),
+    Float,
+    Double
+}
+
+impl std::fmt::Display for Primitive {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Primitive::Void => write!(f, "void"),
+            Primitive::Int(size) => write!(f, "i{}", size),
+            Primitive::UInt(size) => write!(f, "u{}", size),
+            Primitive::Float => write!(f, "float"),
+            Primitive::Double => write!(f, "double"),
+        }
+    }
 }
 
 impl From<TypeSignature> for IntermediateType {

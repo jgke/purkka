@@ -24,9 +24,9 @@ fn get_std_lib() -> HashMap<Rc<str>, IntermediateType> {
         Param::TypeOnly(Box::new(ty.clone()))
     }
 
-    let void = TypeSignature::Plain(From::from("void"));
-    let int = TypeSignature::Plain(From::from("int"));
-    let long = TypeSignature::Plain(From::from("long"));
+    let void = TypeSignature::Primitive(Primitive::Void);
+    let int = TypeSignature::Primitive(Primitive::Int(32));
+    let long = TypeSignature::Primitive(Primitive::Int(64));
     let void_ptr = TypeSignature::Pointer {
         ty: Box::new(void.clone()),
         nullable: true,
@@ -79,6 +79,7 @@ impl<'a> TreeTransformer<'a> for TypeInferrer<'a> {
 
 impl ASTVisitor for TypeInferrer<'_> {
     fn visit_declaration(&mut self, tree: &mut Declaration) {
+        dbg!(&tree);
         match tree {
             Declaration::Declaration(_, _, name, exact_ty, Some(e)) => {
                 let ty = self.get_type(e);
@@ -107,7 +108,7 @@ impl ASTVisitor for TypeInferrer<'_> {
     fn visit_operator_overload(&mut self, s: &mut OperatorOverload) {
         match s {
             OperatorOverload::OperatorOverload(_ident, ty, expr) => {
-                let expr_ty = self.get_type(expr); 
+                let expr_ty = self.get_type(expr);
                 self.make_equal(&From::from(*ty.clone()), &expr_ty.0);
             }
         }
@@ -278,16 +279,45 @@ impl TypeInferrer<'_> {
         let mut ty = match expression {
             Expression::PrimaryExpression(expr) => self.get_primary_expr_type(expr),
             Expression::Op(op, ExprList::List(list)) => {
-                let (params, ret) = self.get_operator_instance(op);
+                //if op.as_ref() == "+" {
+                //    // ptr + num => ptr
+                //    // num + ptr => ptr
+                //    // num + num => num
 
-                assert_eq!(params.len(), list.len());
-                let ret_tys = params.iter().zip(list.iter()).flat_map(|(param, arg)| {
-                    let arg_ty = self.get_type(&arg);
-                    self.make_equal(&arg_ty.0, param);
-                    arg_ty.1
-                }).collect();
+                //    let left = &list[0];
+                //    let right = &list[1];
+                //}
+                if op.as_ref() == "?" {
+                    let cond = &list[0];
+                    let if_t = &list[1];
+                    let if_f = &list[1];
 
-                (ret, ret_tys)
+                    let cond_ty = self.get_type(cond);
+                    let if_t_ty = self.get_type(if_t);
+                    let if_f_ty = self.get_type(if_f);
+
+                    self.make_equal_to_num(&cond_ty.0);
+
+                    self.make_equal(&if_t_ty.0, &if_f_ty.0);
+
+                    let ret_tys = cond_ty.1.into_iter()
+                        .chain(if_t_ty.1.into_iter())
+                        .chain(if_f_ty.1.into_iter())
+                        .collect();
+
+                    (if_t_ty.0, ret_tys)
+                } else {
+                    let (params, ret) = self.get_operator_instance(op);
+
+                    assert_eq!(params.len(), list.len());
+                    let ret_tys = params.iter().zip(list.iter()).flat_map(|(param, arg)| {
+                        let arg_ty = self.get_type(&arg);
+                        self.make_equal(&arg_ty.0, param);
+                        arg_ty.1
+                    }).collect();
+
+                    (ret, ret_tys)
+                }
             },
             Expression::Unary(op, ExprList::List(list)) => {
                 let (params, ret) = self.get_unary_operator_instance(op);
@@ -385,7 +415,7 @@ impl TypeInferrer<'_> {
                     } else if let Some(ty) = ret_tys.get(0) {
                         ty.clone()
                     } else {
-                        From::from(TypeSignature::Plain(From::from("void")))
+                        From::from(TypeSignature::Primitive(Primitive::Void))
                     };
                     self.make_equal(&From::from(return_type.clone()), &ret_ty);
                     let ty = From::from(TypeSignature::Function(
@@ -650,6 +680,7 @@ impl TypeInferrer<'_> {
     fn call_exact(&mut self, ty: &TypeSignature, args: &[Expression]) -> IntermediateType {
         match ty {
             TypeSignature::Plain(name) => panic!("Cannot call type {}", name),
+            TypeSignature::Primitive(prim) => panic!("Cannot call type {}", prim),
             TypeSignature::Pointer { ty, .. } => self.call_exact(ty, args),
             TypeSignature::Struct(_name, _fields) => unimplemented!(),
             TypeSignature::Enum(_name, _fields) => unimplemented!(),
@@ -738,18 +769,16 @@ impl TypeInferrer<'_> {
             (_, TypeSignature::Infer(i)) => {
                 return self.make_equal(&IntermediateType::Number(id, num.clone()), i)
             }
-            (IntermediateNumber::Indeterminate, TypeSignature::Plain(t)) => match t.as_ref() {
-                "int" | "float" | "double" | "long" => TypeSignature::Plain(t.clone()),
-                otherwise => panic!("Not implemented: {:?}", otherwise),
-            },
-            (IntermediateNumber::Float, TypeSignature::Plain(t)) => match t.as_ref() {
-                "float" | "double" => TypeSignature::Plain(t.clone()),
-                otherwise => panic!("Not implemented: {:?}", otherwise),
-            },
+            (IntermediateNumber::Indeterminate, TypeSignature::Plain(_)) => unimplemented!(),
+            (IntermediateNumber::Float, TypeSignature::Plain(_)) => unimplemented!(),
             (_, t@TypeSignature::Struct(..)) | (_, t@TypeSignature::Enum(..))
             | (_, t@TypeSignature::Tuple(..)) | (_, t@TypeSignature::Array(..))
             | (_, t@TypeSignature::DynamicArray(..)) | (_, t@TypeSignature::Function(..))
                 => panic!("Cannot use {:?} like a number", t),
+            (IntermediateNumber::Indeterminate, TypeSignature::Primitive(t)) => TypeSignature::Primitive(*t),
+            (IntermediateNumber::Float, TypeSignature::Primitive(t@Primitive::Float))
+            | (IntermediateNumber::Float, TypeSignature::Primitive(t@Primitive::Double))
+            | (IntermediateNumber::Double, TypeSignature::Primitive(t@Primitive::Double)) => TypeSignature::Primitive(*t),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         };
 
@@ -809,6 +838,7 @@ impl TypeInferrer<'_> {
 
         match lvalue {
             TypeSignature::Plain(_name) => self.fail_if(lvalue != rvalue, lvalue, rvalue),
+            TypeSignature::Primitive(_name) => self.fail_if(lvalue != rvalue, lvalue, rvalue),
             TypeSignature::Pointer { ty: left_ty, nullable: left_nullable } => match rvalue {
                 TypeSignature::Pointer { ty: right_ty, nullable: right_nullable} => {
                     assert_eq!(left_nullable, right_nullable);
@@ -849,6 +879,14 @@ impl TypeInferrer<'_> {
         }
     }
 
+    fn is_num(&self, ty: &IntermediateType) -> bool {
+        match ty {
+            //IntermediateType::Exact(box TypeSignature::Plain(ref id))
+            //    if self.context.types.contains_key(id) => self.is_num(&self.context.types[id]),
+            _ => false
+        }
+    }
+
     fn fail_if(&self, cond: bool, left: &TypeSignature, right: &TypeSignature) {
         if cond {
             panic!("Cannot assign {:?} to {:?}", right, left)
@@ -877,7 +915,7 @@ impl ASTVisitor for TypeInserter<'_> {
                     self.visit_ty(s);
                 } else {
                     match more {
-                        _ => *s = TypeSignature::Plain(From::from("int")),
+                        _ => *s = TypeSignature::Primitive(Primitive::Int(32)),
                     }
                 }
             }

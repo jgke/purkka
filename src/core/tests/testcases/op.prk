@@ -1,4 +1,4 @@
-struct Tuple {left: int, right: int};
+struct Tuple {left: i32, right: i32};
 
 operator 11 +=+ (left: Tuple, right: Tuple) => Tuple {
     left: left.left + right.left,

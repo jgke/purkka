@@ -9,7 +9,7 @@ const bar = fun (left, right) {
     return res;
 };
 
-const for_each = fun (f: int -> void, list, n) {
+const for_each = fun (f: i32 -> void, list, n) {
     for (let i = 0; i < n; i++) {
         f(list[i]);
     }

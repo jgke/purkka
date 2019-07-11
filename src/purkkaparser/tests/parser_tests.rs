@@ -63,43 +63,43 @@ fn get_ty(s: &S) -> Option<&TypeSignature> {
 
 #[test]
 fn parse_types() {
-    parse_ty("int");
-    parse_ty("int -> int");
-    parse_ty("(a: int) -> int");
-    parse_ty("(a: int, b: int) -> int");
-    parse_ty("(a: int, b: int, c: int) -> int");
-    parse_ty("(int) -> int");
-    parse_ty("(int, int) -> int");
-    parse_ty("(int, int, int) -> int");
-    parse_ty("(a: int, int, c: int) -> int");
-    parse_ty("(a: (int) -> int) -> int");
-    parse_ty("((int, int)) -> int");
-    parse_ty("struct { foo: int }");
-    parse_ty("struct { foo: int } -> int");
-    parse_ty("struct { foo: int, bar: int }");
-    parse_ty("struct { foo: int, bar: struct { foo: int }, baz: int }");
+    parse_ty("i32");
+    parse_ty("i32 -> i32");
+    parse_ty("(a: i32) -> i32");
+    parse_ty("(a: i32, b: i32) -> i32");
+    parse_ty("(a: i32, b: i32, c: i32) -> i32");
+    parse_ty("(i32) -> i32");
+    parse_ty("(i32, i32) -> i32");
+    parse_ty("(i32, i32, i32) -> i32");
+    parse_ty("(a: i32, i32, c: i32) -> i32");
+    parse_ty("(a: (i32) -> i32) -> i32");
+    parse_ty("((i32, i32)) -> i32");
+    parse_ty("struct { foo: i32 }");
+    parse_ty("struct { foo: i32 } -> i32");
+    parse_ty("struct { foo: i32, bar: i32 }");
+    parse_ty("struct { foo: i32, bar: struct { foo: i32 }, baz: i32 }");
     parse_ty("enum { foo }");
     parse_ty("enum { foo, bar, baz }");
-    parse_ty("enum { foo(int) }");
-    parse_ty("enum { foo(int, int) }");
-    parse_ty("enum { foo((int, int)) } -> (int, int)");
-    parse_ty("[int]");
-    parse_ty("[int] -> int");
-    parse_ty("[int;5]");
-    parse_ty("(foo: int -> int) -> int");
-    parse_ty("(int -> int) -> int");
-    parse_ty("int -> int -> int");
+    parse_ty("enum { foo(i32) }");
+    parse_ty("enum { foo(i32, i32) }");
+    parse_ty("enum { foo((i32, i32)) } -> (i32, i32)");
+    parse_ty("[i32]");
+    parse_ty("[i32] -> i32");
+    parse_ty("[i32;5]");
+    parse_ty("(foo: i32 -> i32) -> i32");
+    parse_ty("(i32 -> i32) -> i32");
+    parse_ty("i32 -> i32 -> i32");
     assert_eq!(
-        get_ty(&parse_ty("&&int -> int")).unwrap(),
+        get_ty(&parse_ty("&&i32 -> i32")).unwrap(),
         &TypeSignature::Function(
             vec![Param::TypeOnly(Box::new(TypeSignature::Pointer {
                 nullable: false,
                 ty: Box::new(TypeSignature::Pointer {
                     nullable: false,
-                    ty: Box::new(TypeSignature::Plain(From::from("int")))
+                    ty: Box::new(TypeSignature::Primitive(Primitive::Int(32)))
                 })
             }))],
-            Box::new(TypeSignature::Plain(From::from("int")))
+            Box::new(TypeSignature::Primitive(Primitive::Int(32)))
         )
     );
 }
@@ -120,11 +120,11 @@ fn parse_nested_if_else() {
 #[test]
 fn parse_main() {
     let fun = test_convert_parse_file(
-        "fun main(argc: int, argv: [[char]]) -> int {
+        "fun main(argc: i32, argv: [[char]]) -> i32 {
 };",
     );
     let lambda = test_convert_parse_file(
-        "const main = fun (argc: int, argv: [[char]]) -> int {
+        "const main = fun (argc: i32, argv: [[char]]) -> i32 {
 };",
     );
     assert_eq!(fun, lambda);
@@ -133,22 +133,22 @@ fn parse_main() {
 #[test]
 fn parse_terse_fn() {
     let normal = test_convert_parse_file(
-        "fun fn(arg: int) -> int {
+        "fun fn(arg: i32) -> i32 {
     return arg;
 };",
     );
-    let terse = test_convert_parse_file("fun fn(arg: int) -> int => arg;");
+    let terse = test_convert_parse_file("fun fn(arg: i32) -> i32 => arg;");
     assert_eq!(normal, terse);
 }
 
 #[test]
 fn parse_operators() {
-    test_parse_file("operator left 5 &~ (left: long, bits: long) => left & ~bits;");
+    test_parse_file("operator left 5 &~ (left: i64, bits: i64) => left & ~bits;");
 }
 
 #[test]
 fn parse_and_use_operator() {
-    test_parse_file("operator left 5 +- (left: int, right: int) => left-right;let a = 1 +- 2;");
+    test_parse_file("operator left 5 +- (left: i32, right: i32) => left-right;let a = 1 +- 2;");
 }
 
 #[test]
