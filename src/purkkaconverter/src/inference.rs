@@ -931,7 +931,10 @@ impl TypeInferrer<'_> {
             TypeSignature::Enum(_name, _fields) => unimplemented!(),
             TypeSignature::Tuple(_tys) => unimplemented!(),
             TypeSignature::Array(_ty, _size) => unimplemented!(),
-            TypeSignature::DynamicArray(_ty, _expr) => unimplemented!(),
+            TypeSignature::DynamicArray(ty, _expr) => {
+                let right = rvalue.dereference(&self.infer_map).unwrap();
+                self.unify_types(&ty, &right);
+            }
             TypeSignature::Function(left_params, left_return_value) => {
                 match rvalue {
                     TypeSignature::Function(right_params, right_return_value) => {
