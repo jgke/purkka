@@ -529,7 +529,10 @@ impl Context {
                 self.general_expression(ge);
                 self.push_token(q);
                 self.expression(&**e);
+                self.whitespace = true;
+                self.push("");
                 self.push_token(c);
+                self.whitespace = true;
                 self.ternary_expression(&**t);
             }
         }
@@ -635,6 +638,7 @@ impl Context {
                     UnaryOperator::BitNot(t) => self.push_token(t),
                     UnaryOperator::Not(t) => self.push_token(t),
                 }
+                self.whitespace = false;
                 self.cast_expression(&**e);
             }
             UnaryExpression::AddressOfLabel(label) => {

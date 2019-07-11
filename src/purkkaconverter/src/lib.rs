@@ -52,7 +52,9 @@ pub fn transform(purkka_tree: &mut pp::S, operators: Operators, types: Types) ->
 }
 
 pub fn convert(mut purkka_tree: pp::S, operators: Operators, types: Types) -> (cp::S, Context) {
+    dbg!(&purkka_tree);
     let mut context = transform(&mut purkka_tree, operators, types);
+    dbg!(&purkka_tree, &context.functions);
     (context.s(purkka_tree), context)
 }
 

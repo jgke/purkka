@@ -112,6 +112,15 @@ fn unary_num_to_num() -> TypeSignature {
     )
 }
 
+fn unary_num_to_ptr() -> TypeSignature {
+    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate); 
+    let num = Box::new(TypeSignature::Infer(intermediate));
+    TypeSignature::Function(
+        vec![Param::TypeOnly(num.clone())],
+        Box::new(TypeSignature::Pointer { nullable: false, ty: num.clone() })
+    )
+}
+
 fn bin_num_to_bool() -> TypeSignature {
     let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate); 
     let num = Box::new(TypeSignature::Infer(intermediate));
@@ -189,7 +198,7 @@ fn default_unary_ops() -> OperatorMap {
     unary_operators.insert(From::from("-"), Operator::unary(unary_num_to_num(), None));
     unary_operators.insert(From::from("!"), Operator::unary(unary_num_to_bool(), None));
     unary_operators.insert(From::from("~"), Operator::unary(unary_num_to_num(), None));
-    unary_operators.insert(From::from("&"), Operator::unary(unary_num_to_num(), None));
+    unary_operators.insert(From::from("&"), Operator::unary(unary_num_to_ptr(), None));
     unary_operators.insert(From::from("*"), Operator::unary(unary_num_to_num(), None));
     unary_operators.insert(From::from("++"), Operator::unary(unary_num_to_num(), None));
     unary_operators.insert(From::from("--"), Operator::unary(unary_num_to_num(), None));

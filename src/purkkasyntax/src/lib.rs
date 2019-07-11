@@ -358,6 +358,26 @@ pub enum TypeSignature {
     Infer(IntermediateType),
 }
 
+impl TypeSignature {
+    pub fn is_ptr(&self, context: &HashMap<i128, IntermediateType>) -> bool {
+        use TypeSignature::*;
+        match self {
+            Pointer { ..} | Array(..) | DynamicArray(..) => true,
+            Primitive(_) | Struct(..) | Enum(..) | Tuple(..) | Function(..) | Plain(_) => false,
+            Infer(infer) => infer.is_ptr(context),
+        }
+    }
+
+    pub fn dereference(&self, context: &HashMap<i128, IntermediateType>) -> Option<TypeSignature> {
+        use TypeSignature::*;
+        match self {
+            Pointer { ty, .. } | Array(ty, _) | DynamicArray(ty, ..) => Some(*ty.clone()),
+            Primitive(_) | Struct(..) | Enum(..) | Tuple(..) | Function(..) | Plain(_) => None,
+            Infer(infer) => infer.dereference(context),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Primitive {
     Void,
@@ -436,6 +456,34 @@ impl IntermediateType {
 
     pub fn generic_number(num: IntermediateNumber) -> IntermediateType {
         IntermediateType::Number(0, num)
+    }
+
+    pub fn is_ptr(&self, context: &HashMap<i128, IntermediateType>) -> bool {
+        match self {
+            IntermediateType::Any(id) => {
+                if let Some(ty) = context.get(id) {
+                    ty.is_ptr(context)
+                } else {
+                    false
+                }
+            },
+            IntermediateType::Number(..) => false,
+            IntermediateType::Exact(t) => t.is_ptr(context),
+        }
+    }
+
+    pub fn dereference(&self, context: &HashMap<i128, IntermediateType>) -> Option<TypeSignature> {
+        match self {
+            IntermediateType::Any(id) => {
+                if let Some(ty) = context.get(id) {
+                    ty.dereference(context)
+                } else {
+                    None
+                }
+            },
+            IntermediateType::Number(..) => None,
+            IntermediateType::Exact(t) => t.dereference(context),
+        }
     }
 }
 

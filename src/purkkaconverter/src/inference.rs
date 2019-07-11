@@ -79,7 +79,6 @@ impl<'a> TreeTransformer<'a> for TypeInferrer<'a> {
 
 impl ASTVisitor for TypeInferrer<'_> {
     fn visit_declaration(&mut self, tree: &mut Declaration) {
-        dbg!(&tree);
         match tree {
             Declaration::Declaration(_, _, name, exact_ty, Some(e)) => {
                 let ty = self.get_type(e);
@@ -279,15 +278,71 @@ impl TypeInferrer<'_> {
         let mut ty = match expression {
             Expression::PrimaryExpression(expr) => self.get_primary_expr_type(expr),
             Expression::Op(op, ExprList::List(list)) => {
-                //if op.as_ref() == "+" {
-                //    // ptr + num => ptr
-                //    // num + ptr => ptr
-                //    // num + num => num
+                /*
+                 * We special case handling for '+', '-' and '?' here, because they're, well,
+                 * special. '+' and '-' are especially special, as they are the only overloaded
+                 * operators in C - they have interesting behaviour with pointers.
+                 * 
+                 * num + ptr -> ptr
+                 * ptr + num -> ptr
+                 * num + num -> num
+                 *
+                 * ptr - num -> ptr
+                 * num - num -> num
+                 */
+                if op.as_ref() == "+" {
+                    let left = &list[0];
+                    let right = &list[1];
 
-                //    let left = &list[0];
-                //    let right = &list[1];
-                //}
-                if op.as_ref() == "?" {
+                    let left_ty = self.get_type(left);
+                    let right_ty = self.get_type(right);
+
+                    let left_ptr = left_ty.0.is_ptr(&self.infer_map);
+                    let right_ptr = right_ty.0.is_ptr(&self.infer_map);
+
+                    let ret_tys = left_ty.1.into_iter()
+                        .chain(right_ty.1.into_iter())
+                        .collect();
+
+                    dbg!(&expression, &left_ptr, &right_ptr);
+
+                    if left_ptr && !right_ptr {
+                        self.make_equal_to_num(&right_ty.0);
+                        (left_ty.0, ret_tys)
+                    } else if !left_ptr && right_ptr {
+                        self.make_equal_to_num(&left_ty.0);
+                        (right_ty.0, ret_tys)
+                    } else if left_ptr && right_ptr {
+                        panic!("Cannot add two pointers together")
+                    } else {
+                        // assume num + num here
+                        self.make_equal_to_num(&left_ty.0);
+                        self.make_equal(&left_ty.0, &right_ty.0);
+                        (left_ty.0, ret_tys)
+                    }
+                } else if op.as_ref() == "-" {
+                    let left = &list[0];
+                    let right = &list[1];
+
+                    let left_ty = self.get_type(left);
+                    let right_ty = self.get_type(right);
+
+                    let left_ptr = left_ty.0.is_ptr(&self.infer_map);
+
+                    let ret_tys = left_ty.1.into_iter()
+                        .chain(right_ty.1.into_iter())
+                        .collect();
+
+                    if left_ptr {
+                        self.make_equal_to_num(&right_ty.0);
+                        (left_ty.0, ret_tys)
+                    } else {
+                        // assume num - num here
+                        self.make_equal_to_num(&left_ty.0);
+                        self.make_equal(&left_ty.0, &right_ty.0);
+                        (left_ty.0, ret_tys)
+                    }
+                } else if op.as_ref() == "?" {
                     let cond = &list[0];
                     let if_t = &list[1];
                     let if_f = &list[1];
@@ -320,16 +375,26 @@ impl TypeInferrer<'_> {
                 }
             },
             Expression::Unary(op, ExprList::List(list)) => {
-                let (params, ret) = self.get_unary_operator_instance(op);
+                if op.as_ref() == "*" {
+                    assert_eq!(list.len(), 1);
+                    let arg_ty = self.get_type(&list[0]);
+                    if arg_ty.0.is_ptr(&self.infer_map) {
+                        (IntermediateType::Exact(Box::new(arg_ty.0.dereference(&self.infer_map).unwrap())), arg_ty.1)
+                    } else {
+                        panic!("Cannot dereference non-pointer");
+                    }
+                } else {
+                    let (params, ret) = self.get_unary_operator_instance(op);
 
-                assert_eq!(params.len(), list.len());
-                let ret_tys = params.iter().zip(list.iter()).flat_map(|(param, arg)| {
-                    let arg_ty = self.get_type(&arg);
-                    self.make_equal(&arg_ty.0, param);
-                    arg_ty.1
-                }).collect();
+                    assert_eq!(params.len(), list.len());
+                    let ret_tys = params.iter().zip(list.iter()).flat_map(|(param, arg)| {
+                        let arg_ty = self.get_type(&arg);
+                        self.make_equal(&arg_ty.0, param);
+                        arg_ty.1
+                    }).collect();
 
-                (ret, ret_tys)
+                    (ret, ret_tys)
+                }
             },
             Expression::PostFix(expr, op) => {
                 let (param, ret) = self.get_postfix_operator_instance(op);
@@ -836,9 +901,13 @@ impl TypeInferrer<'_> {
             return;
         }
 
+        if let TypeSignature::Infer(infer) = rvalue {
+            return self.unify_with_infer(infer, lvalue);
+        }
+
         match lvalue {
             TypeSignature::Plain(_name) => self.fail_if(lvalue != rvalue, lvalue, rvalue),
-            TypeSignature::Primitive(_name) => self.fail_if(lvalue != rvalue, lvalue, rvalue),
+            TypeSignature::Primitive(prim) => self.fail_if(lvalue != rvalue, lvalue, rvalue),
             TypeSignature::Pointer { ty: left_ty, nullable: left_nullable } => match rvalue {
                 TypeSignature::Pointer { ty: right_ty, nullable: right_nullable} => {
                     assert_eq!(left_nullable, right_nullable);
@@ -876,14 +945,6 @@ impl TypeInferrer<'_> {
             TypeSignature::Infer(infer) => {
                 self.unify_with_infer(infer, rvalue);
             }
-        }
-    }
-
-    fn is_num(&self, ty: &IntermediateType) -> bool {
-        match ty {
-            //IntermediateType::Exact(box TypeSignature::Plain(ref id))
-            //    if self.context.types.contains_key(id) => self.is_num(&self.context.types[id]),
-            _ => false
         }
     }
 
