@@ -311,6 +311,7 @@ pub fn walk_param<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Param) {
         Param::TypeOnly(ty) => {
             visitor.visit_ty(ty);
         }
+        Param::Variadic => {}
     }
 }
 
@@ -319,5 +320,6 @@ pub fn walk_lambda_param<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Lambda
         LambdaParam::LambdaParam(_, ty) => {
             visitor.visit_ty(ty);
         }
+        LambdaParam::Variadic => {}
     }
 }

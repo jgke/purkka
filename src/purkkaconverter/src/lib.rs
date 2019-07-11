@@ -365,21 +365,19 @@ impl Context {
     pub fn parameter_list_from_params(
         &mut self,
         params: Vec<pp::LambdaParam>,
-    ) -> Vec<cp::FunctionParam> {
+        ) -> Vec<cp::FunctionParam> {
         params
             .into_iter()
-            .map(|t| cp::FunctionParam::Parameter(self.param_to_declaration(t)))
-            .collect()
-    }
-
-    pub fn param_to_declaration(&mut self, param: pp::LambdaParam) -> cp::ParameterDeclaration {
-        match param {
-            pp::LambdaParam::LambdaParam(name, ty) => {
-                let decl_spec = self.type_to_declaration_specifiers(*ty.clone());
-                let decl = self.format_decl(name, *ty);
-                cp::ParameterDeclaration::Declarator(Box::new(decl_spec), Box::new(decl))
-            }
-        }
+            .map(|t|
+                 match t {
+                     pp::LambdaParam::LambdaParam(name, ty) => {
+                         let decl_spec = self.type_to_declaration_specifiers(*ty.clone());
+                         let decl = self.format_decl(name, *ty);
+                         cp::FunctionParam::Parameter(
+                             cp::ParameterDeclaration::Declarator(Box::new(decl_spec), Box::new(decl)))
+                     }
+                     pp::LambdaParam::Variadic => cp::FunctionParam::Varargs
+                 }).collect()
     }
 
     pub fn unit_to_external_decl(&mut self, k: pp::Unit) -> cp::ExternalDeclaration {

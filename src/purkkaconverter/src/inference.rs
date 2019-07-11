@@ -31,6 +31,26 @@ fn get_std_lib() -> HashMap<Rc<str>, IntermediateType> {
         ty: Box::new(void.clone()),
         nullable: true,
     };
+    let char_ptr = TypeSignature::Pointer {
+        ty: Box::new(TypeSignature::Primitive(Primitive::Int(8))),
+        nullable: false,
+    };
+
+    map.insert(
+        From::from("sprintf"),
+        IntermediateType::Exact(Box::new(TypeSignature::Function(
+            vec![param(&char_ptr), Param::Variadic],
+            Box::new(int.clone()),
+        ))),
+    );
+
+    map.insert(
+        From::from("printf"),
+        IntermediateType::Exact(Box::new(TypeSignature::Function(
+            vec![Param::Variadic],
+            Box::new(int.clone()),
+        ))),
+    );
 
     map.insert(
         From::from("malloc"),
@@ -117,8 +137,11 @@ impl ASTVisitor for TypeInferrer<'_> {
     fn visit_lambda(&mut self, tree: &mut Lambda) {
         self.push_block();
         let Lambda::Lambda(params, _, e) = tree;
-        for LambdaParam::LambdaParam(name, ty) in params {
-            self.push_symbol(name.clone(), From::from(*ty.clone()));
+        for param in params {
+            match param {
+                LambdaParam::LambdaParam(name, ty) => self.push_symbol(name.clone(), From::from(*ty.clone())),
+                LambdaParam::Variadic => {}
+            }
         }
         walk_block_expression(self, e);
         self.pop_block();
@@ -133,8 +156,11 @@ impl ASTVisitor for TypeInferrer<'_> {
     fn visit_primary_expression(&mut self, e: &mut PrimaryExpression) {
         self.push_block();
         if let PrimaryExpression::Lambda(Lambda::Lambda(params, _, _)) = e {
-            for LambdaParam::LambdaParam(name, ty) in params {
-                self.push_symbol(name.clone(), From::from(*ty.clone()));
+            for param in params {
+                match param {
+                    LambdaParam::LambdaParam(name, ty) => self.push_symbol(name.clone(), From::from(*ty.clone())),
+                    LambdaParam::Variadic => {}
+                }
             }
         }
         walk_primary_expression(self, e);
@@ -454,16 +480,29 @@ impl TypeInferrer<'_> {
     ) -> (IntermediateType, Vec<IntermediateType>) {
         match expr {
             PrimaryExpression::Identifier(t) => (self.get_ident_ty(t.as_ref()), Vec::new()),
-            PrimaryExpression::Literal(Literal::Integer(..)) => (self.get_number_ty(), Vec::new()),
-            PrimaryExpression::Literal(Literal::Float(..)) => (
-                IntermediateType::new_number(IntermediateNumber::Float),
-                Vec::new(),
-            ),
+            PrimaryExpression::Literal(lit) => match lit {
+                Literal::Integer(..) => (self.get_number_ty(), Vec::new()),
+                Literal::Float(..) => (
+                    IntermediateType::new_number(IntermediateNumber::Float),
+                    Vec::new(),
+                ),
+                Literal::StringLiteral(..) => (
+                    IntermediateType::Exact(Box::new(TypeSignature::Pointer {
+                        nullable: false,
+                        ty: Box::new(TypeSignature::Primitive(Primitive::Int(8)))
+                    })),
+                    Vec::new(),
+                )
+            }
             PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block)) => {
                 if let TypeSignature::Infer(_id) = return_type {
                     self.push_block();
-                    for LambdaParam::LambdaParam(name, ty) in params {
-                        self.push_symbol(name.clone(), From::from(*ty.clone()));
+                    for param in params {
+                        match param {
+                            LambdaParam::LambdaParam(name, ty) => 
+                                self.push_symbol(name.clone(), From::from(*ty.clone())),
+                            LambdaParam::Variadic => {}
+                        }
                     }
                     let block_ty = self.get_block_expr_type(&*block);
                     let ret_tys = block_ty.1;
@@ -753,11 +792,17 @@ impl TypeInferrer<'_> {
             TypeSignature::Array(_ty, _size) => unimplemented!(),
             TypeSignature::DynamicArray(_ty, _expr) => unimplemented!(),
             TypeSignature::Function(params, return_type) => {
-                assert_eq!(args.len(), params.len());
+                if params.last() != Some(&Param::Variadic) {
+                    assert_eq!(args.len(), params.len());
+                } else {
+                    assert!(args.len() >= params.len() - 1);
+                }
                 args.iter().zip(params.iter()).for_each(|(arg, param)| {
-                    let arg_ty = self.get_type(arg).0;
-                    let param_ty: TypeSignature = From::from(param.clone());
-                    self.make_equal(&arg_ty, &From::from(param_ty));
+                    if param != &Param::Variadic {
+                        let arg_ty = self.get_type(arg).0;
+                        let param_ty: TypeSignature = From::from(param.clone());
+                        self.make_equal(&arg_ty, &From::from(param_ty));
+                    }
                 });
                 From::from(*return_type.clone())
             }
@@ -907,7 +952,7 @@ impl TypeInferrer<'_> {
 
         match lvalue {
             TypeSignature::Plain(_name) => self.fail_if(lvalue != rvalue, lvalue, rvalue),
-            TypeSignature::Primitive(prim) => self.fail_if(lvalue != rvalue, lvalue, rvalue),
+            TypeSignature::Primitive(_) => self.fail_if(lvalue != rvalue, lvalue, rvalue),
             TypeSignature::Pointer { ty: left_ty, nullable: left_nullable } => match rvalue {
                 TypeSignature::Pointer { ty: right_ty, nullable: right_nullable} => {
                     assert_eq!(left_nullable, right_nullable);

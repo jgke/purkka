@@ -120,6 +120,7 @@ grammar! {
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum LambdaParam {
             LambdaParam(Rc<str>, Box<TypeSignature>),
+            Variadic
         }
         ;
 
@@ -418,8 +419,11 @@ impl From<IntermediateType> for TypeSignature {
 }
 
 impl From<LambdaParam> for Param {
-    fn from(LambdaParam::LambdaParam(ident, ty): LambdaParam) -> Self {
-        Param::Param(ident, ty)
+    fn from(param: LambdaParam) -> Self {
+        match param {
+            LambdaParam::LambdaParam(ident, ty) => Param::Param(ident, ty),
+            LambdaParam::Variadic => Param::Variadic,
+        }
     }
 }
 
@@ -428,6 +432,7 @@ impl From<Param> for LambdaParam {
         match param {
             Param::TypeOnly(ty) => LambdaParam::LambdaParam(From::from(""), ty),
             Param::Param(ident, ty) => LambdaParam::LambdaParam(ident, ty),
+            Param::Variadic => LambdaParam::Variadic,
         }
     }
 }
@@ -499,6 +504,7 @@ pub enum IntermediateNumber {
 pub enum Param {
     TypeOnly(Box<TypeSignature>),
     Param(Rc<str>, Box<TypeSignature>),
+    Variadic
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -523,6 +529,7 @@ impl Param {
         match self {
             Param::Param(_, ty) => &*ty,
             Param::TypeOnly(ty) => &*ty,
+            Param::Variadic => unimplemented!(),
         }
     }
 
@@ -530,6 +537,7 @@ impl Param {
         match self {
             Param::Param(_, ty) => **ty = new_ty,
             Param::TypeOnly(ty) => **ty = new_ty,
+            Param::Variadic => unimplemented!(),
         }
     }
 }
@@ -540,6 +548,7 @@ impl From<Param> for TypeSignature {
             Param::Param(name, box TypeSignature::Infer(..)) => TypeSignature::Plain(name),
             Param::Param(_name, ty) => *ty,
             Param::TypeOnly(ty) => *ty,
+            Param::Variadic => unimplemented!(),
         }
     }
 }

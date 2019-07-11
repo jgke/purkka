@@ -200,10 +200,7 @@ impl Context {
                                 }
                                 Token::StringLiteral(_, s) => {
                                     self.push("*");
-                                    self.push("\"");
-                                    self.whitespace = false;
-                                    self.push(s);
-                                    self.push("\"");
+                                    self.push(&format!("{:?}", s));
                                     return;
                                 }
                                 Token::CharLiteral(_, s) => {
@@ -743,10 +740,7 @@ impl Context {
                 self.push_token(&Token::CloseParen(0));
             }
             PrimaryExpression::StringLiteral(s) => {
-                self.push("\"");
-                self.whitespace = false;
-                self.push(s);
-                self.push("\"");
+                self.push(&format!("{:?}", s));
             }
             PrimaryExpression::CharLiteral(s) => {
                 self.push("'");

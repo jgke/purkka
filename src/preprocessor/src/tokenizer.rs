@@ -86,15 +86,6 @@ where
             Macro::Text(Source::dummy(), Vec::new()),
         );
         symbols.insert(
-            intern.get_ref("__attribute__"),
-            Macro::Function(
-                Source::dummy(),
-                vec![],
-                vec![],
-                Some(intern.get_ref("__va_args__")),
-            ),
-        );
-        symbols.insert(
             intern.get_ref("__alignof__"),
             Macro::Function(
                 Source::dummy(),
