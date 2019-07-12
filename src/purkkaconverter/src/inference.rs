@@ -17,71 +17,10 @@ pub struct TypeInferrer<'a> {
     context: &'a Context,
 }
 
-fn get_std_lib() -> HashMap<Rc<str>, IntermediateType> {
-    let mut map = HashMap::new();
-
-    fn param(ty: &TypeSignature) -> Param {
-        Param::TypeOnly(Box::new(ty.clone()))
-    }
-
-    let void = TypeSignature::Primitive(Primitive::Void);
-    let int = TypeSignature::Primitive(Primitive::Int(32));
-    let long = TypeSignature::Primitive(Primitive::Int(64));
-    let void_ptr = TypeSignature::Pointer {
-        ty: Box::new(void.clone()),
-        nullable: true,
-    };
-    let char_ptr = TypeSignature::Pointer {
-        ty: Box::new(TypeSignature::Primitive(Primitive::Int(8))),
-        nullable: false,
-    };
-
-    map.insert(
-        From::from("sprintf"),
-        IntermediateType::Exact(Box::new(TypeSignature::Function(
-            vec![param(&char_ptr), Param::Variadic],
-            Box::new(int.clone()),
-        ))),
-    );
-
-    map.insert(
-        From::from("printf"),
-        IntermediateType::Exact(Box::new(TypeSignature::Function(
-            vec![Param::Variadic],
-            Box::new(int.clone()),
-        ))),
-    );
-
-    map.insert(
-        From::from("malloc"),
-        IntermediateType::Exact(Box::new(TypeSignature::Function(
-            vec![param(&long)],
-            Box::new(void_ptr.clone()),
-        ))),
-    );
-
-    map.insert(
-        From::from("free"),
-        IntermediateType::Exact(Box::new(TypeSignature::Function(
-            vec![param(&void_ptr)],
-            Box::new(void.clone()),
-        ))),
-    );
-    map.insert(
-        From::from("write"),
-        IntermediateType::Exact(Box::new(TypeSignature::Function(
-            vec![param(&int), param(&void_ptr), param(&long)],
-            Box::new(long.clone()),
-        ))),
-    );
-
-    map
-}
-
 impl<'a> TreeTransformer<'a> for TypeInferrer<'a> {
     fn new(context: &'a mut Context) -> TypeInferrer {
         TypeInferrer {
-            scope: vec![get_std_lib()],
+            scope: vec![HashMap::new()],
             infer_map: HashMap::new(),
             context,
         }
@@ -188,13 +127,23 @@ impl TypeInferrer<'_> {
         self.scope.pop();
     }
 
-    fn get_ident_ty(&self, t: &str) -> IntermediateType {
+    fn get_symbol_ty(&self, t: &str) -> Option<IntermediateType> {
         for tys in self.scope.iter().rev() {
             if let Some(ty) = tys.get(t) {
-                return ty.clone();
+                return Some(ty.clone());
             }
         }
-        panic!("Unknown identifier: {}", t);
+        if let Some(ty) = self.context.symbols.imported_declarations.get(t) {
+            Some(From::from(ty.clone()))
+        } else {
+            None
+        }
+    }
+
+    fn get_ident_ty(&self, name: &str) -> Option<TypeSignature> {
+        self.context.symbols.types.get(name)
+            .or_else(||  self.context.symbols.imported_types.get(name))
+            .cloned()
     }
 
     fn get_any_ty(&mut self) -> IntermediateType {
@@ -448,7 +397,7 @@ impl TypeInferrer<'_> {
             Expression::StructAccess(expr, ident) => {
                 let (struct_ty, ret_ty) = self.get_type(expr);
                 if let IntermediateType::Exact(box TypeSignature::Struct(_, fields)) = &struct_ty {
-                    for StructField::Field { name, ty } in fields {
+                    for StructField::Field { name, ty, bitfield: _ } in fields {
                         if name.as_ref() == ident.as_ref() {
                             return (From::from(*ty.clone()), ret_ty);
                         }
@@ -464,7 +413,9 @@ impl TypeInferrer<'_> {
             match ty.0 {
                 IntermediateType::Any(id) if self.infer_map.contains_key(&id) => ty.0 = self.infer_map[&id].clone(),
                 IntermediateType::Exact(box TypeSignature::Plain(ref id))
-                    if self.context.types.contains_key(id) => ty.0 = From::from(self.context.types[id].clone()),
+                    if self.context.symbols.types.contains_key(id) => ty.0 = From::from(self.context.symbols.types[id].clone()),
+                IntermediateType::Exact(box TypeSignature::Plain(ref id))
+                    if self.context.symbols.imported_types.contains_key(id) => ty.0 = From::from(self.context.symbols.imported_types[id].clone()),
                 _ => break
             }
         }
@@ -477,7 +428,7 @@ impl TypeInferrer<'_> {
         expr: &PrimaryExpression,
     ) -> (IntermediateType, Vec<IntermediateType>) {
         match expr {
-            PrimaryExpression::Identifier(t) => (self.get_ident_ty(t.as_ref()), Vec::new()),
+            PrimaryExpression::Identifier(t) => (self.get_symbol_ty(t.as_ref()).unwrap(), Vec::new()),
             PrimaryExpression::Literal(lit) => match lit {
                 Literal::Integer(..) => (self.get_number_ty(), Vec::new()),
                 Literal::Float(..) => (
@@ -538,10 +489,11 @@ impl TypeInferrer<'_> {
             }
             PrimaryExpression::Expression(expr) => self.get_type(expr),
             PrimaryExpression::StructInitialization(ident, fields) => {
-                let struct_ty = &self.context.types[ident];
+                let struct_ty = self.context.symbols.types.get(ident)
+                    .unwrap_or_else(|| &self.context.symbols.imported_types[ident]);
                 if let TypeSignature::Struct(_, struct_fields) = struct_ty {
                     let mut struct_field_tys = struct_fields.iter()
-                        .map(|StructField::Field { ty, name }| (name, ty))
+                        .map(|StructField::Field { ty, name, bitfield: _ }| (name, ty))
                         .collect::<Vec<_>>();
                     struct_field_tys.sort_by(|(l_name, _), (r_name, _)| l_name.cmp(&r_name));
 
@@ -781,11 +733,18 @@ impl TypeInferrer<'_> {
 
     fn call_exact(&mut self, ty: &TypeSignature, args: &[Expression]) -> IntermediateType {
         match ty {
-            TypeSignature::Plain(name) => panic!("Cannot call type {}", name),
+            TypeSignature::Plain(name) => {
+                if let Some(ty) = self.get_ident_ty(name) {
+                    self.call_exact(&ty, args)
+                } else {
+                    panic!("Cannot call type {}", name)
+                }
+            }
             TypeSignature::Primitive(prim) => panic!("Cannot call type {}", prim),
             TypeSignature::Pointer { ty, .. } => self.call_exact(ty, args),
             TypeSignature::Struct(_name, _fields) => unimplemented!(),
             TypeSignature::Enum(_name, _fields) => unimplemented!(),
+            TypeSignature::Union(_name, _fields) => unimplemented!(),
             TypeSignature::Tuple(_tys) => unimplemented!(),
             TypeSignature::Array(_ty, _size) => unimplemented!(),
             TypeSignature::DynamicArray(_ty, _expr) => unimplemented!(),
@@ -799,7 +758,7 @@ impl TypeInferrer<'_> {
                     if param != &Param::Variadic {
                         let arg_ty = self.get_type(arg).0;
                         let param_ty: TypeSignature = From::from(param.clone());
-                        self.make_equal(&arg_ty, &From::from(param_ty));
+                        self.make_equal(&From::from(param_ty), &arg_ty);
                     }
                 });
                 From::from(*return_type.clone())
@@ -949,11 +908,17 @@ impl TypeInferrer<'_> {
         }
 
         match lvalue {
-            TypeSignature::Plain(_name) => self.fail_if(lvalue != rvalue, lvalue, rvalue),
+            TypeSignature::Plain(name) => {
+                if let Some(ty) = self.get_ident_ty(name) {
+                    self.unify_types(&ty, rvalue);
+                } else {
+                    self.fail_if(lvalue != rvalue, lvalue, rvalue);
+                }
+            }
             TypeSignature::Primitive(_) => self.fail_if(lvalue != rvalue, lvalue, rvalue),
             TypeSignature::Pointer { ty: left_ty, nullable: left_nullable } => match rvalue {
                 TypeSignature::Pointer { ty: right_ty, nullable: right_nullable} => {
-                    assert_eq!(left_nullable, right_nullable);
+                    assert!(!*right_nullable || *left_nullable);
                     self.unify_types(left_ty, right_ty);
                 }
                 TypeSignature::Struct(..) => {
@@ -972,6 +937,7 @@ impl TypeInferrer<'_> {
                 otherwise => panic!("Not implemented: {:?}", otherwise),
             }
             TypeSignature::Enum(_name, _fields) => unimplemented!(),
+            TypeSignature::Union(_name, _fields) => unimplemented!(),
             TypeSignature::Tuple(_tys) => unimplemented!(),
             TypeSignature::Array(_ty, _size) => unimplemented!(),
             TypeSignature::DynamicArray(ty, _expr) => {

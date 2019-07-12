@@ -14,8 +14,8 @@ fn test_parse_file(s: &str) -> S {
 
 fn test_convert_parse_file(s: &str) -> S {
     println!("Testing following file:\n------\n{}\n------", s);
-    let (mut tree, op, ty) = parse_file("file.prk", s, &|_| panic!());
-    transform(&mut tree, op, ty);
+    let (mut tree, op, syms) = parse_file("file.prk", s, &|_| panic!());
+    transform(&mut tree, op, syms);
     tree
 }
 

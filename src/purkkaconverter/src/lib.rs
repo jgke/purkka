@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use cparser::grammar as cp;
 use ctoken::token as ct;
-use purkkaparser::parser::{Operators, Types};
+use purkkaparser::parser::{Operators, Symbols};
 use purkkasyntax as pp;
 use purkkasyntax::{TypeSignature, Primitive};
 use purkkatoken::token as pt;
@@ -37,11 +37,11 @@ pub struct Context {
     pub global_includes: HashSet<Rc<str>>,
     pub local_includes: HashSet<Rc<str>>,
     pub operators: Operators,
-    pub types: Types,
+    pub symbols: Symbols,
 }
 
-pub fn transform(purkka_tree: &mut pp::S, operators: Operators, types: Types) -> Context {
-    let mut context = Context::new(operators, types);
+pub fn transform(purkka_tree: &mut pp::S, operators: Operators, symbols: Symbols) -> Context {
+    let mut context = Context::new(operators, symbols);
     InlineTypedef::new(&mut context).transform(purkka_tree);
     InlineOperators::new(&mut context).transform(purkka_tree);
     TypeInferrer::new(&mut context).transform(purkka_tree);
@@ -51,8 +51,8 @@ pub fn transform(purkka_tree: &mut pp::S, operators: Operators, types: Types) ->
     context
 }
 
-pub fn convert(mut purkka_tree: pp::S, operators: Operators, types: Types) -> (cp::S, Context) {
-    let mut context = transform(&mut purkka_tree, operators, types);
+pub fn convert(mut purkka_tree: pp::S, operators: Operators, symbols: Symbols) -> (cp::S, Context) {
+    let mut context = transform(&mut purkka_tree, operators, symbols);
     (context.s(purkka_tree), context)
 }
 
@@ -72,13 +72,13 @@ pub fn fetch_identifiers_from_c(_tree: &mut cp::S) -> HashMap<Rc<str>, pp::Decla
 }
 
 impl Context {
-    fn new(operators: Operators, types: Types) -> Context {
+    fn new(operators: Operators, symbols: Symbols) -> Context {
         Context {
             functions: Vec::new(),
             global_includes: HashSet::new(),
             local_includes: HashSet::new(),
             operators,
-            types
+            symbols,
         }
     }
 
@@ -103,7 +103,7 @@ impl Context {
     pub fn translation_unit(&mut self, k: pp::TranslationUnit) -> cp::TranslationUnit {
         match k {
             pp::TranslationUnit::Units(u) => {
-                let tys = self.types.clone().into_iter()
+                let tys = self.symbols.types.clone().into_iter()
                     .map(|ty| self.format_type_as_external_decl(ty.1))
                     .collect::<Vec<_>>();
                 let funcs = self.functions.drain(..)
@@ -128,10 +128,10 @@ impl Context {
         cp::ExternalDeclaration::FunctionDefinition(Box::new(
             cp::FunctionDefinition::FunctionDefinition(
                 Some(Box::new(self.type_to_declaration_specifiers(ty.clone()))),
-                vec![cp::Declarator::Declarator(
+                Box::new(cp::Declarator::Declarator(
                     None,
                     Box::new(self.function_params_from_params(name.clone(), params)),
-                )],
+                )),
                 Box::new(self.block_expression_to_compound_statement(block)),
             ),
         ))
@@ -402,10 +402,10 @@ impl Context {
         }
     }
 
-    pub fn struct_field(&mut self, pp::StructField::Field {name, ty }: pp::StructField) -> cp::StructField {
+    pub fn struct_field(&mut self, pp::StructField::Field {name, ty, bitfield: _ }: pp::StructField) -> cp::StructField {
         let c_ty = self.type_to_declaration_specifiers(*ty.clone());
         let decl = self.format_decl(name, *ty);
-        (Box::new(c_ty), Some(vec![(cp::EitherDeclarator::Declarator(decl), None)]))
+        (Box::new(c_ty), vec![(cp::EitherDeclarator::Declarator(decl), None)])
     }
 
     pub fn convert_declaration(&mut self, k: pp::Declaration) -> cp::Declaration {
@@ -446,8 +446,8 @@ impl Context {
                     "char" => cp::CType::Primitive(None, cp::PrimitiveType::Char),
                     "float" => cp::CType::Primitive(None, cp::PrimitiveType::Float),
                     "double" => cp::CType::Primitive(None, cp::PrimitiveType::Double),
-                    t if self.types.contains_key(t) =>
-                        return self.type_to_declaration_specifiers(self.types[t].clone()),
+                    t if self.symbols.types.contains_key(t) =>
+                        return self.type_to_declaration_specifiers(self.symbols.types[t].clone()),
                     other => panic!("Not implemented: {:?}", other),
                 };
                 cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))

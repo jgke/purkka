@@ -88,7 +88,6 @@ dependencies = [
  "cparser 0.1.0",
  "ctoken 0.1.0",
  "debug 0.1.0",
- "parser 0.1.0",
  "preprocessor 0.1.0",
  "purkkaconverter 0.1.0",
  "purkkaparser 0.1.0",
@@ -104,6 +103,8 @@ dependencies = [
  "debug 0.1.0",
  "fragment 0.1.0",
  "lalr 0.1.0",
+ "preprocessor 0.1.0",
+ "purkkasyntax 0.1.0",
  "shared 0.1.0",
 ]
 
@@ -204,16 +205,6 @@ version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "libc 0.2.51 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "parser"
-version = "0.1.0"
-dependencies = [
- "cparser 0.1.0",
- "ctoken 0.1.0",
- "fragment 0.1.0",
- "preprocessor 0.1.0",
 ]
 
 [[package]]

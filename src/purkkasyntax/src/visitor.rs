@@ -125,6 +125,9 @@ pub fn walk_ty<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut TypeSignature) {
         TypeSignature::Enum(_, ref mut fields) => fields
             .iter_mut()
             .for_each(|ref mut f| visitor.visit_enum_field(f.deref_mut())),
+        TypeSignature::Union(_, ref mut fields) => fields
+            .iter_mut()
+            .for_each(|ref mut f| visitor.visit_struct_field(f.deref_mut())),
         TypeSignature::Tuple(ref mut fields) => fields.iter_mut().for_each(|f| visitor.visit_ty(f)),
         TypeSignature::Array(ref mut ty, _) => {
             visitor.visit_ty(ty.deref_mut());

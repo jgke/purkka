@@ -24,19 +24,13 @@ pub fn get_file_cb<'a>(
         let (content, full_path) = get_file_content(&req);
 
         if req.need_raw {
-            return ResolveResult {
-                full_path,
-                c_content: content,
-                h_content: None,
-                dependencies: None,
-                declarations: None,
-            };
+            return ResolveResult::new_raw(&full_path, &content);
         }
 
         if full_path.to_lowercase().ends_with(".prk") {
-            let (prk_tree, operators, types) = purkkaparser::parse_file(&full_path, &content, get_file);
+            let (prk_tree, operators, symbols) = purkkaparser::parse_file(&full_path, &content, get_file);
             let declarations = purkkaparser::get_declarations(&prk_tree, false);
-            let (parsed, context) = purkkaconverter::convert(prk_tree, operators, types);
+            let (parsed, context) = purkkaconverter::convert(prk_tree, operators, symbols);
             let formatted = cformat::format_c(&parsed, context.local_includes);
             ResolveResult {
                 full_path,
@@ -44,19 +38,22 @@ pub fn get_file_cb<'a>(
                 h_content: None,
                 dependencies: None,
                 declarations: Some(declarations),
+                types: Some(Vec::new()),
             }
         } else {
             let result = preprocessor::preprocess_file(&full_path, get_file, &options);
             match result {
                 Ok((output, context)) => {
-                    let parsed = parser::parse(output, &context);
-                    let formatted = cformat::format_c(&parsed.unwrap(), HashSet::new());
+                    let parsed = cparser::parse(output, &context).unwrap();
+                    let formatted = cformat::format_c(&parsed, HashSet::new());
+                    let (declarations, types) = cparser::get_declarations(&parsed);
                     ResolveResult {
                         full_path,
                         c_content: formatted,
                         h_content: None,
                         dependencies: None,
-                        declarations: None,
+                        declarations: Some(declarations),
+                        types: Some(types),
                     }
                 }
                 Err(e) => panic!(e),

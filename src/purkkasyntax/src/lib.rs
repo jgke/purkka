@@ -351,6 +351,7 @@ pub enum TypeSignature {
 
     Struct(Option<Rc<str>>, Vec<StructField>),
     Enum(Option<Rc<str>>, Vec<EnumField>),
+    Union(Option<Rc<str>>, Vec<StructField>),
     Tuple(Vec<TypeSignature>),
     Array(Box<TypeSignature>, Option<usize>),
     DynamicArray(Box<TypeSignature>, Box<Expression>),
@@ -364,7 +365,7 @@ impl TypeSignature {
         use TypeSignature::*;
         match self {
             Pointer { ..} | Array(..) | DynamicArray(..) => true,
-            Primitive(_) | Struct(..) | Enum(..) | Tuple(..) | Function(..) | Plain(_) => false,
+            Primitive(_) | Struct(..) | Enum(..) | Union(..) | Tuple(..) | Function(..) | Plain(_) => false,
             Infer(infer) => infer.is_ptr(context),
         }
     }
@@ -373,7 +374,7 @@ impl TypeSignature {
         use TypeSignature::*;
         match self {
             Pointer { ty, .. } | Array(ty, _) | DynamicArray(ty, ..) => Some(*ty.clone()),
-            Primitive(_) | Struct(..) | Enum(..) | Tuple(..) | Function(..) | Plain(_) => None,
+            Primitive(_) | Struct(..) | Enum(..) | Union(..) | Tuple(..) | Function(..) | Plain(_) => None,
             Infer(infer) => infer.dereference(context),
         }
     }
@@ -512,6 +513,7 @@ pub enum StructField {
     Field {
         name: Rc<str>,
         ty: Box<TypeSignature>,
+        bitfield: Option<usize>
     },
 }
 

@@ -6,7 +6,6 @@ members = [
     "src/ctoken",
     "src/fragment",
     "src/lalr",
-    "src/parser",
     "src/preprocessor",
     "src/purkka",
     "src/purkkaconverter",

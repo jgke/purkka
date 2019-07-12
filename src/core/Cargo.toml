@@ -8,7 +8,6 @@ edition = "2018"
 cformat = { path="../cformat" }
 cparser = { path="../cparser" }
 ctoken = { path="../ctoken" }
-parser = { path="../parser" }
 purkkaparser = { path="../purkkaparser" }
 purkkaconverter = { path="../purkkaconverter" }
 preprocessor = { path="../preprocessor" }

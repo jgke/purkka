@@ -87,12 +87,21 @@ pub struct Operator {
 }
 
 pub type OperatorMap = HashMap<Rc<str>, Operator>;
+pub type Types = HashMap<Rc<str>, TypeSignature>;
 
 #[derive(Debug, Clone)]
 pub struct Operators {
     pub unary: OperatorMap,
     pub infix: OperatorMap,
     pub postfix: OperatorMap,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct Symbols {
+    pub types: Types,
+    pub declarations: Types,
+    pub imported_types: Types,
+    pub imported_declarations: Types,
 }
 
 fn unary_num_to_bool() -> TypeSignature {
@@ -217,14 +226,8 @@ fn default_postfix_ops() -> OperatorMap {
     postfix_operators
 }
 
-pub type Types = HashMap<Rc<str>, TypeSignature>;
-
-fn default_types() -> HashMap<Rc<str>, TypeSignature> {
-    HashMap::new()
-}
-
 pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator,
-             current_file: &str, get_file: &dyn Fn(FileQuery) -> ResolveResult) -> (S, Operators, Types) {
+             current_file: &str, get_file: &dyn Fn(FileQuery) -> ResolveResult) -> (S, Operators, Symbols) {
     let mut context = ParseContext {
         operators: Operators {
             unary: default_unary_ops(),
@@ -234,12 +237,12 @@ pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator,
         iter,
         fragment: fragment_iter,
         sources,
-        types: default_types(),
+        symbols: Symbols::default(),
         current_file,
         get_file
     };
     let tu = S::TranslationUnit(context.parse_translation_unit());
-    (tu, context.operators, context.types)
+    (tu, context.operators, context.symbols)
 }
 
 impl Operator {
@@ -285,10 +288,12 @@ pub(crate) type Iter<'a, 'b> = &'a mut Peekable<std::slice::Iter<'b, Token>>;
 
 struct ParseContext<'a, 'b> {
     operators: Operators,
+    symbols: Symbols,
+
     iter: Iter<'a, 'b>,
     fragment: &'a FragmentIterator,
     sources: &'a [Source],
-    types: HashMap<Rc<str>, TypeSignature>,
+
     current_file: &'a str,
     get_file: &'a dyn Fn(FileQuery) -> ResolveResult,
 }
@@ -311,7 +316,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn is_ty(&self, s: &str) -> bool {
-        self.types.contains_key(s)
+        self.symbols.types.contains_key(s)
     }
 
     fn push_operator(&mut self, left_associative: bool, precedence: usize, s: Rc<str>, ty: TypeSignature, body: Expression) {
@@ -598,7 +603,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let name = self.next().identifier_s().unwrap().clone();
                 read_token!(self, Token::Colon);
                 let ty = Box::new(self.parse_type());
-                Some(StructField::Field { name, ty })
+                Some(StructField::Field { name, ty, bitfield: None })
             }
             _ => None,
         }
@@ -696,6 +701,18 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             unreachable!();
         };
         let content = (self.get_file)(FileQuery::new(self.current_file, &file, true, false));
+        content.declarations.unwrap().into_iter().for_each(|(name, decl)| {
+            self.symbols.imported_declarations.insert(name, decl);
+        });
+        for ty in content.types.unwrap() {
+            match &ty {
+                TypeSignature::Struct(Some(name), _)
+                    | TypeSignature::Enum(Some(name), _)
+                    | TypeSignature::Union(Some(name), _)
+                    => { self.symbols.imported_types.insert(name.clone(), ty.clone()); }
+                _ => {}
+            }
+        }
         ImportFile::Import(file, ffi)
     }
 
@@ -707,7 +724,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::OpenBrace);
                 let fields = self.parse_struct_list();
                 read_token!(self, Token::CloseBrace);
-                self.types.insert(name.clone(), TypeSignature::Struct(Some(name.clone()), fields.clone()));
+                self.symbols.types.insert(name.clone(), TypeSignature::Struct(Some(name.clone()), fields.clone()));
                 Typedef::Struct(name, fields)
             }
             Some(Token::Enum(..)) => unimplemented!(),
@@ -716,7 +733,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let name = read_identifier_str!(self);
                 let ty = self.parse_type();
                 read_token!(self, Token::SemiColon);
-                self.types.insert(name.clone(), ty.clone());
+                self.symbols.types.insert(name.clone(), ty.clone());
                 Typedef::Alias(true, name, Box::new(ty))
             }
             _ => unexpected_token!(self.peek(), self),
@@ -1073,7 +1090,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_initialization_fields(&mut self, ty: &Rc<str>) -> Vec<StructInitializationField> {
-        let struct_fields = if let TypeSignature::Struct(_, fields) = &self.types[ty] {
+        let struct_fields = if let TypeSignature::Struct(_, fields) = &self.symbols.types[ty] {
             fields
         } else {
             panic!("Cannot instantiate non-struct type {} as struct", ty);
@@ -1240,10 +1257,12 @@ mod tests {
                 unary,
                 postfix,
             },
+            symbols: Symbols::default(),
+
             iter: &mut vec.iter().peekable(),
             fragment: &FragmentIterator::new("", ""),
             sources: &Vec::new(),
-            types: default_types(),
+
             current_file: "",
             get_file: &|_| panic!()
         };

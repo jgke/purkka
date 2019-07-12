@@ -436,7 +436,7 @@ grammar! {
         | Declarations. &Declarator &DeclarationList &CompoundStatement
         | Declarator. &Declarator &CompoundStatement
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum FunctionDefinition { FunctionDefinition(Option<Box<DeclarationSpecifiers>>, Vec<Declarator>, Box<CompoundStatement>) }
+        pub enum FunctionDefinition { FunctionDefinition(Option<Box<DeclarationSpecifiers>>, Box<Declarator>, Box<CompoundStatement>) }
         ;
 
     DeclarationSpecifiers
@@ -501,11 +501,6 @@ grammar! {
     TypeOf
        -> Expression. #Token::Identifier #Token::OpenParen &Expression #Token::CloseParen
         | TypeName. #Token::Identifier #Token::OpenParen &TypeName #Token::CloseParen
-        @ #[derive(Clone, Debug, PartialEq)]
-        pub enum TypeOf {
-            Expression(Box<Expression>),
-            TypeName(Box<TypeName>),
-        }
         ;
 
     Specifiers
@@ -596,7 +591,6 @@ pub enum CType {
     Primitive(TypeSign, PrimitiveType),
     Compound(CompoundType),
     Custom(Rc<str>),
-    TypeOf(TypeOf),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -619,7 +613,7 @@ pub enum EitherDeclarator {
 
 pub type StructField = (
     Box<DeclarationSpecifiers>,
-    Option<Vec<(EitherDeclarator, Option<Box<GeneralExpression>>)>>,
+    Vec<(EitherDeclarator, Option<Box<GeneralExpression>>)>,
 );
 pub type EnumField = (Rc<str>, Option<TernaryExpression>);
 
@@ -655,5 +649,112 @@ impl StorageClassSpecifiers {
 impl TypeQualifiers {
     pub fn any(&self) -> bool {
         self.const_ | self.volatile
+    }
+}
+
+impl Expression {
+    pub fn value(&self) -> Option<i128> {
+        match self {
+            Expression::Expression(list) => list.last().unwrap().value()
+        }
+    }
+}
+
+impl AssignmentExpression {
+    pub fn value(&self) -> Option<i128> {
+        match self {
+            AssignmentExpression::TernaryExpression(e) => e.value(),
+            AssignmentExpression::Assignment(v, op, e) => None,
+        }
+    }
+}
+
+impl TernaryExpression {
+    pub fn value(&self) -> Option<i128> {
+        match self {
+            TernaryExpression::GeneralExpression(e) => e.value(),
+            TernaryExpression::Ternary(e, _, e_t, _, e_f) => {
+                e.value().and_then(|v| {
+                    if v != 0 {
+                        e_t.value()
+                    } else {
+                        e_f.value()
+                    }
+                })
+            }
+        }
+    }
+}
+
+impl GeneralExpression {
+    pub fn value(&self) -> Option<i128> {
+        match self {
+            GeneralExpression::CastExpression(e) => e.value(),
+            GeneralExpression::Times(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| v1 * v2)),
+            GeneralExpression::Divide(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| v1 / v2)),
+            GeneralExpression::Mod(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| v1 % v2)),
+            GeneralExpression::Plus(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| v1 + v2)),
+            GeneralExpression::Minus(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| v1 - v2)),
+            GeneralExpression::BitShiftLeft(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| v1 << v2)),
+            GeneralExpression::BitShiftRight(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| v1 >> v2)),
+            GeneralExpression::LessThan(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| if v1 < v2 { 1 } else { 0 })),
+            GeneralExpression::MoreThan(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| if v1 > v2 { 1 } else { 0 })),
+            GeneralExpression::LessEqThan(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| if v1 <= v2 { 1 } else { 0 })),
+            GeneralExpression::MoreEqThan(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| if v1 >= v2 { 1 } else { 0 })),
+            GeneralExpression::Equals(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| if v1 == v2 { 1 } else { 0 })),
+            GeneralExpression::NotEquals(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| if v1 != v2 { 1 } else { 0 })),
+            GeneralExpression::BitAnd(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| v1 & v2)),
+            GeneralExpression::BitXor(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| v1 ^ v2)),
+            GeneralExpression::BitOr(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| v1 | v2)),
+            GeneralExpression::And(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| if v1 != 0 && v2 != 0 { 1 } else { 0 })),
+            GeneralExpression::Or(e1, _, e2) => e1.value().and_then(|v1| e2.value().map(|v2| if v1 != 0 || v2 != 0 { 1 } else { 0 })),
+        }
+    }
+}
+
+impl CastExpression {
+    pub fn value(&self) -> Option<i128> {
+        match self {
+            CastExpression::UnaryExpression(e) => e.value(),
+            _ => panic!()
+        }
+    }
+}
+
+impl UnaryExpression {
+    pub fn value(&self) -> Option<i128> {
+        match self {
+            UnaryExpression::PostfixExpression(e) => e.value(),
+            UnaryExpression::IncrementOrDecrement(..) => None,
+            UnaryExpression::UnaryOperator(op, e) => match op {
+                UnaryOperator::BitAnd(..) => None,
+                UnaryOperator::Times(..) => None,
+                UnaryOperator::Plus(..) => e.value(),
+                UnaryOperator::Minus(..) => e.value().map(|v| -v),
+                UnaryOperator::BitNot(..) => e.value().map(|v| !v),
+                UnaryOperator::Not(..) => e.value().map(|v| if v != 0 { 1 } else { 0 })
+            }
+            UnaryExpression::SizeofExpr(..) => unimplemented!(),
+            UnaryExpression::SizeofTy(..) => unimplemented!(),
+            UnaryExpression::AddressOfLabel(..) => None,
+        }
+    }
+}
+
+impl PostfixExpression {
+    pub fn value(&self) -> Option<i128> {
+        match self {
+            PostfixExpression::PrimaryExpression(e) => e.value(),
+            _ => panic!()
+        }
+    }
+}
+
+impl PrimaryExpression {
+    pub fn value(&self) -> Option<i128> {
+        match self {
+            PrimaryExpression::Number(num) => Some(num.parse().unwrap()),
+            _ => panic!()
+        }
     }
 }

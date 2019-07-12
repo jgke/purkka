@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use std::convert::TryFrom;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::rc::Rc;
 
@@ -6,6 +7,7 @@ use debug::debug::{if_debug, DebugVal};
 use shared::traits::{multipeek, MultiPeek};
 
 use ctoken::token::Token;
+use purkkasyntax::{TypeSignature, Primitive};
 
 use crate::grammar::*;
 use crate::*;
@@ -66,6 +68,16 @@ macro_rules! read_token {
     };
 }
 
+macro_rules! read_identifier_str {
+    ($iter:expr) => {
+        if let Token::Identifier(_, s) = read_token!($iter, Token::Identifier) {
+            s
+        } else {
+            unreachable!()
+        }
+    };
+}
+
 macro_rules! operation_left {
     ($left:ident $this:ident $target:ident) => {{
         $left = Box::new(GeneralExpression::$target(
@@ -88,6 +100,7 @@ macro_rules! operation_right {
 pub struct ScopedState {
     pub types: HashSet<Rc<str>>,
     pub labels: HashSet<Rc<str>>,
+    pub idents: HashMap<Rc<str>, (DeclarationSpecifiers, Declarator)>,
 }
 
 #[derive(Debug)]
@@ -108,10 +121,9 @@ fn default_types() -> ScopedState {
     types.insert(From::from("_Bool"));
     types.insert(From::from("_Complex"));
 
-    ScopedState {
-        types,
-        labels: HashSet::new(),
-    }
+    let mut state = ScopedState::default();
+    state.types = types;
+    state
 }
 
 pub fn parse<'a, I>(
@@ -122,7 +134,6 @@ pub fn parse<'a, I>(
 where
     I: IntoIterator<Item = &'a Token>,
 {
-    println!("Starting parsing");
     let context = ParseContext {
         scope: vec![default_types()],
         iter: multipeek(iter),
@@ -202,7 +213,7 @@ where
                 return ExternalDeclaration::FunctionDefinition(Box::new(
                     FunctionDefinition::FunctionDefinition(
                         Some(Box::new(spec)),
-                        vec![declarator],
+                        Box::new(declarator),
                         block,
                     ),
                 ));
@@ -372,18 +383,6 @@ where
                         "Conflicting type specifiers",
                     );
                 }
-                Some(Token::Identifier(_, ident)) if self.is_typeof(ident.as_ref()) => {
-                    read_token!(self, Token::Identifier);
-                    read_token!(self, Token::OpenParen);
-                    let next = self.peek().cloned();
-                    let r = if self.starts_type(next.unwrap()) {
-                        TypeOf::TypeName(Box::new(self.parse_type_name()))
-                    } else {
-                        TypeOf::Expression(Box::new(self.parse_expression()))
-                    };
-                    read_token!(self, Token::CloseParen);
-                    ty.replace_if_empty(CType::TypeOf(r), "Conflicting type specifiers")
-                }
                 Some(Token::Identifier(_, ident)) if self.is_type(ident) => {
                     read_token!(self, Token::Identifier);
                     ty.replace_if_empty(
@@ -523,7 +522,7 @@ where
     fn parse_struct_field(&mut self) -> StructField {
         let specifiers = Box::new(self.parse_declaration_specifiers());
         match self.peek() {
-            Some(Token::Semicolon(..)) => (specifiers, None),
+            Some(Token::Semicolon(..)) => (specifiers, Vec::new()),
             _ => {
                 let either = self.parse_declarator_or_abstract_declarator();
                 let expr = match self.peek() {
@@ -546,7 +545,7 @@ where
                     };
                     decls.push((either, expr));
                 }
-                (specifiers, Some(decls))
+                (specifiers, decls)
             }
         }
     }
@@ -619,7 +618,7 @@ where
     fn parse_direct_declarator(&mut self) -> Box<DirectDeclarator> {
         let mut decl = match self.peek() {
             Some(Token::Identifier(..)) => Box::new(DirectDeclarator::Identifier(
-                read_token!(self, Token::Identifier).get_ident_str().clone(),
+                read_identifier_str!(self)
             )),
             Some(Token::Asm(..)) => Box::new(DirectDeclarator::AsmStatement(Box::new(
                 self.parse_asm_statement(),
@@ -1505,6 +1504,246 @@ where
             DirectDeclarator::Function(direct_decl, _) => {
                 self.get_direct_decl_identifier(direct_decl)
             }
+        }
+    }
+
+    fn get_type(&self, expr: Expression) -> TypeName {
+        unimplemented!();
+    }
+}
+
+pub fn get_declarations(tree: &S) -> (Vec<(Rc<str>, TypeSignature)>, Vec<TypeSignature>) {
+    DeclarationContext { types: HashMap::new() }.get_declarations(tree)
+}
+
+struct DeclarationContext {
+    types: HashMap<Rc<str>, TypeSignature>
+}
+
+impl DeclarationContext {
+    pub fn get_declarations(mut self, tree: &S) -> (Vec<(Rc<str>, TypeSignature)>, Vec<TypeSignature>) {
+        let mut declarations = Vec::new();
+        let mut types = Vec::new();
+        let S::TranslationUnit(TranslationUnit::Units(units)) = tree;
+
+        for unit in units {
+            let (mut decls, ty) = match &unit {
+                ExternalDeclaration::FunctionDefinition(def) => self.function_definition_to_type(def),
+                ExternalDeclaration::Declaration(def) => self.declaration_to_type(def),
+                ExternalDeclaration::TypeDeclaration(def) => self.type_declaration_to_type(def),
+                ExternalDeclaration::Semicolon(_) => continue,
+            };
+            match &ty {
+                TypeSignature::Struct(Some(name), _)
+                    | TypeSignature::Enum(Some(name), _)
+                    | TypeSignature::Union(Some(name), _)
+                    => { self.types.insert(name.clone(), ty.clone()); }
+                _ => {}
+            }
+            declarations.append(&mut decls);
+            types.push(ty);
+        }
+
+        (declarations, types)
+    }
+
+    fn function_definition_to_type(&self, decl: &FunctionDefinition) -> (Vec<(Rc<str>, TypeSignature)>, TypeSignature) {
+        let FunctionDefinition::FunctionDefinition(spec, decl, _) = decl;
+        let spec_ty = self.decl_spec_to_type(spec.as_ref().unwrap());
+        (vec![self.declarator_to_type(decl, spec_ty.clone())], spec_ty)
+    }
+
+    fn declaration_to_type(&self, decl: &Declaration) -> (Vec<(Rc<str>, TypeSignature)>, TypeSignature) {
+        let Declaration::Declaration(spec, init_decls) = decl;
+        let spec_ty = self.decl_spec_to_type(&**spec);
+        let decl_tys = init_decls
+            .iter()
+            .map(|init_decl| match init_decl {
+                InitDeclarator::Declarator(decl) | InitDeclarator::Asm(decl, _) | InitDeclarator::Assign(decl, _, _)
+                    => self.declarator_to_type(&**decl, spec_ty.clone()),
+            })
+            .collect();
+        (decl_tys, spec_ty)
+    }
+
+    fn type_declaration_to_type(&self, decl: &TypeDeclaration) -> (Vec<(Rc<str>, TypeSignature)>, TypeSignature) {
+        unimplemented!()
+    }
+
+    fn decl_spec_to_type(&self, spec: &DeclarationSpecifiers) -> TypeSignature {
+        let DeclarationSpecifiers::DeclarationSpecifiers(_, ty) = spec;
+        ty.as_ref().map(|t| self.type_specifier_to_type(t)).unwrap()
+    }
+
+    fn declarator_to_type(&self, decl: &Declarator, ty: TypeSignature) -> (Rc<str>, TypeSignature) {
+        let Declarator::Declarator(ptr, decl) = decl;
+        let ty = if let Some(p) = ptr {
+            self.ptr_to_ty(p, Box::new(ty))
+        } else {
+            ty
+        };
+        self.direct_decl_to_type(decl, ty)
+    }
+
+    fn abstract_declarator_to_type(&self, decl: &AbstractDeclarator, ty: TypeSignature) -> TypeSignature {
+        let AbstractDeclarator::AbstractDeclarator(ptr, decl) = decl;
+        let ty = if let Some(p) = ptr {
+            self.ptr_to_ty(p, Box::new(ty))
+        } else {
+            ty
+        };
+        self.direct_abstract_decl_to_type(&**decl, ty)
+    }
+
+    fn direct_decl_to_type(&self, decl: &DirectDeclarator, ty: TypeSignature) -> (Rc<str>, TypeSignature) {
+        match decl {
+            DirectDeclarator::Identifier(ident) => (ident.clone(), ty),
+            DirectDeclarator::AsmStatement(_) => (From::from("_"), ty),
+            DirectDeclarator::Parens(decl) => self.declarator_to_type(&**decl, ty),
+            DirectDeclarator::Array(decl, None) => {
+                let (name, ty) = self.direct_decl_to_type(&**decl, ty);
+                (name, TypeSignature::Array(Box::new(ty), None))
+            }
+            DirectDeclarator::Array(decl, Some(e)) => {
+                let (name, ty) = self.direct_decl_to_type(&**decl, ty);
+                (name, TypeSignature::Array(Box::new(ty), Some(0)))
+            }
+            DirectDeclarator::Function(decl, params) => {
+                let (name, ty) = self.direct_decl_to_type(&**decl, ty);
+                (name, TypeSignature::Function(params.iter().map(|f| self.function_param(f)).collect(), Box::new(ty)))
+            }
+            t => panic!("{:?}", t)
+        }
+    }
+
+    fn direct_abstract_decl_to_type(&self, decl: &DirectAbstractDeclarator, ty: TypeSignature) -> TypeSignature {
+        match decl {
+            DirectAbstractDeclarator::Epsilon() => ty,
+            DirectAbstractDeclarator::Parens(decl) => self.abstract_declarator_to_type(&**decl, ty),
+            DirectAbstractDeclarator::Array(decl, None) => {
+                let ty = self.direct_abstract_decl_to_type(&**decl, ty);
+                TypeSignature::Array(Box::new(ty), None)
+            }
+            DirectAbstractDeclarator::Array(decl, Some(e)) => {
+                let ty = self.direct_abstract_decl_to_type(&**decl, ty);
+                TypeSignature::Array(Box::new(ty), Some(0))
+            }
+            DirectAbstractDeclarator::Function(decl, params) => {
+                let ty = self.direct_abstract_decl_to_type(&**decl, ty);
+                TypeSignature::Function(params.iter().map(|f| self.function_param(f)).collect(), Box::new(ty))
+            }
+        }
+    }
+
+    fn ptr_to_ty(&self, ptr: &Pointer, ty: Box<TypeSignature>) -> TypeSignature {
+        let Pointer::Ptr(_, p) = ptr;
+        if let Some(p) = p {
+            self.ptr_to_ty(p, Box::new(TypeSignature::Pointer { ty, nullable: true }))
+        } else {
+            TypeSignature::Pointer { ty, nullable: true }
+        }
+    }
+
+    fn type_specifier_to_type(&self, ty: &TypeSpecifier) -> TypeSignature {
+        use TypeSignature::Primitive as P;
+        use CType::Primitive as CP;
+        use PrimitiveType::*;
+
+        match ty {
+            CType::Void => P(Primitive::Void),
+            CP(None, Char) | CP(Some(true), Char) => P(Primitive::Int(8)),
+            CP(Some(false), Char) => P(Primitive::UInt(8)),
+
+            CP(None, Short) | CP(Some(true), Short) => P(Primitive::Int(16)),
+            CP(Some(false), Short) => P(Primitive::UInt(16)),
+
+            CP(None, Int) | CP(Some(true), Int) => P(Primitive::Int(32)),
+            CP(Some(false), Int) => P(Primitive::UInt(32)),
+
+            CP(None, Long) | CP(Some(true), Long)
+                | CP(None, LongLong) | CP(Some(true), LongLong) => P(Primitive::Int(64)),
+            CP(Some(false), Long) | CP(Some(false), LongLong) => P(Primitive::UInt(64)),
+
+            CP(None, Float) | CP(Some(true), Float) => P(Primitive::Float),
+            CP(Some(false), Float) => P(Primitive::Float),
+
+            CP(None, Double) | CP(Some(true), Double) => P(Primitive::Double),
+            CP(Some(false), Double) => P(Primitive::Double),
+
+            CP(None, LongDouble) | CP(Some(true), LongDouble)=> P(Primitive::Double),
+            CP(Some(false), LongDouble) => P(Primitive::Double),
+
+            CType::Compound(compound) => self.compound_type_to_type(compound),
+            CType::Custom(ty) => TypeSignature::Plain(ty.clone()),
+        }
+    }
+
+    fn compound_type_to_type(&self, ty: &CompoundType) -> TypeSignature {
+        match ty {
+            CompoundType::Struct(name, Some(fields)) =>
+                TypeSignature::Struct(Some(name.clone()), fields.iter().flat_map(|f| self.struct_field(f).into_iter()).collect()),
+            CompoundType::Struct(name, None) => self.types.get(name).cloned()
+                .unwrap_or_else(|| TypeSignature::Plain(name.clone())),
+            CompoundType::AnonymousStruct(fields) =>
+                TypeSignature::Struct(None, fields.iter().flat_map(|f| self.struct_field(f).into_iter()).collect()),
+            CompoundType::Union(name, Some(fields)) =>
+                TypeSignature::Union(Some(name.clone()), fields.iter().flat_map(|f| self.struct_field(f).into_iter()).collect()),
+            CompoundType::Union(name, None) => self.types[name].clone(),
+            CompoundType::AnonymousUnion(fields) =>
+                TypeSignature::Union(None, fields.iter().flat_map(|f| self.struct_field(f).into_iter()).collect()),
+            CompoundType::Enum(name, Some(fields)) =>
+                TypeSignature::Enum(Some(name.clone()), fields.iter().map(|f| self.enum_field(f)).collect()),
+            CompoundType::Enum(name, None) => self.types[name].clone(),
+            CompoundType::AnonymousEnum(fields) =>
+                TypeSignature::Enum(None, fields.iter().map(|f| self.enum_field(f)).collect()),
+            t => panic!("{:?}", t)
+        }
+    }
+
+    fn struct_field(&self, f: &StructField) -> Vec<purkkasyntax::StructField> {
+        let spec_ty = self.decl_spec_to_type(&*f.0);
+        f.1.iter()
+            .map(|(decl, maybe_bitfield)| {
+                let bitfield = maybe_bitfield.as_ref().map(|b| usize::try_from(b.value().unwrap()).unwrap());
+
+                let (name, ty) = match decl {
+                    EitherDeclarator::Anonymous(_) => unimplemented!(),
+                    EitherDeclarator::Declarator(decl) => self.declarator_to_type(decl, spec_ty.clone())
+                };
+                purkkasyntax::StructField::Field { name, ty: Box::new(ty), bitfield }
+            })
+            .collect()
+    }
+
+    fn enum_field(&self, f: &EnumField) -> purkkasyntax::EnumField {
+        if let (name, Some(e)) = f {
+            purkkasyntax::EnumField::Field { name: name.clone(), value: Some(e.value().unwrap()), ty: None }
+        } else {
+            purkkasyntax::EnumField::Field { name: f.0.clone(), value: None, ty: None }
+        }
+    }
+
+
+    fn function_param(&self, f: &FunctionParam) -> purkkasyntax::Param {
+        match f {
+            FunctionParam::Identifier(name) => unimplemented!(),
+            FunctionParam::Parameter(param) => match param {
+                ParameterDeclaration::Declarator(spec, decl) => {
+                    let spec_ty = self.decl_spec_to_type(spec);
+                    let (name, ty) = self.declarator_to_type(decl, spec_ty);
+                    purkkasyntax::Param::Param(name, Box::new(ty))
+                }
+                ParameterDeclaration::AbstractDeclarator(spec, decl) => {
+                    let spec_ty = self.decl_spec_to_type(spec);
+                    let ty = self.abstract_declarator_to_type(decl, spec_ty);
+                    purkkasyntax::Param::Param(From::from("_"), Box::new(ty))
+                }
+                ParameterDeclaration::DeclarationSpecifiers(spec) => {
+                    let spec_ty = self.decl_spec_to_type(spec);
+                    purkkasyntax::Param::Param(From::from("_"), Box::new(spec_ty))
+                }
+            }
+            FunctionParam::Varargs => purkkasyntax::Param::Variadic
         }
     }
 }

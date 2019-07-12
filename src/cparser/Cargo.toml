@@ -13,3 +13,5 @@ debug = { path="../debug" }
 fragment = { path="../fragment" }
 lalr = { path="../lalr" }
 shared = { path="../shared" }
+preprocessor = { path="../preprocessor" }
+purkkasyntax = { path="../purkkasyntax" }

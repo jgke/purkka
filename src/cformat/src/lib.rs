@@ -270,13 +270,11 @@ impl Context {
 
     fn function_definition(&mut self, tree: &FunctionDefinition) {
         match tree {
-            FunctionDefinition::FunctionDefinition(decl_spec, decls, compound) => {
+            FunctionDefinition::FunctionDefinition(decl_spec, decl, compound) => {
                 decl_spec
                     .iter()
                     .for_each(|d| self.declaration_specifiers(d));
-                for decl in decls {
-                    self.declarator(decl);
-                }
+                self.declarator(&**decl);
                 self.compound_statement(compound);
             }
         }
@@ -995,30 +993,10 @@ impl Context {
                 }
                 self.push_token(&t);
             }
-            CType::TypeOf(ty) => self.type_of(ty),
             CType::Void => self.push_token(&Token::Void(0)),
             CType::Custom(ident) => self.push_token(&Token::Identifier(0, ident.clone())),
 
             CType::Compound(compound) => self.compound_type(compound),
-        }
-    }
-
-    fn type_of(&mut self, ty: &TypeOf) {
-        match ty {
-            TypeOf::Expression(e) => {
-                self.push_token(&Token::Identifier(0, From::from("typeof")));
-                self.push_token(&Token::OpenParen(0));
-                self.expression(&**e);
-                self.push_token(&Token::CloseParen(0));
-                self.push(" ");
-            }
-            TypeOf::TypeName(e) => {
-                self.push_token(&Token::Identifier(0, From::from("typeof")));
-                self.push_token(&Token::OpenParen(0));
-                self.type_name(&**e);
-                self.push_token(&Token::CloseParen(0));
-                self.push(" ");
-            }
         }
     }
 
@@ -1083,14 +1061,12 @@ impl Context {
             self.push_token(&Token::OpenBrace(0));
             for field in fields {
                 self.declaration_specifiers(&*field.0);
-                if let Some(declarators) = &field.1 {
-                    if let Some((last, rest)) = declarators.split_last() {
-                        for decl in rest {
-                            self.struct_field(decl);
-                            self.push_token(&Token::Comma(0));
-                        }
-                        self.struct_field(last);
+                if let Some((last, rest)) = field.1.split_last() {
+                    for decl in rest {
+                        self.struct_field(decl);
+                        self.push_token(&Token::Comma(0));
                     }
+                    self.struct_field(last);
                 }
                 self.whitespace = false;
                 self.newline = false;

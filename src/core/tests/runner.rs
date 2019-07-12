@@ -45,6 +45,7 @@ fn run_test(prefix: &str) {
 
     let result = parse(&prk_contents, &filename);
     assert_eq!(result.c_content, c_contents);
+    println!("Ok!");
 }
 
 #[test]
