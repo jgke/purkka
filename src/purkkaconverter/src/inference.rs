@@ -330,8 +330,6 @@ impl TypeInferrer<'_> {
                         .chain(right_ty.1.into_iter())
                         .collect();
 
-                    dbg!(&expression, &left_ptr, &right_ptr);
-
                     if left_ptr && !right_ptr {
                         self.make_equal_to_num(&right_ty.0);
                         (left_ty.0, ret_tys)

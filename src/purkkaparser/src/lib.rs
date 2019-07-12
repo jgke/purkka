@@ -4,12 +4,14 @@ use std::rc::Rc;
 
 use purkkasyntax::*;
 use purkkatoken::tokenizer::tokenize;
+use resolve::{FileQuery, ResolveResult};
 
 use parser::{parse, Operators, Types};
 
-pub fn parse_file(filename: &str, content: &str) -> (S, Operators, Types) {
+pub fn parse_file(filename: &str, content: &str,
+                  get_file: &dyn Fn(FileQuery) -> ResolveResult) -> (S, Operators, Types) {
     let (tokens, _interner, fragment, sources) = tokenize(content, filename);
-    parse(&mut tokens.iter().peekable(), &sources, &fragment)
+    parse(&mut tokens.iter().peekable(), &sources, &fragment, filename, get_file)
 }
 
 pub fn get_declarations(tree: &S, include_private: bool) -> Vec<(Rc<str>, TypeSignature)> {

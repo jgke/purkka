@@ -8,6 +8,7 @@ use regex::Regex;
 use fragment::fragment::{FragmentIterator, Source};
 use purkkasyntax::*;
 use purkkatoken::token::Token;
+use resolve::{FileQuery, ResolveResult};
 
 macro_rules! maybe_read_token {
     ($iter:expr, $tok:path) => {
@@ -222,7 +223,8 @@ fn default_types() -> HashMap<Rc<str>, TypeSignature> {
     HashMap::new()
 }
 
-pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator) -> (S, Operators, Types) {
+pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator,
+             current_file: &str, get_file: &dyn Fn(FileQuery) -> ResolveResult) -> (S, Operators, Types) {
     let mut context = ParseContext {
         operators: Operators {
             unary: default_unary_ops(),
@@ -233,6 +235,8 @@ pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator) -
         fragment: fragment_iter,
         sources,
         types: default_types(),
+        current_file,
+        get_file
     };
     let tu = S::TranslationUnit(context.parse_translation_unit());
     (tu, context.operators, context.types)
@@ -285,6 +289,8 @@ struct ParseContext<'a, 'b> {
     fragment: &'a FragmentIterator,
     sources: &'a [Source],
     types: HashMap<Rc<str>, TypeSignature>,
+    current_file: &'a str,
+    get_file: &'a dyn Fn(FileQuery) -> ResolveResult,
 }
 
 impl<'a, 'b> ParseContext<'a, 'b> {
@@ -442,7 +448,6 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_fn_or_tuple(&mut self, maybe_fn: bool) -> TypeSignature {
         let params = self.parse_param_list();
-        dbg!(&params);
         match self.peek() {
             Some(Token::Operator(_, t)) if &**t == "->" && maybe_fn => {
                 read_token!(self, Token::Operator);
@@ -690,6 +695,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         } else {
             unreachable!();
         };
+        let content = (self.get_file)(FileQuery::new(self.current_file, &file, true, false));
         ImportFile::Import(file, ffi)
     }
 
@@ -1238,6 +1244,8 @@ mod tests {
             fragment: &FragmentIterator::new("", ""),
             sources: &Vec::new(),
             types: default_types(),
+            current_file: "",
+            get_file: &|_| panic!()
         };
         let result = eval_tree(&context.parse_expression());
         println!("{} = {} (expected: {})", expr, result, expected);
@@ -1273,6 +1281,8 @@ mod tests {
             &mut list.iter().peekable(),
             &vec![],
             &FragmentIterator::new("", ""),
+            "",
+            &|_| panic!()
         ).0
     }
 

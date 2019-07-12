@@ -10,7 +10,7 @@ use debug::debug::{if_debug, DebugVal::IncludeName};
 use preprocessor::PreprocessorOptions;
 use resolve::{FileQuery, ResolveResult};
 
-static DEFAULT_INCLUDE_PATH: &[&str] = &[
+pub static DEFAULT_INCLUDE_PATH: &[&str] = &[
     "/usr/local/include",
     "/usr/lib/gcc/x86_64-linux-gnu/7/include",
     "/usr/include",
@@ -34,7 +34,7 @@ pub fn get_file_cb<'a>(
         }
 
         if full_path.to_lowercase().ends_with(".prk") {
-            let (prk_tree, operators, types) = purkkaparser::parse_file(&full_path, &content);
+            let (prk_tree, operators, types) = purkkaparser::parse_file(&full_path, &content, get_file);
             let declarations = purkkaparser::get_declarations(&prk_tree, false);
             let (parsed, context) = purkkaconverter::convert(prk_tree, operators, types);
             let formatted = cformat::format_c(&parsed, context.local_includes);
@@ -63,6 +63,41 @@ pub fn get_file_cb<'a>(
             }
         }
     })
+}
+
+pub fn get_file_content_cb<'a>(options: &'a PreprocessorOptions) -> impl Fn(&FileQuery) -> (String, String) + 'a {
+    move |req: &FileQuery| -> (String, String) {
+        let mut contents = String::new();
+        if_debug(IncludeName, || {
+            println!(
+                "opening {} from {}, local: {}",
+                req.requested_file, req.current_file, req.local_file
+            )
+        });
+        if req.local_file {
+            let mut path = path::PathBuf::from(req.current_file.clone());
+            path.pop();
+            path.push(req.requested_file.clone());
+            let full_path = path.clone();
+            if let Ok(mut f) = File::open(path) {
+                f.read_to_string(&mut contents)
+                    .expect("something went wrong reading the file");
+                return (contents, full_path.to_str().unwrap().to_string());
+            }
+        }
+        for std_path in &options.include_path {
+            let mut path = path::PathBuf::from(std_path);
+            path.push(req.requested_file.clone());
+            let full_path = path.clone();
+            if let Ok(mut f) = File::open(path) {
+                f.read_to_string(&mut contents)
+                    .expect("something went wrong reading the file");
+                return (contents, full_path.to_str().unwrap().to_string());
+            }
+        }
+
+        panic!("File {} not found", req.requested_file);
+    }
 }
 
 pub fn real_main() {
@@ -157,40 +192,9 @@ pub fn real_main() {
             .collect(),
     };
 
-    let get_file_content = |req: &FileQuery| -> (String, String) {
-        let mut contents = String::new();
-        if_debug(IncludeName, || {
-            println!(
-                "opening {} from {}, local: {}",
-                req.requested_file, req.current_file, req.local_file
-            )
-        });
-        if req.local_file {
-            let mut path = path::PathBuf::from(req.current_file.clone());
-            path.pop();
-            path.push(req.requested_file.clone());
-            let full_path = path.clone();
-            if let Ok(mut f) = File::open(path) {
-                f.read_to_string(&mut contents)
-                    .expect("something went wrong reading the file");
-                return (contents, full_path.to_str().unwrap().to_string());
-            }
-        }
-        for std_path in &options.include_path {
-            let mut path = path::PathBuf::from(std_path);
-            path.push(req.requested_file.clone());
-            let full_path = path.clone();
-            if let Ok(mut f) = File::open(path) {
-                f.read_to_string(&mut contents)
-                    .expect("something went wrong reading the file");
-                return (contents, full_path.to_str().unwrap().to_string());
-            }
-        }
-
-        panic!("File {} not found", req.requested_file);
-    };
-
+    let get_file_content = get_file_content_cb(&options);
     let get_file = get_file_cb(&options, &get_file_content);
+
     for file in &input {
         let result = get_file(FileQuery::new(".", file, true, false));
         println!("{:?}", result);

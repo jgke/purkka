@@ -9,6 +9,7 @@ fragment = { path="../fragment" }
 lalr = { path="../lalr" }
 purkkasyntax = { path="../purkkasyntax" }
 purkkatoken = { path="../purkkatoken" }
+resolve = { path="../resolve" }
 shared = { path="../shared" }
 regex = "1.1.6"
 

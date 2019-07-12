@@ -33,10 +33,15 @@ impl ASTVisitor for StripImports<'_> {
                     .for_each(|t| {
                         match t {
                             Unit::ImportFile(box ImportFile::Import(file, None)) => {
-                                // XXX: global imports not implemented
+                                if file.ends_with(".prk") {
                                 self.context
                                     .local_includes
-                                    .insert(From::from(format!("{}.h", file)));
+                                    .insert(From::from(format!("{}.h", &file[..file.len()-4])));
+                                } else {
+                                self.context
+                                    .local_includes
+                                    .insert(From::from(format!("{}", file)));
+                                }
                             }
                             otherwise => panic!("Not implemented: {:?}", otherwise),
                         }

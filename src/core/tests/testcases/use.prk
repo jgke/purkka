@@ -1,4 +1,4 @@
-import "dependencies/dep";
+import "dependencies/dep.prk";
 
 fun main() -> i32 {
     return foo;

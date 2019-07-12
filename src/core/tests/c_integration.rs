@@ -62,19 +62,6 @@ int main() {
 }
 
 #[test]
-fn va_types() {
-    assert!(parse(
-        "
-int main() {
-    int a;
-    __builtin_va_list foo;
-}
-"
-    )
-    .is_ok());
-}
-
-#[test]
 fn init_array() {
     assert!(parse(" int main() { int a[] = {}; } ").is_ok());
 
@@ -206,6 +193,14 @@ fn tons_of_types() {
     assert_eq!(
         parse("typedef int foo; typeof(foo) a;").c_content,
         "typedef int foo;\ntypeof(foo) a;\n"
+    );
+    assert_eq!(
+        parse("typedef int foo; typedef foo bar;").c_content,
+        "typedef int foo;\ntypedef foo bar;\n"
+    );
+    assert_eq!(
+        parse("typedef __builtin_va_list __gnuc_va_list;").c_content,
+        "typedef __builtin_va_list __gnuc_va_list;\n"
     );
 }
 

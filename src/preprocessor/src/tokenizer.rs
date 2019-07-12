@@ -97,15 +97,6 @@ where
                 Some(intern.get_ref("__va_args__")),
             ),
         );
-        symbols.insert(
-            intern.get_ref("__builtin_va_list"),
-            Macro::Text(
-                Source::dummy(),
-                vec![MacroToken::dummy(MacroTokenType::Identifier(
-                    intern.get_ref("va_list"),
-                ))],
-            ),
-        );
         MacroContext {
             symbols,
             if_stack: Vec::new(),

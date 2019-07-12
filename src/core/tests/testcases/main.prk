@@ -1,4 +1,4 @@
-import "stdio";
+import "stdio.h";
 fun main(argc: i32, argv: [[char]]) {
     printf("Hello world!");
     printf("Hello params! %d", 123);

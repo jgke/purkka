@@ -9,12 +9,12 @@ use purkkaconverter::transform;
 
 fn test_parse_file(s: &str) -> S {
     println!("Testing following file:\n------\n{}\n------", s);
-    parse_file("file.prk", s).0
+    parse_file("file.prk", s, &|_| panic!()).0
 }
 
 fn test_convert_parse_file(s: &str) -> S {
     println!("Testing following file:\n------\n{}\n------", s);
-    let (mut tree, op, ty) = parse_file("file.prk", s);
+    let (mut tree, op, ty) = parse_file("file.prk", s, &|_| panic!());
     transform(&mut tree, op, ty);
     tree
 }
@@ -32,6 +32,8 @@ fn parse_simple() {
         .peekable(),
         &vec![],
         &FragmentIterator::new("", ""),
+        "",
+        &|_| panic!()
     );
 }
 

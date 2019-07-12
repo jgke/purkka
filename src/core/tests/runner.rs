@@ -4,17 +4,21 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Command;
 
-use core::core::get_file_cb;
+use core::core::{DEFAULT_INCLUDE_PATH, get_file_cb, get_file_content_cb};
 use preprocessor::PreprocessorOptions;
 use resolve::*;
 
-fn parse(content: &str) -> ResolveResult {
-    let input = "main.prk";
+fn parse(content: &str, filename: &str) -> ResolveResult {
+    let options = PreprocessorOptions {
+        include_path: DEFAULT_INCLUDE_PATH.to_vec(),
+        include_files: Vec::new(),
+        definitions: Vec::new()
+    };
+    let cb = get_file_content_cb(&options);
     let get_file_content = |req: &FileQuery| {
-        if req.requested_file == input {
-            (content.to_string(), req.requested_file.clone())
-        } else {
-            panic!("Unexpected include: {}", req.requested_file)
+        match req.requested_file.as_str() {
+            t if t == filename => (content.to_string(), req.requested_file.clone()),
+            _ => cb(req)
         }
     };
 
@@ -24,21 +28,22 @@ fn parse(content: &str) -> ResolveResult {
         definitions: vec![],
     };
 
-    let res = get_file_cb(&options, &get_file_content)(FileQuery::new(".", input, true, false));
+    let res = get_file_cb(&options, &get_file_content)(FileQuery::new(".", filename, true, false));
     res
 }
 
 fn run_test(prefix: &str) {
     println!("Running testcase '{}'", prefix.split("/").last().unwrap());
     let mut prk_contents = String::new();
-    let mut prk = File::open(format!("{}.prk", prefix)).expect("");
+    let filename = format!("{}.prk", prefix);
+    let mut prk = File::open(&filename).expect("");
     prk.read_to_string(&mut prk_contents).expect("");
 
     let mut c_contents = String::new();
     let mut c = File::open(format!("{}.c", prefix)).expect("");
     c.read_to_string(&mut c_contents).expect("");
 
-    let result = parse(&prk_contents);
+    let result = parse(&prk_contents, &filename);
     assert_eq!(result.c_content, c_contents);
 }
 

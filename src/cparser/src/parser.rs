@@ -104,9 +104,7 @@ where
 fn default_types() -> ScopedState {
     let mut types = HashSet::new();
 
-    types.insert(From::from("va_list"));
     types.insert(From::from("__builtin_va_list"));
-    types.insert(From::from("size_t"));
     types.insert(From::from("_Bool"));
     types.insert(From::from("_Complex"));
 
@@ -148,9 +146,8 @@ where
 {
     fn next(&mut self) -> Option<&'a Token> {
         if_debug(DebugVal::CParserToken, || {
-            dbg!(self.peek());
             if let Some(Token::Identifier(_, i)) = self.peek() {
-                dbg!(self.is_type(i));
+                println!("is {} type: {:?}", i, self.is_type(i));
             }
         });
         match self.peek() {
@@ -259,7 +256,6 @@ where
     }
 
     fn parse_direct_abstract_declarator(&mut self) -> Box<DirectAbstractDeclarator> {
-        dbg!(self.peek());
         let mut decl = if let Some(Token::OpenParen(..)) = self.peek() {
             read_token!(self, Token::OpenParen);
             let d = self.parse_abstract_declarator();
@@ -342,7 +338,9 @@ where
                 }
                 Some(Token::Int(..)) => {
                     read_token!(self, Token::Int);
-                    data.replace_if_empty(PrimitiveType::Int, "Conflicting type specifiers");
+                    if data != Some(PrimitiveType::Short) && data != Some(PrimitiveType::Long) {
+                        data.replace_if_empty(PrimitiveType::Int, "Conflicting type specifiers");
+                    }
                 }
                 Some(Token::Char(..)) => {
                     read_token!(self, Token::Char);
@@ -378,7 +376,6 @@ where
                     read_token!(self, Token::Identifier);
                     read_token!(self, Token::OpenParen);
                     let next = self.peek().cloned();
-                    dbg!(next);
                     let r = if self.starts_type(next.unwrap()) {
                         TypeOf::TypeName(Box::new(self.parse_type_name()))
                     } else {
