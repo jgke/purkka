@@ -78,25 +78,37 @@ where
         let mut intern = StringInterner::new();
         let mut symbols = HashMap::new();
         symbols.insert(
-            intern.get_ref("__extension__"),
-            Macro::Text(Source::dummy(), Vec::new()),
-        );
-        symbols.insert(
-            intern.get_ref("__restrict"),
-            Macro::Text(Source::dummy(), Vec::new()),
-        );
-        symbols.insert(
-            intern.get_ref("__alignof__"),
-            Macro::Function(
+            intern.get_ref("__STDC__"),
+            Macro::Text(
                 Source::dummy(),
-                vec![],
                 vec![MacroToken {
                     ty: MacroTokenType::Number(intern.get_ref("1")),
                     source: Source::dummy(),
-                }],
-                Some(intern.get_ref("__va_args__")),
-            ),
-        );
+                }]));
+        symbols.insert(
+            intern.get_ref("__GNUC__"),
+            Macro::Text(
+                Source::dummy(),
+                vec![MacroToken {
+                    ty: MacroTokenType::Number(intern.get_ref("4")),
+                    source: Source::dummy(),
+                }]));
+        symbols.insert(
+            intern.get_ref("__GNUC_MINOR__"),
+            Macro::Text(
+                Source::dummy(),
+                vec![MacroToken {
+                    ty: MacroTokenType::Number(intern.get_ref("6")),
+                    source: Source::dummy(),
+                }]));
+        symbols.insert(
+            intern.get_ref("__GNUC_PATCHLEVEL__"),
+            Macro::Text(
+                Source::dummy(),
+                vec![MacroToken {
+                    ty: MacroTokenType::Number(intern.get_ref("0")),
+                    source: Source::dummy(),
+                }]));
         MacroContext {
             symbols,
             if_stack: Vec::new(),
