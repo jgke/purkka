@@ -312,6 +312,10 @@ fn expressions() {
     assert_eq!(
         parse("int foo() { if(foo) asm(something 1); else if (something) asm(something 2); else asm(something 3); }").c_content,
         "int foo() {\n    if(foo) asm(something 1);\n    else if(something) asm(something 2);\n    else asm(something 3);\n}\n");
+    assert_eq!(
+        parse("int a = { 1 };").c_content,
+        "int a = { 1, };\n"
+    );
 }
 
 #[test]
@@ -341,6 +345,12 @@ fn declarations() {
 fn typedefs() {
     assert!(parse("typedef int foo; foo a = 1;").is_ok());
     assert!(parse("typedef void (*foo)(void (*)(int));").is_ok());
+}
+
+#[test]
+fn attributes() {
+    assert!(parse("typedef int __m64 __attribute__ ((__vector_size__ (8), __may_alias__)); __m64 a = { 1, 2 }; int b = a[0];").is_ok());
+    assert!(parse("void __attribute__ ((__always_inline__)) foo(void) { };").is_ok());
 }
 
 //#[test]

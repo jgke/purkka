@@ -315,8 +315,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         TranslationUnit::Units(units)
     }
 
-    fn is_ty(&self, s: &str) -> bool {
-        self.symbols.types.contains_key(s)
+    fn get_ty(&self, s: &str) -> Option<&TypeSignature> {
+        self.symbols.types.get(s)
+            .or_else(|| self.symbols.imported_types.get(s))
     }
 
     fn push_operator(&mut self, left_associative: bool, precedence: usize, s: Rc<str>, ty: TypeSignature, body: Expression) {
@@ -704,14 +705,8 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         content.declarations.unwrap().into_iter().for_each(|(name, decl)| {
             self.symbols.imported_declarations.insert(name, decl);
         });
-        for ty in content.types.unwrap() {
-            match &ty {
-                TypeSignature::Struct(Some(name), _)
-                    | TypeSignature::Enum(Some(name), _)
-                    | TypeSignature::Union(Some(name), _)
-                    => { self.symbols.imported_types.insert(name.clone(), ty.clone()); }
-                _ => {}
-            }
+        for (name, ty) in content.types.unwrap() {
+            self.symbols.imported_types.insert(name.clone(), ty.clone());
         }
         ImportFile::Import(file, ffi)
     }
@@ -818,11 +813,15 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         match self.peek() {
             Some(Token::Identifier(..)) => {
                 let t = self.next().identifier_s().unwrap().clone();
-                let is_ty = self.is_ty(&t);
+                let ty = self.get_ty(&t).cloned();
                 match self.peek() {
-                    Some(Token::OpenBrace(..)) if is_ty => {
+                    Some(Token::OpenBrace(..)) if ty.as_ref().map(|t| t.is_compound(&HashMap::new())) == Some(true) => {
                         let fields = self.parse_initialization_fields(&t);
                         PrimaryExpression::StructInitialization(t, fields)
+                    }
+                    Some(Token::OpenBrace(..)) if ty.is_some() => {
+                        let fields = self.parse_vector_initialization_fields();
+                        PrimaryExpression::VectorInitialization(t, fields)
                     }
                     _ => PrimaryExpression::Identifier(t),
                 }
@@ -1177,6 +1176,20 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         }
 
         fields
+    }
+
+    fn parse_vector_initialization_fields(&mut self) -> Vec<Expression> {
+        read_token!(self, Token::OpenBrace);
+        let fields = self.parse_comma_delimited_to_vec(Self::parse_vector_initialization_field);
+        read_token!(self, Token::CloseBrace);
+        fields
+    }
+
+    fn parse_vector_initialization_field(&mut self) -> Option<Expression> {
+        match self.peek() {
+            Some(Token::CloseBrace(..)) => None,
+            _ => Some(self.parse_expression())
+        }
     }
 }
 

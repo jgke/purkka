@@ -143,11 +143,6 @@ grammar! {
         pub enum Expression { Expression(Vec<AssignmentExpression>) }
         ;
 
-    TypeDeclaration
-       -> &DeclarationSpecifiers #Token::Semicolon
-        | List. #Token::Typedef &DeclarationSpecifiers &InitDeclaratorList #Token::Semicolon
-        ;
-
     InitDeclaratorList
        -> &InitDeclarator
         | Comma. InitDeclaratorList #Token::Comma &InitDeclarator
@@ -330,7 +325,6 @@ grammar! {
         | &SelectionStatement
         | &IterationStatement
         | &JumpStatement
-        | &TypeDeclaration
         | &AsmStatement
         ;
 
@@ -426,7 +420,6 @@ grammar! {
     ExternalDeclaration
        -> &FunctionDefinition
         | &Declaration
-        | &TypeDeclaration
         | #Token::Semicolon
         ;
 
@@ -523,13 +516,17 @@ grammar! {
         ;
 
     Declaration
-       -> &DeclarationSpecifiers #Token::Semicolon
-        | List. &DeclarationSpecifiers &InitDeclaratorList #Token::Semicolon
+       -> &DeclarationSpecifiers Attrs #Token::Semicolon
+        | List. &DeclarationSpecifiers &InitDeclaratorList Attrs #Token::Semicolon
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Declaration {
-            Declaration(Box<DeclarationSpecifiers>, Vec<InitDeclarator>),
+            Declaration(Box<DeclarationSpecifiers>, Vec<InitDeclarator>, Option<Vec<Attribute>>),
         }
         ;
+
+    Attrs
+      -> Epsilon
+       ; // | Attributes
 
     AbstractDeclarator
        -> &Pointer &DirectAbstractDeclarator
@@ -758,4 +755,9 @@ impl PrimaryExpression {
             _ => panic!()
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Attribute {
+    Vector(usize)
 }

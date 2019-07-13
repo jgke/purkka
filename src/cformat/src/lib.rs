@@ -34,7 +34,7 @@ pub fn format_c<H: std::hash::BuildHasher>(tree: &S, includes: HashSet<Rc<str>, 
     for unit in units {
         if let ExternalDeclaration::Declaration(decl) = unit  {
             match &**decl {
-                Declaration::Declaration(_, list) if list.is_empty() => {
+                Declaration::Declaration(_, list, _) if list.is_empty() => {
                     context.declaration(&**decl);
                 }
                 _ => {}
@@ -248,7 +248,7 @@ impl Context {
     fn external_declaration(&mut self, tree: &ExternalDeclaration) {
         match tree {
             // rendered already in format_c()
-            ExternalDeclaration::Declaration(box Declaration::Declaration(_, list)) if list.is_empty() => {},
+            ExternalDeclaration::Declaration(box Declaration::Declaration(_, list, _)) if list.is_empty() => {},
             ExternalDeclaration::Declaration(decl) => self.declaration(decl),
             ExternalDeclaration::FunctionDefinition(def) => self.function_definition(def),
             f => panic!("Not implemented.: {:?}", f),
@@ -257,7 +257,7 @@ impl Context {
 
     fn declaration(&mut self, tree: &Declaration) {
         match tree {
-            Declaration::Declaration(decl, list) => {
+            Declaration::Declaration(decl, list, _) => {
                 self.declaration_specifiers(decl);
                 self.init_declarator_list(list);
                 self.whitespace = false;
@@ -311,7 +311,6 @@ impl Context {
                 self.asm_statement(asm);
                 self.push_token(&Token::Semicolon(0));
             }
-            Statement::TypeDeclaration(..) => unimplemented!(),
         }
     }
 
@@ -823,8 +822,12 @@ impl Context {
             AssignmentOrInitializerList::AssignmentExpression(e) => self.assignment_expression(e),
             AssignmentOrInitializerList::Initializers(list) => {
                 self.push_token(&Token::OpenBrace(0));
+                self.newline = false;
+                self.whitespace = true;
                 self.initializer_list(list);
-                self.push_token(&Token::CloseBrace(0));
+                self.newline = false;
+                self.whitespace = true;
+                self.push("}");
             }
         }
     }

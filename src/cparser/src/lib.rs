@@ -142,6 +142,6 @@ pub fn parse(
     }
 }
 
-pub fn get_declarations(tree: &grammar::S) -> (Vec<(Rc<str>, TypeSignature)>, Vec<TypeSignature>) {
+pub fn get_declarations(tree: &grammar::S) -> (Vec<(Rc<str>, TypeSignature)>, Vec<(Rc<str>, TypeSignature)>) {
     parser::get_declarations(tree)
 }

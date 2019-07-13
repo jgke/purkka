@@ -394,33 +394,38 @@ impl TypeInferrer<'_> {
                 }
             }
             Expression::Cast(expr, ty) => (From::from(ty.clone()), self.get_type(expr).1),
-            Expression::StructAccess(expr, ident) => {
-                let (struct_ty, ret_ty) = self.get_type(expr);
-                if let IntermediateType::Exact(box TypeSignature::Struct(_, fields)) = &struct_ty {
-                    for StructField::Field { name, ty, bitfield: _ } in fields {
-                        if name.as_ref() == ident.as_ref() {
-                            return (From::from(*ty.clone()), ret_ty);
-                        }
-                    }
-                    panic!("Field {} not found in {:?}", ident, struct_ty);
-                } else {
-                    panic!("Cannot access field {} in {:?}", ident, struct_ty);
-                }
-            }
+            Expression::StructAccess(expr, ident) => self.struct_access(expr, ident),
         };
 
         loop {
             match ty.0 {
                 IntermediateType::Any(id) if self.infer_map.contains_key(&id) => ty.0 = self.infer_map[&id].clone(),
-                IntermediateType::Exact(box TypeSignature::Plain(ref id))
-                    if self.context.symbols.types.contains_key(id) => ty.0 = From::from(self.context.symbols.types[id].clone()),
-                IntermediateType::Exact(box TypeSignature::Plain(ref id))
-                    if self.context.symbols.imported_types.contains_key(id) => ty.0 = From::from(self.context.symbols.imported_types[id].clone()),
                 _ => break
             }
         }
 
         ty
+    }
+
+    fn struct_access(&mut self, expr: &Expression, ident: &Rc<str>) -> (IntermediateType, Vec<IntermediateType>) {
+        let (mut struct_ty, ret_ty) = self.get_type(expr);
+        while let IntermediateType::Exact(box TypeSignature::Plain(name)) = &struct_ty {
+            if let Some(ty) = self.get_ident_ty(name) {
+                struct_ty = From::from(ty);
+            } else {
+                panic!("Cannot get field {} from type {}", ident, name)
+            }
+        }
+        if let IntermediateType::Exact(box TypeSignature::Struct(_, fields)) = &struct_ty {
+            for StructField::Field { name, ty, bitfield: _ } in fields {
+                if name.as_ref() == ident.as_ref() {
+                    return (From::from(*ty.clone()), ret_ty);
+                }
+            }
+            panic!("Field {} not found in {:?}", ident, struct_ty);
+        } else {
+            panic!("Cannot access field {} in {:?}", ident, struct_ty);
+        }
     }
 
     fn get_primary_expr_type(
@@ -517,6 +522,22 @@ impl TypeInferrer<'_> {
                     panic!("Cannot instantiate non-struct type {:?} as a struct", struct_ty);
                 }
             }
+            PrimaryExpression::VectorInitialization(ident, fields) => {
+                let vec_ty = self.context.symbols.types.get(ident)
+                    .unwrap_or_else(|| &self.context.symbols.imported_types[ident]);
+                if let TypeSignature::Vector(plain) = vec_ty {
+                    let prim = From::from(TypeSignature::Primitive(*plain));
+                    let mut ret_tys = Vec::new();
+                    for expr in fields {
+                        let (e_ty, mut ret) = self.get_type(expr);
+                        ret_tys.append(&mut ret);
+                        self.make_equal(&prim, &e_ty);
+                    }
+                    (From::from(TypeSignature::Plain(ident.clone())), ret_tys)
+                } else {
+                    panic!("Cannot instantiate non-vector type {:?} as a vector", vec_ty);
+                }
+            }
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
@@ -539,6 +560,15 @@ impl TypeInferrer<'_> {
         index_expr: &Expression,
     ) -> IntermediateType {
         match array_ty {
+            TypeSignature::Plain(name) => {
+                if let Some(ty) = self.get_ident_ty(name) {
+                    self.array_access_exact(&ty, index_expr)
+                } else {
+                    panic!("Cannot index into type {}", name)
+                }
+            }
+            TypeSignature::Primitive(prim) => panic!("Cannot index into type {}", prim),
+            TypeSignature::Vector(prim) => From::from(TypeSignature::Primitive(*prim)),
             TypeSignature::Tuple(list) => {
                 let lit = index_expr
                     .eval(&HashMap::new())
@@ -741,6 +771,7 @@ impl TypeInferrer<'_> {
                 }
             }
             TypeSignature::Primitive(prim) => panic!("Cannot call type {}", prim),
+            TypeSignature::Vector(prim) => panic!("Cannot call type {}", prim),
             TypeSignature::Pointer { ty, .. } => self.call_exact(ty, args),
             TypeSignature::Struct(_name, _fields) => unimplemented!(),
             TypeSignature::Enum(_name, _fields) => unimplemented!(),
@@ -911,11 +942,28 @@ impl TypeInferrer<'_> {
             TypeSignature::Plain(name) => {
                 if let Some(ty) = self.get_ident_ty(name) {
                     self.unify_types(&ty, rvalue);
+                } else if let TypeSignature::Plain(name) = rvalue {
+                    if let Some(ty) = self.get_ident_ty(name) {
+                        self.unify_types(&lvalue, &ty);
+                    } else {
+                        self.fail_if(lvalue != rvalue, lvalue, rvalue);
+                    }
                 } else {
                     self.fail_if(lvalue != rvalue, lvalue, rvalue);
                 }
             }
             TypeSignature::Primitive(_) => self.fail_if(lvalue != rvalue, lvalue, rvalue),
+            TypeSignature::Vector(_) => {
+                if let TypeSignature::Plain(name) = rvalue {
+                    if let Some(ty) = self.get_ident_ty(name) {
+                        self.unify_types(&lvalue, &ty);
+                    } else {
+                        self.fail_if(lvalue != rvalue, lvalue, rvalue);
+                    }
+                } else {
+                    self.fail_if(lvalue != rvalue, lvalue, rvalue);
+                }
+            }
             TypeSignature::Pointer { ty: left_ty, nullable: left_nullable } => match rvalue {
                 TypeSignature::Pointer { ty: right_ty, nullable: right_nullable} => {
                     assert!(!*right_nullable || *left_nullable);

@@ -154,6 +154,15 @@ macro_rules! op_table {
     };
 }
 
+fn has_typedef(spec: &DeclarationSpecifiers) -> bool {
+    if let DeclarationSpecifiers::DeclarationSpecifiers(Some(spec), _) = spec
+    {
+        spec.0.typedef
+    } else {
+        false
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct ScopedState {
     pub types: HashSet<Rc<str>>,
@@ -269,8 +278,13 @@ where
             return ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
                 Box::new(spec),
                 vec![],
+                None,
             )));
         }
+
+        let attrs = self.maybe_parse_attributes();
+        assert!(attrs.is_empty());
+
         let declarator = self.parse_declarator();
 
         let ext_decl = match self.peek() {
@@ -288,15 +302,20 @@ where
                 ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
                     Box::new(spec),
                     vec![InitDeclarator::Declarator(Box::new(declarator))],
+                    None,
                 )))
             }
-            _ => ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
-                Box::new(spec),
-                self.parse_init_declarator_list(declarator),
-            ))),
+            _ => {
+                let init_list = self.parse_init_declarator_list(declarator);
+                let attrs = self.maybe_parse_attributes();
+                ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
+                            Box::new(spec),
+                            init_list,
+                            Some(attrs),
+                )))
+            }
         };
 
-        let _attrs = self.parse_attribute();
 
         read_token!(self, Token::Semicolon);
 
@@ -888,12 +907,7 @@ where
 
     fn parse_declaration(&mut self) -> Declaration {
         let spec = self.parse_declaration_specifiers();
-        let has_typedef = if let DeclarationSpecifiers::DeclarationSpecifiers(Some(spec), _) = &spec
-        {
-            spec.0.typedef
-        } else {
-            false
-        };
+        let has_typedef = has_typedef(&spec);
         let init_list = match self.peek() {
             Some(Token::Semicolon(..)) => vec![],
             _ => {
@@ -904,8 +918,10 @@ where
                 self.parse_init_declarator_list(decl)
             }
         };
+        let attrs = self.maybe_parse_attributes();
+        assert!(attrs.is_empty());
         read_token!(self, Token::Semicolon);
-        Declaration::Declaration(Box::new(spec), init_list)
+        Declaration::Declaration(Box::new(spec), init_list, None)
     }
 
     fn parse_statement(&mut self) -> Statement {
@@ -1483,17 +1499,30 @@ where
             Some(Token::Number(..)) => {
                 let t = self.next().unwrap().get_ident_str().clone();
                 let mut lc = t.to_ascii_lowercase();
-                while lc.ends_with("l") || lc.ends_with("u") {
+                let mut float = None;
+                while lc.ends_with("l") || lc.ends_with("u") || lc.ends_with("f") || lc.ends_with("d") {
+                    if lc.ends_with("f") {
+                        float = Some(TypeSignature::Primitive(Primitive::Float));
+                    } else if lc.ends_with("d") {
+                        float = Some(TypeSignature::Primitive(Primitive::Double));
+                    }
                     lc.pop();
                 }
-                let val = if lc.starts_with("0x") {
-                    i128::from_str_radix(&lc[2..], 16).unwrap()
-                } else if lc.starts_with("0") && lc.len() > 1 {
-                    i128::from_str_radix(&lc[1..], 8).unwrap()
+                if lc.contains(".") {
+                    float = Some(TypeSignature::Primitive(Primitive::Float));
+                }
+                if let Some(ty) = float {
+                    (PrimaryExpression::Number(From::from(t)), None, Some(ty))
                 } else {
-                    i128::from_str_radix(&lc, 10).unwrap()
-                };
-                (PrimaryExpression::Number(From::from(t)), Some(val), Some(TypeSignature::int()))
+                    let val = if lc.starts_with("0x") {
+                        i128::from_str_radix(&lc[2..], 16).unwrap()
+                    } else if lc.starts_with("0") && lc.len() > 1 {
+                        i128::from_str_radix(&lc[1..], 8).unwrap()
+                    } else {
+                        i128::from_str_radix(&lc, 10).unwrap()
+                    };
+                    (PrimaryExpression::Number(From::from(t)), Some(val), Some(TypeSignature::int()))
+                }
             }
             Some(Token::StringLiteral(..)) => {
                 (PrimaryExpression::StringLiteral(self.next().unwrap().get_ident_str().clone()), None,
@@ -1622,7 +1651,7 @@ where
     }
 
     pub fn ext_decl_identifiers(&self, ext_decl: &ExternalDeclaration) -> Vec<Rc<str>> {
-        if let ExternalDeclaration::Declaration(box Declaration::Declaration(_, list)) = ext_decl {
+        if let ExternalDeclaration::Declaration(box Declaration::Declaration(_, list, _)) = ext_decl {
             list.iter()
                 .map(|e| match e {
                     InitDeclarator::Declarator(decl) => self.get_decl_identifier(&**decl),
@@ -1656,17 +1685,69 @@ where
         unimplemented!();
     }
 
-    fn parse_attribute(&mut self) {
+    fn maybe_parse_attributes(&mut self) -> Vec<Attribute> {
+        let mut attrs = Vec::new();
         match self.peek() {
             Some(Token::Identifier(_, ident)) if ident.as_ref() == "__attribute__" => {
-                unimplemented!()
+                read_token!(self, Token::Identifier);
+                read_token!(self, Token::OpenParen);
+                read_token!(self, Token::OpenParen);
+                loop {
+                    match self.peek() {
+                        Some(Token::Comma(..)) => {
+                            read_token!(self, Token::Comma);
+                        }
+                        Some(Token::Identifier(_, ident)) if ident.as_ref() == "vector_size" || ident.as_ref() == "__vector_size__" => {
+                            read_token!(self, Token::Identifier);
+                            read_token!(self, Token::OpenParen);
+                            let size = read_token!(self, Token::Number).get_ident_str().parse().unwrap();
+                            attrs.push(Attribute::Vector(size));
+                            read_token!(self, Token::CloseParen);
+                        }
+                        Some(Token::Identifier(..)) => {
+                            self.parse_attribute();
+                            if maybe_read_token!(self, Token::Comma).is_some() {
+                                continue;
+                            } else {
+                                break;
+                            }
+                        }
+                        _ => break,
+                    }
+                }
+                read_token!(self, Token::CloseParen);
+                read_token!(self, Token::CloseParen);
+            }
+            _ => {}
+        }
+        attrs
+    }
+
+    fn parse_attribute(&mut self) {
+        read_token!(self, Token::Identifier);
+        match self.peek() {
+            Some(Token::OpenParen(..)) => {
+                read_token!(self, Token::OpenParen);
+                loop {
+                    if maybe_read_token!(self, Token::CloseParen).is_some() {
+                        break;
+                    } else {
+                        self.parse_assignment_expression();
+                        if maybe_read_token!(self, Token::Comma).is_some() {
+                            continue;
+                        } else {
+                            read_token!(self, Token::CloseParen);
+                            break;
+                        }
+                    }
+                }
             }
             _ => {}
         }
     }
 }
 
-pub fn get_declarations(tree: &S) -> (Vec<(Rc<str>, TypeSignature)>, Vec<TypeSignature>) {
+pub fn get_declarations(tree: &S) -> (Vec<(Rc<str>, TypeSignature)>, Vec<(Rc<str>, TypeSignature)>) {
     DeclarationContext { types: HashMap::new() }.get_declarations(tree)
 }
 
@@ -1675,7 +1756,7 @@ struct DeclarationContext {
 }
 
 impl DeclarationContext {
-    pub fn get_declarations(mut self, tree: &S) -> (Vec<(Rc<str>, TypeSignature)>, Vec<TypeSignature>) {
+    pub fn get_declarations(mut self, tree: &S) -> (Vec<(Rc<str>, TypeSignature)>, Vec<(Rc<str>, TypeSignature)>) {
         let mut declarations = Vec::new();
         let mut types = Vec::new();
         let S::TranslationUnit(TranslationUnit::Units(units)) = tree;
@@ -1683,19 +1764,30 @@ impl DeclarationContext {
         for unit in units {
             let (mut decls, ty) = match &unit {
                 ExternalDeclaration::FunctionDefinition(def) => self.function_definition_to_type(def),
-                ExternalDeclaration::Declaration(def) => self.declaration_to_type(def),
-                ExternalDeclaration::TypeDeclaration(def) => self.type_declaration_to_type(def),
+                ExternalDeclaration::Declaration(def) => {
+                    let (mut decls, has_ty_defs, ty) = self.declaration_to_type(def);
+                    if has_ty_defs {
+                        for (name, ty) in decls.into_iter() {
+                            println!("{}, {:?}", &name, &ty);
+                            types.push((name.clone(), ty.clone()));
+                        }
+                        decls = Vec::new();
+                    }
+                    (decls, ty)
+                }
                 ExternalDeclaration::Semicolon(_) => continue,
             };
             match &ty {
                 TypeSignature::Struct(Some(name), _)
                     | TypeSignature::Enum(Some(name), _)
                     | TypeSignature::Union(Some(name), _)
-                    => { self.types.insert(name.clone(), ty.clone()); }
+                    => {
+                        self.types.insert(name.clone(), ty.clone());
+                        types.push((name.clone(), ty.clone()));
+                    }
                 _ => {}
             }
             declarations.append(&mut decls);
-            types.push(ty);
         }
 
         (declarations, types)
@@ -1703,13 +1795,13 @@ impl DeclarationContext {
 
     fn function_definition_to_type(&self, decl: &FunctionDefinition) -> (Vec<(Rc<str>, TypeSignature)>, TypeSignature) {
         let FunctionDefinition::FunctionDefinition(spec, decl, _) = decl;
-        let spec_ty = self.decl_spec_to_type(spec.as_ref().unwrap());
+        let spec_ty = self.decl_spec_to_type(spec.as_ref().unwrap(), Vec::new());
         (vec![self.declarator_to_type(decl, spec_ty.clone())], spec_ty)
     }
 
-    fn declaration_to_type(&self, decl: &Declaration) -> (Vec<(Rc<str>, TypeSignature)>, TypeSignature) {
-        let Declaration::Declaration(spec, init_decls) = decl;
-        let spec_ty = self.decl_spec_to_type(&**spec);
+    fn declaration_to_type(&self, decl: &Declaration) -> (Vec<(Rc<str>, TypeSignature)>, bool, TypeSignature) {
+        let Declaration::Declaration(spec, init_decls, attrs) = decl;
+        let spec_ty = self.decl_spec_to_type(&**spec, attrs.clone().unwrap_or_else(|| Vec::new()));
         let decl_tys = init_decls
             .iter()
             .map(|init_decl| match init_decl {
@@ -1717,16 +1809,12 @@ impl DeclarationContext {
                     => self.declarator_to_type(&**decl, spec_ty.clone()),
             })
             .collect();
-        (decl_tys, spec_ty)
+        (decl_tys, has_typedef(&**spec), spec_ty)
     }
 
-    fn type_declaration_to_type(&self, _decl: &TypeDeclaration) -> (Vec<(Rc<str>, TypeSignature)>, TypeSignature) {
-        unimplemented!()
-    }
-
-    fn decl_spec_to_type(&self, spec: &DeclarationSpecifiers) -> TypeSignature {
+    fn decl_spec_to_type(&self, spec: &DeclarationSpecifiers, attrs: Vec<Attribute>) -> TypeSignature {
         let DeclarationSpecifiers::DeclarationSpecifiers(_, ty) = spec;
-        ty.as_ref().map(|t| self.type_specifier_to_type(t)).unwrap()
+        ty.as_ref().map(|t| self.type_specifier_to_type(t, attrs)).unwrap()
     }
 
     fn declarator_to_type(&self, decl: &Declarator, ty: TypeSignature) -> (Rc<str>, TypeSignature) {
@@ -1797,12 +1885,12 @@ impl DeclarationContext {
         }
     }
 
-    fn type_specifier_to_type(&self, ty: &TypeSpecifier) -> TypeSignature {
+    fn type_specifier_to_type(&self, ty: &TypeSpecifier, attrs: Vec<Attribute>) -> TypeSignature {
         use TypeSignature::Primitive as P;
         use CType::Primitive as CP;
         use PrimitiveType::*;
 
-        match ty {
+        let ty = match ty {
             CType::Void => P(Primitive::Void),
             CP(None, Char) | CP(Some(true), Char) => P(Primitive::Int(8)),
             CP(Some(false), Char) => P(Primitive::UInt(8)),
@@ -1828,7 +1916,15 @@ impl DeclarationContext {
 
             CType::Compound(compound) => self.compound_type_to_type(compound),
             CType::Custom(ty) => TypeSignature::Plain(ty.clone()),
+        };
+
+        if let P(prim) = ty {
+            if !attrs.is_empty() {
+                return TypeSignature::Vector(prim);
+            }
         }
+
+        ty
     }
 
     fn compound_type_to_type(&self, ty: &CompoundType) -> TypeSignature {
@@ -1853,7 +1949,7 @@ impl DeclarationContext {
     }
 
     fn struct_field(&self, f: &StructField) -> Vec<purkkasyntax::StructField> {
-        let spec_ty = self.decl_spec_to_type(&*f.0);
+        let spec_ty = self.decl_spec_to_type(&*f.0, Vec::new());
         f.1.iter()
             .map(|(decl, maybe_bitfield)| {
                 let bitfield = maybe_bitfield.as_ref().map(|b| usize::try_from(b.value().unwrap()).unwrap());
@@ -1877,17 +1973,17 @@ impl DeclarationContext {
             FunctionParam::Identifier(_name) => unimplemented!(),
             FunctionParam::Parameter(param) => match param {
                 ParameterDeclaration::Declarator(spec, decl) => {
-                    let spec_ty = self.decl_spec_to_type(spec);
+                    let spec_ty = self.decl_spec_to_type(spec, Vec::new());
                     let (name, ty) = self.declarator_to_type(decl, spec_ty);
                     purkkasyntax::Param::Param(name, Box::new(ty))
                 }
                 ParameterDeclaration::AbstractDeclarator(spec, decl) => {
-                    let spec_ty = self.decl_spec_to_type(spec);
+                    let spec_ty = self.decl_spec_to_type(spec, Vec::new());
                     let ty = self.abstract_declarator_to_type(decl, spec_ty);
                     purkkasyntax::Param::Param(From::from("_"), Box::new(ty))
                 }
                 ParameterDeclaration::DeclarationSpecifiers(spec) => {
-                    let spec_ty = self.decl_spec_to_type(spec);
+                    let spec_ty = self.decl_spec_to_type(spec, Vec::new());
                     purkkasyntax::Param::Param(From::from("_"), Box::new(spec_ty))
                 }
             }

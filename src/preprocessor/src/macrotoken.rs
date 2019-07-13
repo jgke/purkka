@@ -95,7 +95,7 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
             "signed" => Signed(index),
             "sizeof" => Sizeof(index),
             "static" => Static(index),
-            "inline" => Inline(index),
+            "inline" | "__inline" => Inline(index),
             "struct" => Struct(index),
             "switch" => Switch(index),
             "typedef" => Typedef(index),

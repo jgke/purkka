@@ -193,7 +193,8 @@ grammar! {
     PrimaryExpression
        -> #Token::Identifier
         | Literal
-        | StructInitialization. #Token::Identifier /* ident:typename */ #Token::OpenBrace InitializationFields #Token::CloseBrace
+        | StructInitialization. #Token::Identifier /* ident:typename & struct */ #Token::OpenBrace InitializationFields #Token::CloseBrace
+        | VectorInitialization. #Token::Identifier /* ident:typename & vector */ #Token::OpenBrace InitializationFields #Token::CloseBrace
         | BlockExpression
         | Expression. #Token::OpenParen Expression #Token::CloseParen
         | Lambda
@@ -201,6 +202,7 @@ grammar! {
         pub enum PrimaryExpression {
             Identifier(Rc<str>),
             StructInitialization(Rc<str>, Vec<StructInitializationField>),
+            VectorInitialization(Rc<str>, Vec<Expression>),
             Literal(Literal),
             BlockExpression(Box<BlockExpression>),
             Expression(Box<Expression>),
@@ -344,6 +346,7 @@ impl_enter!(Token, Identifier, "Rc<str>", identifier_s, 2);
 pub enum TypeSignature {
     Plain(Rc<str>),
     Primitive(Primitive),
+    Vector(Primitive),
     Pointer {
         nullable: bool,
         ty: Box<TypeSignature>,
@@ -365,8 +368,17 @@ impl TypeSignature {
         use TypeSignature::*;
         match self {
             Pointer { ..} | Array(..) | DynamicArray(..) => true,
-            Primitive(_) | Struct(..) | Enum(..) | Union(..) | Tuple(..) | Function(..) | Plain(_) => false,
             Infer(infer) => infer.is_ptr(context),
+            _ => false,
+        }
+    }
+
+    pub fn is_compound(&self, context: &HashMap<i128, IntermediateType>) -> bool {
+        use TypeSignature::*;
+        match self {
+            Struct(..) | Enum(..) | Union(..) => true,
+            Infer(infer) => infer.is_compound(context),
+            _ => false,
         }
     }
 
@@ -374,8 +386,8 @@ impl TypeSignature {
         use TypeSignature::*;
         match self {
             Pointer { ty, .. } | Array(ty, _) | DynamicArray(ty, ..) => Some(*ty.clone()),
-            Primitive(_) | Struct(..) | Enum(..) | Union(..) | Tuple(..) | Function(..) | Plain(_) => None,
             Infer(infer) => infer.dereference(context),
+            _ => None,
         }
     }
 
@@ -513,6 +525,20 @@ impl IntermediateType {
             },
             IntermediateType::Number(..) => false,
             IntermediateType::Exact(t) => t.is_ptr(context),
+        }
+    }
+
+    pub fn is_compound(&self, context: &HashMap<i128, IntermediateType>) -> bool {
+        match self {
+            IntermediateType::Any(id) => {
+                if let Some(ty) = context.get(id) {
+                    ty.is_compound(context)
+                } else {
+                    false
+                }
+            },
+            IntermediateType::Number(..) => false,
+            IntermediateType::Exact(t) => t.is_compound(context),
         }
     }
 

@@ -144,7 +144,8 @@ impl Context {
         cp::ExternalDeclaration::Declaration(
             Box::new(cp::Declaration::Declaration(
                 Box::new(self.type_to_declaration_specifiers(ty.clone())),
-                vec![])))
+                vec![],
+                None)))
     }
 
     pub fn cond_and_block_to_selection_statement(
@@ -393,7 +394,8 @@ impl Context {
                         cp::ExternalDeclaration::Declaration(
                             Box::new(cp::Declaration::Declaration(
                                 Box::new(cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))),
-                                Vec::new())))
+                                Vec::new(),
+                                None)))
                     }
                     other => panic!("Not implemented: {:?}", other),
                 }
@@ -420,6 +422,7 @@ impl Context {
                             self.assignment_expression(*expr),
                         )),
                     )],
+                    None,
                 )
             }
             pp::Declaration::Declaration(_, _mutable, name, ty, None) => {
@@ -428,6 +431,7 @@ impl Context {
                     vec![cp::InitDeclarator::Declarator(Box::new(
                         self.format_decl(name, *ty),
                     ))],
+                    None,
                 )
             }
         }
@@ -448,11 +452,14 @@ impl Context {
                     "double" => cp::CType::Primitive(None, cp::PrimitiveType::Double),
                     t if self.symbols.types.contains_key(t) =>
                         return self.type_to_declaration_specifiers(self.symbols.types[t].clone()),
+                    t if self.symbols.imported_types.contains_key(t) => cp::CType::Custom(ty.clone()),
+                    //t if self.symbols.imported_types.contains_key(t) =>
+                    //    return self.type_to_declaration_specifiers(self.symbols.imported_types[t].clone()),
                     other => panic!("Not implemented: {:?}", other),
                 };
                 cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))
             }
-            TypeSignature::Primitive(prim) => {
+            TypeSignature::Primitive(prim) | TypeSignature::Vector(prim) => {
                 let c_ty = match prim {
                     Primitive::Void => cp::CType::Void,
                     Primitive::Int(32) => cp::CType::Primitive(None, cp::PrimitiveType::Int),
@@ -751,6 +758,16 @@ impl Context {
                     .map(|(name, expr)|
                          cp::Initializer::Initializer(
                              Some(name.clone()),
+                             Box::new(cp::AssignmentOrInitializerList::AssignmentExpression(expr))))
+                    .collect()
+            ),
+            pp::PrimaryExpression::VectorInitialization(ident, fields) => cp::PrimaryExpression::StructValue(
+                Box::new(self.type_to_type_name(pp::TypeSignature::Plain(ident))),
+                fields.into_iter()
+                    .map(|field| self.assignment_expression(field))
+                    .map(|expr|
+                         cp::Initializer::Initializer(
+                             None,
                              Box::new(cp::AssignmentOrInitializerList::AssignmentExpression(expr))))
                     .collect()
             ),

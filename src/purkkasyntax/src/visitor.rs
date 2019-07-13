@@ -118,6 +118,7 @@ pub fn walk_ty<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut TypeSignature) {
     match s {
         TypeSignature::Plain(..) => {}
         TypeSignature::Primitive(..) => {}
+        TypeSignature::Vector(..) => {}
         TypeSignature::Pointer { ty, .. } => visitor.visit_ty(ty.deref_mut()),
         TypeSignature::Struct(_, ref mut fields) => fields
             .iter_mut()
@@ -224,6 +225,11 @@ pub fn walk_primary_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut 
                     visitor.visit_expression(e.deref_mut())
                 },
             );
+        }
+        PrimaryExpression::VectorInitialization(_ident, list) => {
+            list.iter_mut().for_each(|mut e| {
+                visitor.visit_expression(e.deref_mut())
+            });
         }
     }
 }

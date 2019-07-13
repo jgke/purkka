@@ -9,7 +9,7 @@ pub struct ResolveResult {
     pub h_content: Option<String>,
     pub dependencies: Option<Vec<String>>,
     pub declarations: Option<Vec<(Rc<str>, TypeSignature)>>,
-    pub types: Option<Vec<TypeSignature>>,
+    pub types: Option<Vec<(Rc<str>, TypeSignature)>>,
 }
 
 #[derive(Clone, Debug)]
