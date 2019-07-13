@@ -615,7 +615,7 @@ pub type StructField = (
     Box<DeclarationSpecifiers>,
     Vec<(EitherDeclarator, Option<Box<GeneralExpression>>)>,
 );
-pub type EnumField = (Rc<str>, Option<TernaryExpression>);
+pub type EnumField = (Rc<str>, Option<TernaryExpression>, i128);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CompoundType {
@@ -664,7 +664,7 @@ impl AssignmentExpression {
     pub fn value(&self) -> Option<i128> {
         match self {
             AssignmentExpression::TernaryExpression(e) => e.value(),
-            AssignmentExpression::Assignment(v, op, e) => None,
+            AssignmentExpression::Assignment(..) => None,
         }
     }
 }
@@ -745,7 +745,7 @@ impl PostfixExpression {
     pub fn value(&self) -> Option<i128> {
         match self {
             PostfixExpression::PrimaryExpression(e) => e.value(),
-            _ => panic!()
+            _ => unimplemented!()
         }
     }
 }
@@ -754,6 +754,7 @@ impl PrimaryExpression {
     pub fn value(&self) -> Option<i128> {
         match self {
             PrimaryExpression::Number(num) => Some(num.parse().unwrap()),
+            PrimaryExpression::Identifier(_) => None,
             _ => panic!()
         }
     }

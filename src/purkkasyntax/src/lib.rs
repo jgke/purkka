@@ -378,6 +378,44 @@ impl TypeSignature {
             Infer(infer) => infer.dereference(context),
         }
     }
+
+    pub fn access(&self, ident: &str, context: &HashMap<i128, IntermediateType>) -> (Option<i128>, Option<TypeSignature>) {
+        match self {
+            TypeSignature::Struct(_, fields) | TypeSignature::Union(_, fields) => {
+                    for StructField::Field { name, ty, bitfield: _ } in fields {
+                        if name.as_ref() == ident {
+                            return (None, Some(*ty.clone()));
+                        }
+                    }
+                    (None, None)
+            }
+            TypeSignature::Enum(_, fields) => {
+                    for EnumField::Field { name, ty: _, value } in fields {
+                        if name.as_ref() == ident {
+                            return (Some(*value), Some(TypeSignature::Primitive(Primitive::Int(32))));
+                        }
+                    }
+                    (None, None)
+            }
+            TypeSignature::Infer(infer) => infer.access(ident, context),
+            _ => (None, None)
+        }
+    }
+
+    pub fn address_of(self) -> TypeSignature {
+        TypeSignature::Pointer {
+            ty: Box::new(self),
+            nullable: false
+        }
+    }
+
+    pub fn char() -> TypeSignature {
+        TypeSignature::Primitive(Primitive::UInt(8))
+    }
+
+    pub fn int() -> TypeSignature {
+        TypeSignature::Primitive(Primitive::Int(32))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -491,6 +529,20 @@ impl IntermediateType {
             IntermediateType::Exact(t) => t.dereference(context),
         }
     }
+
+    pub fn access(&self, ident: &str, context: &HashMap<i128, IntermediateType>) -> (Option<i128>, Option<TypeSignature>) {
+        match self {
+            IntermediateType::Any(id) => {
+                if let Some(ty) = context.get(id) {
+                    ty.access(ident, context)
+                } else {
+                    (None, None)
+                }
+            },
+            IntermediateType::Number(..) => (None, None),
+            IntermediateType::Exact(t) => t.access(ident, context),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -521,7 +573,7 @@ pub enum StructField {
 pub enum EnumField {
     Field {
         name: Rc<str>,
-        value: Option<i128>,
+        value: i128,
         ty: Option<TypeSignature>,
     },
 }

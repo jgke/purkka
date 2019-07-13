@@ -6,6 +6,7 @@ use resolve::*;
 
 fn parse(content: &str) -> ResolveResult {
     let input = "main.c";
+    println!("{:?}", content);
     let get_file_content = |req: &FileQuery| {
         if req.requested_file == input {
             (content.to_string(), req.requested_file.clone())
@@ -21,8 +22,7 @@ fn parse(content: &str) -> ResolveResult {
     };
 
     let res = get_file_cb(&options, &get_file_content)(FileQuery::new(".", input, true, false));
-    dbg!(&res.declarations);
-    println!("{}", res.c_content);
+    println!("{:?}", res.c_content);
     res
 }
 
@@ -113,6 +113,10 @@ fn tons_of_types() {
     assert_eq!(
         parse("enum foo { a = 1 + 2 };").c_content,
         "enum foo {\n    a = 1 + 2\n};\n"
+    );
+    assert_eq!(
+        parse("enum foo { a = 2 }; enum bar { b = a };").c_content,
+        "enum foo {\n    a = 2\n};\nenum bar {\n    b = a\n};\n"
     );
     assert_eq!(
         parse("struct foo { int a; };").c_content,

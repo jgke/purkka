@@ -79,21 +79,79 @@ macro_rules! read_identifier_str {
 }
 
 macro_rules! operation_left {
-    ($left:ident $this:ident $target:ident) => {{
+    ($left:ident, $val:ident, $ty:ident, $this:ident, $target:ident, $op:tt) => {{
+        let t = $this.next().cloned().unwrap();
+        let (e, val, ty) = $this.parse_cast_expression();
         $left = Box::new(GeneralExpression::$target(
             $left,
-            $this.next().cloned().unwrap(),
-            Box::new(GeneralExpression::CastExpression(Box::new(
-                $this.parse_cast_expression(),
-            ))),
+            t,
+            Box::new(GeneralExpression::CastExpression(Box::new(e))),
         ));
+        $val = $val.and_then(|v1| val.clone().map(|v2| v1 $op v2));
+        $ty = $ty.and_then(|v1| ty.clone().map(|_| v1));
     }};
 }
 
 macro_rules! operation_right {
-    ($left:ident $this:ident $prio:literal) => {{
-        $left = $this.parse_general_expression_($prio, $left);
+    ($left:ident, $val:ident, $ty:ident, $this:ident, $prio:literal) => {{
+        let e = $this.parse_general_expression_($prio, $left, $val, $ty);
+        $left = e.0;
+        $val = e.1;
+        $ty = e.2;
     }};
+}
+
+macro_rules! operation_left_b {
+    ($left:ident, $val:ident, $ty:ident, $this:ident, $target:ident, $op:tt) => {{
+        let t = $this.next().cloned().unwrap();
+        let (e, val, _ty) = $this.parse_cast_expression();
+        $left = Box::new(GeneralExpression::$target(
+            $left,
+            t,
+            Box::new(GeneralExpression::CastExpression(Box::new(e))),
+        ));
+        $val = $val.and_then(|v1| val.map(|v2| if (v1 != 0) $op (v2 != 0) { 1 } else { 0 }));
+        $ty = Some(TypeSignature::int());
+    }};
+}
+
+macro_rules! op_table {
+    ($left:ident, $val:ident, $ty:ident, $priority_t:ident, $this:ident,
+     $($row:tt)*) => {
+        op_table!(@ $left, $val, $ty, $priority_t, $this, {}, [$($row)*] )
+    };
+
+    (@ $left:ident, $val:ident, $ty:ident, $priority_t:ident, $this:ident,
+     {$($arms:tt)*}, []) => {
+        match $this.peek() {
+            $($arms)*
+            _ => break
+        }
+    };
+
+    (@ $left:ident, $val:ident, $ty:ident, $priority_t:ident, $this:ident,
+     {$($arms:tt)*},
+     [(num, $target:ident, $priority:literal, $op:tt) $($rest:tt)*]) => {
+        op_table!(@ $left, $val, $ty, $priority_t, $this, {
+            $($arms)*
+            Some(Token::$target(..)) if $priority_t == $priority =>
+                operation_left!($left, $val, $ty, $this, $target, $op),
+            Some(Token::$target(..)) if $priority_t < $priority =>
+                operation_right!($left, $val, $ty, $this, $priority),
+        }, [$($rest)*] )
+    };
+
+    (@ $left:ident, $val:ident, $ty:ident, $priority_t:ident, $this:ident,
+     {$($arms:tt)*},
+     [(bool, $target:ident, $priority:literal, $op:tt) $($rest:tt)*]) => {
+        op_table!(@ $left, $val, $ty, $priority_t, $this, {
+            Some(Token::$target(..)) if $priority_t == $priority =>
+                operation_left_b!($left, $val, $ty, $this, $target, $op),
+            Some(Token::$target(..)) if $priority_t < $priority =>
+                operation_right!($left, $val, $ty, $this, $priority),
+            $($arms)*
+        }, [$($rest)*] )
+    };
 }
 
 #[derive(Debug, Default)]
@@ -109,6 +167,7 @@ where
     I: Iterator<Item = &'a Token>,
 {
     pub scope: Vec<ScopedState>,
+    pub vals: HashMap<Rc<str>, i128>,
     pub iter: MultiPeek<I>,
     pub fragment: &'a FragmentIterator,
     pub sources: &'a [Source],
@@ -136,6 +195,7 @@ where
 {
     let context = ParseContext {
         scope: vec![default_types()],
+        vals: HashMap::new(),
         iter: multipeek(iter),
         fragment: fragment_iter,
         sources,
@@ -179,6 +239,12 @@ where
     }
     fn pop_scope(&mut self) {
         self.scope.pop().unwrap();
+    }
+    fn get_val(&mut self, key: &str) -> Option<i128> {
+        self.vals.get(key).copied()
+    }
+    fn put_val(&mut self, key: Rc<str>, val: i128) {
+        self.vals.insert(key, val);
     }
 
     fn parse_translation_unit(&mut self) -> TranslationUnit {
@@ -229,6 +295,8 @@ where
                 self.parse_init_declarator_list(declarator),
             ))),
         };
+
+        let _attrs = self.parse_attribute();
 
         read_token!(self, Token::Semicolon);
 
@@ -281,7 +349,7 @@ where
                     read_token!(self, Token::OpenBracket);
                     let expr = match self.peek() {
                         Some(Token::CloseBracket(..)) => None,
-                        _ => Some(self.parse_general_expression()),
+                        _ => Some(self.parse_general_expression().0),
                     };
                     read_token!(self, Token::CloseBracket);
                     decl = Box::new(DirectAbstractDeclarator::Array(decl, expr));
@@ -428,19 +496,20 @@ where
 
     #[allow(clippy::cognitive_complexity)]
     fn parse_compound_type(&mut self) -> CompoundType {
+        let mut field_index = 0;
         if let Some(Token::Enum(..)) = self.peek() {
             read_token!(self, Token::Enum);
             let ident = maybe_read_token!(self, Token::Identifier);
             match self.peek() {
                 Some(Token::OpenBrace(..)) => {
                     read_token!(self, Token::OpenBrace);
-                    let mut fields = vec![self.parse_enum_field()];
+                    let mut fields = vec![self.parse_enum_field(&mut field_index)];
                     while let Some(Token::Comma(..)) = self.peek() {
                         read_token!(self, Token::Comma);
                         if let Some(Token::CloseBrace(..)) = self.peek() {
                             break;
                         }
-                        fields.push(self.parse_enum_field());
+                        fields.push(self.parse_enum_field(&mut field_index));
                     }
                     read_token!(self, Token::CloseBrace);
                     match ident {
@@ -508,15 +577,21 @@ where
         }
     }
 
-    fn parse_enum_field(&mut self) -> (Rc<str>, Option<TernaryExpression>) {
-        let ident = read_token!(self, Token::Identifier).get_ident_str().clone();
-        if let Some(Token::Assign(..)) = self.peek() {
+    fn parse_enum_field(&mut self, field_index: &mut i128) -> (Rc<str>, Option<TernaryExpression>, i128) {
+        let ident = read_identifier_str!(self);
+        let res = if let Some(Token::Assign(..)) = self.peek() {
             read_token!(self, Token::Assign);
-            let expr = self.parse_ternary_expression();
-            (ident, Some(expr))
+            let (expr, val, _) = self.parse_ternary_expression();
+            *field_index = val.unwrap();
+            self.put_val(ident.clone(), *field_index);
+            (ident, Some(expr), *field_index)
         } else {
-            (ident, None)
-        }
+            self.put_val(ident.clone(), *field_index);
+            (ident, None, *field_index)
+        };
+
+        *field_index += 1;
+        res
     }
 
     fn parse_struct_field(&mut self) -> StructField {
@@ -528,7 +603,7 @@ where
                 let expr = match self.peek() {
                     Some(Token::Colon(..)) => {
                         read_token!(self, Token::Colon);
-                        Some(self.parse_general_expression())
+                        Some(self.parse_general_expression().0)
                     }
                     _ => None,
                 };
@@ -539,7 +614,7 @@ where
                     let expr = match self.peek() {
                         Some(Token::Colon(..)) => {
                             read_token!(self, Token::Colon);
-                            Some(self.parse_general_expression())
+                            Some(self.parse_general_expression().0)
                         }
                         _ => None,
                     };
@@ -636,7 +711,7 @@ where
                     read_token!(self, Token::OpenBracket);
                     let expr = match self.peek() {
                         Some(Token::CloseBracket(..)) => None,
-                        _ => Some(self.parse_general_expression()),
+                        _ => Some(self.parse_general_expression().0),
                     };
                     read_token!(self, Token::CloseBracket);
                     decl = Box::new(DirectDeclarator::Array(decl, expr));
@@ -737,7 +812,7 @@ where
             }
 
             _ => AssignmentOrInitializerList::AssignmentExpression(
-                self.parse_assignment_expression(),
+                self.parse_assignment_expression().0,
             ),
         }
     }
@@ -918,7 +993,7 @@ where
             read_token!(self, Token::Semicolon);
             ExpressionStatement::Expression(None)
         } else {
-            let e = ExpressionStatement::Expression(Some(Box::new(self.parse_expression())));
+            let e = ExpressionStatement::Expression(Some(Box::new(self.parse_expression().0)));
             read_token!(self, Token::Semicolon);
             e
         }
@@ -934,10 +1009,10 @@ where
             }
             Some(Token::Case(..)) => {
                 let case = read_token!(self, Token::Case);
-                let e = self.parse_general_expression();
+                let e = self.parse_general_expression().0;
                 if let Some(Token::Varargs(..)) = self.peek() {
                     let v = read_token!(self, Token::Varargs);
-                    let e2 = self.parse_general_expression();
+                    let e2 = self.parse_general_expression().0;
                     let c = read_token!(self, Token::Colon);
                     let s = self.parse_statement();
                     LabeledStatement::RangeCase(case, e, v, e2, c, s)
@@ -962,7 +1037,7 @@ where
             Some(Token::If(..)) => {
                 read_token!(self, Token::If);
                 read_token!(self, Token::OpenParen);
-                let e = self.parse_expression();
+                let e = self.parse_expression().0;
                 read_token!(self, Token::CloseParen);
                 let s = self.parse_statement();
                 let otherwise = match self.peek() {
@@ -977,7 +1052,7 @@ where
             Some(Token::Switch(..)) => {
                 read_token!(self, Token::Switch);
                 read_token!(self, Token::OpenParen);
-                let e = self.parse_expression();
+                let e = self.parse_expression().0;
                 read_token!(self, Token::CloseParen);
                 let s = self.parse_statement();
                 SelectionStatement::Switch(Box::new(e), s)
@@ -992,7 +1067,7 @@ where
             Some(Token::While(..)) => {
                 let w = read_token!(self, Token::While);
                 let op = read_token!(self, Token::OpenParen);
-                let e = Box::new(self.parse_expression());
+                let e = Box::new(self.parse_expression().0);
                 let cp = read_token!(self, Token::CloseParen);
                 let s = Box::new(self.parse_statement());
                 IterationStatement::While(w, op, e, cp, s)
@@ -1002,7 +1077,7 @@ where
                 let s = Box::new(self.parse_statement());
                 let w = read_token!(self, Token::While);
                 let op = read_token!(self, Token::OpenParen);
-                let e = Box::new(self.parse_expression());
+                let e = Box::new(self.parse_expression().0);
                 let cp = read_token!(self, Token::CloseParen);
                 let semi = read_token!(self, Token::Semicolon);
                 IterationStatement::Do(d, s, w, op, e, cp, semi)
@@ -1022,7 +1097,7 @@ where
                 let f_expr = if let Some(Token::CloseParen(..)) = self.peek() {
                     ForExpr::EmptyLast(e1, e2)
                 } else {
-                    let e3 = Box::new(self.parse_expression());
+                    let e3 = Box::new(self.parse_expression().0);
                     ForExpr::ForExpr(e1, e2, e3)
                 };
                 let cp = read_token!(self, Token::CloseParen);
@@ -1057,7 +1132,7 @@ where
                     let semi = read_token!(self, Token::Semicolon);
                     JumpStatement::ReturnVoid(r, semi)
                 } else {
-                    let e = self.parse_expression();
+                    let e = self.parse_expression().0;
                     let semi = read_token!(self, Token::Semicolon);
                     JumpStatement::Return(r, e, semi)
                 }
@@ -1093,16 +1168,20 @@ where
         )
     }
 
-    fn parse_expression(&mut self) -> Expression {
-        let mut exprs = vec![self.parse_assignment_expression()];
+    fn parse_expression(&mut self) -> (Expression, Option<i128>, Option<TypeSignature>) {
+        let (first_expr, mut size, mut ty) = self.parse_assignment_expression();
+        let mut exprs = vec![first_expr];
         while let Some(Token::Comma(..)) = self.peek() {
             read_token!(self, Token::Comma);
-            exprs.push(self.parse_assignment_expression());
+            let (e, s, t) = self.parse_assignment_expression();
+            exprs.push(e);
+            size = s;
+            ty = t;
         }
-        Expression::Expression(exprs)
+        (Expression::Expression(exprs), size, ty)
     }
 
-    fn parse_assignment_expression(&mut self) -> AssignmentExpression {
+    fn parse_assignment_expression(&mut self) -> (AssignmentExpression, Option<i128>, Option<TypeSignature>) {
         let left = self.parse_ternary_expression();
         match self.peek() {
             Some(Token::Assign(..))
@@ -1118,40 +1197,78 @@ where
             | Some(Token::BitOrAssign(..)) => {
                 if let TernaryExpression::GeneralExpression(GeneralExpression::CastExpression(
                     box CastExpression::UnaryExpression(u),
-                )) = left
+                )) = left.0
                 {
                     let op = self.next();
+                    let assignment_op = self.assignment_operator(op.unwrap().clone());
                     let right = self.parse_assignment_expression();
-                    AssignmentExpression::Assignment(
-                        Box::new(u),
-                        self.assignment_operator(op.unwrap().clone()),
-                        Box::new(right),
-                    )
+                    let res_val = left.1.as_ref().copied().and_then(|v1| right.1.as_ref().copied().map(|v2| match assignment_op {
+                        AssignmentOperator::Assign(..) => v2,
+                        AssignmentOperator::TimesAssign(..) => v1 * v2,
+                        AssignmentOperator::DivAssign(..) => v1 / v2,
+                        AssignmentOperator::ModAssign(..) => v1 % v2,
+                        AssignmentOperator::PlusAssign(..) => v1 + v2,
+                        AssignmentOperator::MinusAssign(..) => v1 - v2,
+                        AssignmentOperator::BitShiftLeftAssign(..) => v1 << v2,
+                        AssignmentOperator::BitShiftRightAssign(..) => v1 >> v2,
+                        AssignmentOperator::BitAndAssign(..) => v1 & v2,
+                        AssignmentOperator::BitXorAssign(..) => v1 ^ v2,
+                        AssignmentOperator::BitOrAssign(..) => v1 | v2,
+                    }));
+                    let res_ty = left.2.and_then(|v1| right.2.as_ref().cloned().map(|v2| match assignment_op {
+                        AssignmentOperator::Assign(..) => v2,
+                        _ => v1,
+                    }));
+                    let res = AssignmentExpression::Assignment(Box::new(u), assignment_op, Box::new(right.0));
+                    (res, res_val, res_ty)
                 } else {
                     panic!("Tried to assign to a rvalue")
                 }
             }
-            _ => AssignmentExpression::TernaryExpression(left),
+            _ => (AssignmentExpression::TernaryExpression(left.0), left.1, left.2),
         }
     }
-    fn parse_ternary_expression(&mut self) -> TernaryExpression {
+
+    fn parse_ternary_expression(&mut self) -> (TernaryExpression, Option<i128>, Option<TypeSignature>) {
         let e = self.parse_general_expression();
         if let Some(Token::Ternary(..)) = self.peek() {
             let t1 = read_token!(self, Token::Ternary);
             let if_true = self.parse_expression();
             let t2 = read_token!(self, Token::Colon);
             let otherwise = self.parse_ternary_expression();
-            TernaryExpression::Ternary(*e, t1, Box::new(if_true), t2, Box::new(otherwise))
+            let expr = TernaryExpression::Ternary(*e.0, t1, Box::new(if_true.0), t2, Box::new(otherwise.0));
+            let expr_val = if let (Some(cond_val), Some(if_t_val), Some(if_f_val)) = (e.1, if_true.1, otherwise.1) {
+                if cond_val != 0 {
+                    Some(if_t_val)
+                } else {
+                    Some(if_f_val)
+                }
+            } else {
+                None
+            };
+            let expr_ty = match (e.1, if_true.2, otherwise.2) {
+                (Some(cond_val), Some(true_ty), Some(false_ty)) => {
+                    if cond_val != 0 {
+                        Some(true_ty)
+                    } else {
+                        Some(false_ty)
+                    }
+                }
+                (_, t, _) => t
+            };
+            (expr, expr_val, expr_ty)
         } else {
-            TernaryExpression::GeneralExpression(*e)
+            (TernaryExpression::GeneralExpression(*e.0), e.1, e.2)
         }
     }
 
-    fn parse_general_expression(&mut self) -> Box<GeneralExpression> {
+    fn parse_general_expression(&mut self) -> (Box<GeneralExpression>, Option<i128>, Option<TypeSignature>)  {
         let left = self.parse_cast_expression();
         self.parse_general_expression_(
             1,
-            Box::new(GeneralExpression::CastExpression(Box::new(left))),
+            Box::new(GeneralExpression::CastExpression(Box::new(left.0))),
+            left.1,
+            left.2
         )
     }
 
@@ -1161,49 +1278,32 @@ where
         &mut self,
         priority: usize,
         mut left: Box<GeneralExpression>,
-    ) -> Box<GeneralExpression> {
+        mut val: Option<i128>,
+        mut ty: Option<TypeSignature>,
+    ) -> (Box<GeneralExpression>, Option<i128>, Option<TypeSignature>) {
         loop {
-            match self.peek() {
-                Some(Token::Times(..)) if priority == 12 => operation_left!(left self Times),
-                Some(Token::Times(..)) if priority < 12 => operation_right!(left self 12),
-                Some(Token::Divide(..)) if priority == 12 => operation_left!(left self Divide),
-                Some(Token::Divide(..)) if priority < 12 => operation_right!(left self 12),
-                Some(Token::Mod(..)) if priority == 12 => operation_left!(left self Mod),
-                Some(Token::Mod(..)) if priority < 12 => operation_right!(left self 12),
-                Some(Token::Plus(..)) if priority == 11 => operation_left!(left self Plus),
-                Some(Token::Plus(..)) if priority < 11 => operation_right!(left self 11),
-                Some(Token::Minus(..)) if priority == 11 => operation_left!(left self Minus),
-                Some(Token::Minus(..)) if priority < 11 => operation_right!(left self 11),
-                Some(Token::BitShiftLeft(..)) if priority == 10 => operation_left!(left self BitShiftLeft),
-                Some(Token::BitShiftLeft(..)) if priority < 10 => operation_right!(left self 10),
-                Some(Token::BitShiftRight(..)) if priority == 10 => operation_left!(left self BitShiftRight),
-                Some(Token::BitShiftRight(..)) if priority < 10 => operation_right!(left self 10),
-                Some(Token::LessThan(..)) if priority == 9 => operation_left!(left self LessThan),
-                Some(Token::LessThan(..)) if priority < 9 => operation_right!(left self 9),
-                Some(Token::MoreThan(..)) if priority == 9 => operation_left!(left self MoreThan),
-                Some(Token::MoreThan(..)) if priority < 9 => operation_right!(left self 9),
-                Some(Token::LessEqThan(..)) if priority == 9 => operation_left!(left self LessEqThan),
-                Some(Token::LessEqThan(..)) if priority < 9 => operation_right!(left self 9),
-                Some(Token::MoreEqThan(..)) if priority == 9 => operation_left!(left self MoreEqThan),
-                Some(Token::MoreEqThan(..)) if priority < 9 => operation_right!(left self 9),
-                Some(Token::Equals(..)) if priority == 8 => operation_left!(left self Equals),
-                Some(Token::Equals(..)) if priority < 8 => operation_right!(left self 8),
-                Some(Token::NotEquals(..)) if priority == 8 => operation_left!(left self NotEquals),
-                Some(Token::NotEquals(..)) if priority < 8 => operation_right!(left self 8),
-                Some(Token::BitAnd(..)) if priority == 7 => operation_left!(left self BitAnd),
-                Some(Token::BitAnd(..)) if priority < 7 => operation_right!(left self 7),
-                Some(Token::BitXor(..)) if priority == 6 => operation_left!(left self BitXor),
-                Some(Token::BitXor(..)) if priority < 6 => operation_right!(left self 6),
-                Some(Token::BitOr(..)) if priority == 5 => operation_left!(left self BitOr),
-                Some(Token::BitOr(..)) if priority < 5 => operation_right!(left self 5),
-                Some(Token::And(..)) if priority == 4 => operation_left!(left self And),
-                Some(Token::And(..)) if priority < 4 => operation_right!(left self 4),
-                Some(Token::Or(..)) if priority == 3 => operation_left!(left self Or),
-                Some(Token::Or(..)) if priority < 3 => operation_right!(left self 3),
-                _ => break,
-            }
+            op_table!(
+                left, val, ty, priority, self,
+                (num, Times, 12, *)
+                (num, Divide, 12, /)
+                (num, Mod, 12, %)
+                (num, Plus, 11, +)
+                (num, Minus, 11, -)
+                (num, BitShiftLeft, 10, <<)
+                (num, BitShiftRight, 10, >>)
+                (bool, LessThan, 9, <)
+                (bool, MoreThan, 9, >)
+                (bool, LessEqThan, 9, <=)
+                (bool, MoreEqThan, 9, >=)
+                (bool, Equals, 8, ==)
+                (bool, NotEquals, 8, !=)
+                (num, BitAnd, 7, &)
+                (num, BitXor, 6, ^)
+                (num, BitOr, 5, |)
+                (bool, And, 4, &&)
+                (bool, Or, 3, ||))
         }
-        left
+        (left, val, ty)
     }
 
     fn starts_struct_literal(&mut self) -> bool {
@@ -1232,7 +1332,7 @@ where
         }
     }
 
-    fn parse_cast_expression(&mut self) -> CastExpression {
+    fn parse_cast_expression(&mut self) -> (CastExpression, Option<i128>, Option<TypeSignature>) {
         if let [Token::OpenParen(..), t] = self.peek_n(2).as_slice() {
             let tt = (**t).clone();
             if self.starts_type(&tt) && !self.starts_struct_literal() {
@@ -1240,18 +1340,24 @@ where
                 let ty = self.parse_type_name();
                 let cp = read_token!(self, Token::CloseParen);
                 let e = self.parse_general_expression();
-                return CastExpression::OpenParen(op, Box::new(ty), cp, e);
+                return (CastExpression::OpenParen(op, Box::new(ty), cp, e.0), e.1, e.2);
             }
         }
-        CastExpression::UnaryExpression(self.parse_unary_expression())
+        let e = self.parse_unary_expression();
+        (CastExpression::UnaryExpression(e.0), e.1, e.2)
     }
 
-    fn parse_unary_expression(&mut self) -> UnaryExpression {
+    fn parse_unary_expression(&mut self) -> (UnaryExpression, Option<i128>, Option<TypeSignature>) {
         match self.peek() {
             Some(Token::Increment(..)) | Some(Token::Decrement(..)) => {
                 let t = self.next().cloned().unwrap();
                 let op = self.increment_or_decrement(t);
-                UnaryExpression::IncrementOrDecrement(op, Box::new(self.parse_unary_expression()))
+                let e = self.parse_unary_expression();
+                let val = e.1.map(|v| match op {
+                    IncrementOrDecrement::Increment(..) => v + 1,
+                    IncrementOrDecrement::Decrement(..) => v - 1,
+                });
+                (UnaryExpression::IncrementOrDecrement(op, Box::new(e.0)), val, e.2)
             }
             Some(Token::BitAnd(..))
             | Some(Token::Times(..))
@@ -1261,7 +1367,21 @@ where
             | Some(Token::Not(..)) => {
                 let t = self.next().cloned().unwrap();
                 let op = self.unary_operator(t);
-                UnaryExpression::UnaryOperator(op, Box::new(self.parse_cast_expression()))
+                let e = self.parse_cast_expression();
+                let val = e.1.and_then(|v| match op {
+                    UnaryOperator::BitAnd(..) |  UnaryOperator::Times(..) => None,
+                    UnaryOperator::Plus(..) => Some(v),
+                    UnaryOperator::Minus(..) => Some(-v),
+                    UnaryOperator::BitNot(..) => Some(!v),
+                    UnaryOperator::Not(..) => Some(if v != 0 { 0 } else { 1 }),
+                });
+                let ty = e.2.map(|t| match op {
+                    UnaryOperator::BitAnd(..) => TypeSignature::Pointer { ty: Box::new(t), nullable: false },
+                    UnaryOperator::Times(..) => t.dereference(&HashMap::new()).unwrap(),
+                    UnaryOperator::Plus(..) | UnaryOperator::Minus(..)
+                        | UnaryOperator::BitNot(..) | UnaryOperator::Not(..) => t
+                });
+                (UnaryExpression::UnaryOperator(op, Box::new(e.0)), val, ty)
             }
             Some(Token::Sizeof(..)) => {
                 read_token!(self, Token::Sizeof);
@@ -1271,35 +1391,44 @@ where
                         read_token!(self, Token::OpenParen);
                         let ty = self.parse_type_name();
                         read_token!(self, Token::CloseParen);
-                        return UnaryExpression::SizeofTy(Box::new(ty));
+                        return (UnaryExpression::SizeofTy(Box::new(ty)), None, Some(TypeSignature::Primitive(Primitive::UInt(64))));
                     }
                 }
                 let e = self.parse_unary_expression();
-                UnaryExpression::SizeofExpr(Box::new(e))
+                (UnaryExpression::SizeofExpr(Box::new(e.0)), None, Some(TypeSignature::Primitive(Primitive::UInt(64))))
             }
             /* GNU extension */
             Some(Token::And(..)) => {
                 read_token!(self, Token::And);
                 let ident = read_token!(self, Token::Identifier).get_ident_str().clone();
-                UnaryExpression::AddressOfLabel(ident)
+                (UnaryExpression::AddressOfLabel(ident), None, None)
             }
-            _ => UnaryExpression::PostfixExpression(Box::new(self.parse_postfix_expression())),
+            _ => {
+                let e = self.parse_postfix_expression();
+                (UnaryExpression::PostfixExpression(Box::new(e.0)), e.1, e.2)
+            }
         }
     }
 
-    fn parse_postfix_expression(&mut self) -> PostfixExpression {
-        let mut e = PostfixExpression::PrimaryExpression(self.parse_primary_expression());
+    fn parse_postfix_expression(&mut self) -> (PostfixExpression, Option<i128>, Option<TypeSignature>) {
+        let expr = self.parse_primary_expression();
+        let mut e = PostfixExpression::PrimaryExpression(expr.0);
+        let mut val = expr.1;
+        let mut ty = expr.2;
         loop {
             match self.peek() {
                 Some(Token::OpenBracket(..)) => {
                     let op = read_token!(self, Token::OpenBracket);
                     let expr = self.parse_expression();
                     let cp = read_token!(self, Token::CloseBracket);
-                    e = PostfixExpression::Index(Box::new(e), op, Box::new(expr), cp);
+                    val = None;
+                    ty = ty.map(|t| t.dereference(&HashMap::new()).unwrap());
+                    e = PostfixExpression::Index(Box::new(e), op, Box::new(expr.0), cp);
                 }
                 Some(Token::Dot(..)) => {
                     let dot = read_token!(self, Token::Dot);
                     let ident = read_token!(self, Token::Identifier);
+                    val = None;
                     e = PostfixExpression::Member(Box::new(e), MemberAccess::Dot(dot), ident);
                 }
                 Some(Token::Arrow(..)) => {
@@ -1314,7 +1443,7 @@ where
                         if let Some(Token::CloseParen(..)) = self.peek() {
                             break;
                         } else {
-                            list.push(self.parse_assignment_expression());
+                            list.push(self.parse_assignment_expression().0);
                             if let Some(Token::Comma(..)) = self.peek() {
                                 read_token!(self, Token::Comma);
                             } else {
@@ -1335,47 +1464,63 @@ where
                     let inc = self.increment_or_decrement(t);
                     e = PostfixExpression::Increment(Box::new(e), inc);
                 }
-                _ => return e,
+                _ => return (e, val, ty),
             }
         }
     }
 
-    fn parse_primary_expression(&mut self) -> PrimaryExpression {
+    fn parse_primary_expression(&mut self) -> (PrimaryExpression, Option<i128>, Option<TypeSignature>) {
         match self.peek() {
             Some(Token::Identifier(..)) => {
-                let s = read_token!(self, Token::Identifier).get_ident_str().clone();
+                let s = read_identifier_str!(self);
+                let val = self.get_val(&s);
                 if self.is_builtin(&s) {
-                    self.parse_builtin(s)
+                    (self.parse_builtin(s), None, None)
                 } else {
-                    PrimaryExpression::Identifier(s)
+                    (PrimaryExpression::Identifier(s), val, val.map(|_| TypeSignature::int()))
                 }
             }
             Some(Token::Number(..)) => {
-                PrimaryExpression::Number(self.next().unwrap().get_ident_str().clone())
+                let t = self.next().unwrap().get_ident_str().clone();
+                let mut lc = t.to_ascii_lowercase();
+                while lc.ends_with("l") || lc.ends_with("u") {
+                    lc.pop();
+                }
+                let val = if lc.starts_with("0x") {
+                    i128::from_str_radix(&lc[2..], 16).unwrap()
+                } else if lc.starts_with("0") && lc.len() > 1 {
+                    i128::from_str_radix(&lc[1..], 8).unwrap()
+                } else {
+                    i128::from_str_radix(&lc, 10).unwrap()
+                };
+                (PrimaryExpression::Number(From::from(t)), Some(val), Some(TypeSignature::int()))
             }
             Some(Token::StringLiteral(..)) => {
-                PrimaryExpression::StringLiteral(self.next().unwrap().get_ident_str().clone())
+                (PrimaryExpression::StringLiteral(self.next().unwrap().get_ident_str().clone()), None,
+                Some(TypeSignature::char().address_of())
+                )
             }
             Some(Token::CharLiteral(..)) => {
-                PrimaryExpression::CharLiteral(self.next().unwrap().get_char_val())
+                let val = self.next().unwrap().get_char_val();
+                (PrimaryExpression::CharLiteral(val), Some(val as i128), Some(TypeSignature::char()))
             }
             Some(Token::OpenParen(..)) => {
                 read_token!(self, Token::OpenParen);
                 if let Some(Token::OpenBrace(..)) = self.peek() {
                     let compound = self.parse_compound_statement();
                     read_token!(self, Token::CloseParen);
-                    PrimaryExpression::Statement(Box::new(compound))
+                    (PrimaryExpression::Statement(Box::new(compound)), None, None)
                 } else if self.peek().cloned().map(|t| self.starts_type(t)) == Some(true) {
                     let ty = self.parse_type_name();
                     read_token!(self, Token::CloseParen);
                     read_token!(self, Token::OpenBrace);
                     let initializers = self.parse_initializer_list();
                     read_token!(self, Token::CloseBrace);
-                    PrimaryExpression::StructValue(Box::new(ty), initializers)
+                    (PrimaryExpression::StructValue(Box::new(ty), initializers), None, None)
                 } else {
-                    let e = Box::new(self.parse_expression());
+                    let e = self.parse_expression();
                     read_token!(self, Token::CloseParen);
-                    PrimaryExpression::Expression(e)
+                    (PrimaryExpression::Expression(Box::new(e.0)), e.1, e.2)
                 }
             }
             t => unexpected_token!(t, self),
@@ -1413,7 +1558,7 @@ where
                             read_token!(self, Token::OpenBracket);
                             designator = Box::new(BuiltinDesignator::Index(
                                 designator,
-                                Box::new(self.parse_expression()),
+                                Box::new(self.parse_expression().0),
                             ));
                             read_token!(self, Token::CloseBracket);
                         }
@@ -1507,8 +1652,17 @@ where
         }
     }
 
-    fn get_type(&self, expr: Expression) -> TypeName {
+    fn get_type(&self, _expr: Expression) -> TypeName {
         unimplemented!();
+    }
+
+    fn parse_attribute(&mut self) {
+        match self.peek() {
+            Some(Token::Identifier(_, ident)) if ident.as_ref() == "__attribute__" => {
+                unimplemented!()
+            }
+            _ => {}
+        }
     }
 }
 
@@ -1566,7 +1720,7 @@ impl DeclarationContext {
         (decl_tys, spec_ty)
     }
 
-    fn type_declaration_to_type(&self, decl: &TypeDeclaration) -> (Vec<(Rc<str>, TypeSignature)>, TypeSignature) {
+    fn type_declaration_to_type(&self, _decl: &TypeDeclaration) -> (Vec<(Rc<str>, TypeSignature)>, TypeSignature) {
         unimplemented!()
     }
 
@@ -1604,7 +1758,7 @@ impl DeclarationContext {
                 let (name, ty) = self.direct_decl_to_type(&**decl, ty);
                 (name, TypeSignature::Array(Box::new(ty), None))
             }
-            DirectDeclarator::Array(decl, Some(e)) => {
+            DirectDeclarator::Array(decl, Some(_e)) => {
                 let (name, ty) = self.direct_decl_to_type(&**decl, ty);
                 (name, TypeSignature::Array(Box::new(ty), Some(0)))
             }
@@ -1612,7 +1766,6 @@ impl DeclarationContext {
                 let (name, ty) = self.direct_decl_to_type(&**decl, ty);
                 (name, TypeSignature::Function(params.iter().map(|f| self.function_param(f)).collect(), Box::new(ty)))
             }
-            t => panic!("{:?}", t)
         }
     }
 
@@ -1624,7 +1777,7 @@ impl DeclarationContext {
                 let ty = self.direct_abstract_decl_to_type(&**decl, ty);
                 TypeSignature::Array(Box::new(ty), None)
             }
-            DirectAbstractDeclarator::Array(decl, Some(e)) => {
+            DirectAbstractDeclarator::Array(decl, Some(_e)) => {
                 let ty = self.direct_abstract_decl_to_type(&**decl, ty);
                 TypeSignature::Array(Box::new(ty), Some(0))
             }
@@ -1696,7 +1849,6 @@ impl DeclarationContext {
             CompoundType::Enum(name, None) => self.types[name].clone(),
             CompoundType::AnonymousEnum(fields) =>
                 TypeSignature::Enum(None, fields.iter().map(|f| self.enum_field(f)).collect()),
-            t => panic!("{:?}", t)
         }
     }
 
@@ -1716,17 +1868,13 @@ impl DeclarationContext {
     }
 
     fn enum_field(&self, f: &EnumField) -> purkkasyntax::EnumField {
-        if let (name, Some(e)) = f {
-            purkkasyntax::EnumField::Field { name: name.clone(), value: Some(e.value().unwrap()), ty: None }
-        } else {
-            purkkasyntax::EnumField::Field { name: f.0.clone(), value: None, ty: None }
-        }
+        purkkasyntax::EnumField::Field { name: f.0.clone(), value: f.2, ty: None }
     }
 
 
     fn function_param(&self, f: &FunctionParam) -> purkkasyntax::Param {
         match f {
-            FunctionParam::Identifier(name) => unimplemented!(),
+            FunctionParam::Identifier(_name) => unimplemented!(),
             FunctionParam::Parameter(param) => match param {
                 ParameterDeclaration::Declarator(spec, decl) => {
                     let spec_ty = self.decl_spec_to_type(spec);

@@ -617,7 +617,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     Some(Token::Operator(_, t)) if &**t == "=" => {
                         panic!("Not implemented");
                     }
-                    _ => None,
+                    _ => 0,
                 };
                 let ty = match self.peek() {
                     Some(Token::OpenParen(..)) => Some(self.parse_type()),
