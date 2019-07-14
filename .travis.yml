@@ -2,7 +2,7 @@ language: rust
 rust:
 - nightly
 before_install:
-  - sudo apt-get install -y libc libc-dev
+  - sudo apt-get install -y libc-dev
 script:
   - cargo build --verbose --release --all
   - cargo test --verbose --all
