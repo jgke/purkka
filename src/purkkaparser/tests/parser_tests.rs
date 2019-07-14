@@ -1,11 +1,11 @@
 extern crate purkkaconverter;
 
 use fragment::fragment::FragmentIterator;
+use purkkaconverter::transform;
 use purkkaparser::parse_file;
 use purkkaparser::parser::parse;
 use purkkasyntax::*;
 use purkkatoken::token::Token;
-use purkkaconverter::transform;
 
 fn test_parse_file(s: &str) -> S {
     println!("Testing following file:\n------\n{}\n------", s);
@@ -18,7 +18,6 @@ fn test_convert_parse_file(s: &str) -> S {
     transform(&mut tree, op, syms);
     tree
 }
-
 
 #[test]
 fn parse_simple() {
@@ -33,7 +32,7 @@ fn parse_simple() {
         &vec![],
         &FragmentIterator::new("", ""),
         "",
-        &|_| panic!()
+        &|_| panic!(),
     );
 }
 

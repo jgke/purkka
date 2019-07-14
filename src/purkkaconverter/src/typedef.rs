@@ -1,5 +1,4 @@
 /// Inline typedefs
-
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -11,12 +10,15 @@ use purkkasyntax::*;
 #[derive(Debug)]
 pub struct InlineTypedef<'a> {
     context: &'a mut Context,
-    typedefs: HashMap<Rc<str>, TypeSignature>
+    typedefs: HashMap<Rc<str>, TypeSignature>,
 }
 
 impl<'a> TreeTransformer<'a> for InlineTypedef<'a> {
     fn new(context: &'a mut Context) -> InlineTypedef<'a> {
-        InlineTypedef { context, typedefs: HashMap::new() }
+        InlineTypedef {
+            context,
+            typedefs: HashMap::new(),
+        }
     }
     fn transform(&mut self, s: &mut S) {
         self.visit_s(s);
@@ -35,11 +37,13 @@ impl ASTVisitor for InlineTypedef<'_> {
                             false
                         }
                     })
-                .for_each(|t| if let Unit::Typedef(box Typedef::Alias(_, name, ty)) = t {
-                    self.typedefs.insert(name, *ty);
-                } else {
-                    unreachable!()
-                });
+                    .for_each(|t| {
+                        if let Unit::Typedef(box Typedef::Alias(_, name, ty)) = t {
+                            self.typedefs.insert(name, *ty);
+                        } else {
+                            unreachable!()
+                        }
+                    });
             }
         }
         walk_translation_unit(self, e);

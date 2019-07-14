@@ -78,7 +78,9 @@ impl ASTVisitor for TypeInferrer<'_> {
         let Lambda::Lambda(params, _, e) = tree;
         for param in params {
             match param {
-                LambdaParam::LambdaParam(name, ty) => self.push_symbol(name.clone(), From::from(*ty.clone())),
+                LambdaParam::LambdaParam(name, ty) => {
+                    self.push_symbol(name.clone(), From::from(*ty.clone()))
+                }
                 LambdaParam::Variadic => {}
             }
         }
@@ -97,7 +99,9 @@ impl ASTVisitor for TypeInferrer<'_> {
         if let PrimaryExpression::Lambda(Lambda::Lambda(params, _, _)) = e {
             for param in params {
                 match param {
-                    LambdaParam::LambdaParam(name, ty) => self.push_symbol(name.clone(), From::from(*ty.clone())),
+                    LambdaParam::LambdaParam(name, ty) => {
+                        self.push_symbol(name.clone(), From::from(*ty.clone()))
+                    }
                     LambdaParam::Variadic => {}
                 }
             }
@@ -141,8 +145,11 @@ impl TypeInferrer<'_> {
     }
 
     fn get_ident_ty(&self, name: &str) -> Option<TypeSignature> {
-        self.context.symbols.types.get(name)
-            .or_else(||  self.context.symbols.imported_types.get(name))
+        self.context
+            .symbols
+            .types
+            .get(name)
+            .or_else(|| self.context.symbols.imported_types.get(name))
             .cloned()
     }
 
@@ -162,22 +169,27 @@ impl TypeInferrer<'_> {
                 let mut any_ty = None;
                 let mut num_ty = None;
 
-                let args_tys = args.iter()
+                let args_tys = args
+                    .iter()
                     .map(|arg| match arg.ty_field() {
-                        TypeSignature::Infer(IntermediateType::Any(0)) =>
-                            any_ty.get_or_insert_with(IntermediateType::new_any).clone(),
-                        TypeSignature::Infer(IntermediateType::Number(0, num)) =>
-                                num_ty.get_or_insert_with(|| IntermediateType::new_number(*num)).clone(),
-                            ty => From::from(ty.clone())
+                        TypeSignature::Infer(IntermediateType::Any(0)) => {
+                            any_ty.get_or_insert_with(IntermediateType::new_any).clone()
+                        }
+                        TypeSignature::Infer(IntermediateType::Number(0, num)) => num_ty
+                            .get_or_insert_with(|| IntermediateType::new_number(*num))
+                            .clone(),
+                        ty => From::from(ty.clone()),
                     })
                     .collect();
 
                 let ret = match &**ret {
-                    TypeSignature::Infer(IntermediateType::Any(0)) =>
-                        any_ty.unwrap_or_else( IntermediateType::new_any).clone(),
-                    TypeSignature::Infer(IntermediateType::Number(0, num)) =>
-                        num_ty.unwrap_or_else(|| IntermediateType::new_number(*num)),
-                    ty => From::from(ty.clone())
+                    TypeSignature::Infer(IntermediateType::Any(0)) => {
+                        any_ty.unwrap_or_else(IntermediateType::new_any).clone()
+                    }
+                    TypeSignature::Infer(IntermediateType::Number(0, num)) => {
+                        num_ty.unwrap_or_else(|| IntermediateType::new_number(*num))
+                    }
+                    ty => From::from(ty.clone()),
                 };
                 (args_tys, ret)
             }
@@ -185,7 +197,10 @@ impl TypeInferrer<'_> {
         }
     }
 
-    fn get_unary_operator_instance(&self, op: &Rc<str>) -> (Vec<IntermediateType>, IntermediateType) {
+    fn get_unary_operator_instance(
+        &self,
+        op: &Rc<str>,
+    ) -> (Vec<IntermediateType>, IntermediateType) {
         let op = self.context.operators.unary.get(op).unwrap();
 
         match &op.ty {
@@ -193,22 +208,27 @@ impl TypeInferrer<'_> {
                 let mut any_ty = None;
                 let mut num_ty = None;
 
-                let args_tys = args.iter()
+                let args_tys = args
+                    .iter()
                     .map(|arg| match arg.ty_field() {
-                        TypeSignature::Infer(IntermediateType::Any(0)) =>
-                            any_ty.get_or_insert_with(IntermediateType::new_any).clone(),
-                        TypeSignature::Infer(IntermediateType::Number(0, num)) =>
-                                num_ty.get_or_insert_with(|| IntermediateType::new_number(*num)).clone(),
-                            ty => From::from(ty.clone())
+                        TypeSignature::Infer(IntermediateType::Any(0)) => {
+                            any_ty.get_or_insert_with(IntermediateType::new_any).clone()
+                        }
+                        TypeSignature::Infer(IntermediateType::Number(0, num)) => num_ty
+                            .get_or_insert_with(|| IntermediateType::new_number(*num))
+                            .clone(),
+                        ty => From::from(ty.clone()),
                     })
                     .collect();
 
                 let ret = match &**ret {
-                    TypeSignature::Infer(IntermediateType::Any(0)) =>
-                        any_ty.unwrap_or_else(IntermediateType::new_any).clone(),
-                    TypeSignature::Infer(IntermediateType::Number(0, num)) =>
-                        num_ty.unwrap_or_else(|| IntermediateType::new_number(*num)),
-                    ty => From::from(ty.clone())
+                    TypeSignature::Infer(IntermediateType::Any(0)) => {
+                        any_ty.unwrap_or_else(IntermediateType::new_any).clone()
+                    }
+                    TypeSignature::Infer(IntermediateType::Number(0, num)) => {
+                        num_ty.unwrap_or_else(|| IntermediateType::new_number(*num))
+                    }
+                    ty => From::from(ty.clone()),
                 };
                 (args_tys, ret)
             }
@@ -228,26 +248,29 @@ impl TypeInferrer<'_> {
 
                 let arg = &args[0];
                 let arg_ty = match arg.ty_field() {
-                    TypeSignature::Infer(IntermediateType::Any(0)) =>
-                        any_ty.get_or_insert_with(IntermediateType::new_any).clone(),
-                    TypeSignature::Infer(IntermediateType::Number(0, num)) =>
-                        num_ty.get_or_insert_with(|| IntermediateType::new_number(*num)).clone(),
-                    ty => From::from(ty.clone())
+                    TypeSignature::Infer(IntermediateType::Any(0)) => {
+                        any_ty.get_or_insert_with(IntermediateType::new_any).clone()
+                    }
+                    TypeSignature::Infer(IntermediateType::Number(0, num)) => num_ty
+                        .get_or_insert_with(|| IntermediateType::new_number(*num))
+                        .clone(),
+                    ty => From::from(ty.clone()),
                 };
 
                 let ret = match &**ret {
-                    TypeSignature::Infer(IntermediateType::Any(0)) =>
-                        any_ty.unwrap_or_else(IntermediateType::new_any).clone(),
-                    TypeSignature::Infer(IntermediateType::Number(0, num)) =>
-                        num_ty.unwrap_or_else(|| IntermediateType::new_number(*num)),
-                    ty => From::from(ty.clone())
+                    TypeSignature::Infer(IntermediateType::Any(0)) => {
+                        any_ty.unwrap_or_else(IntermediateType::new_any).clone()
+                    }
+                    TypeSignature::Infer(IntermediateType::Number(0, num)) => {
+                        num_ty.unwrap_or_else(|| IntermediateType::new_number(*num))
+                    }
+                    ty => From::from(ty.clone()),
                 };
                 (arg_ty, ret)
             }
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
-
 
     fn get_type(&mut self, expression: &Expression) -> (IntermediateType, Vec<IntermediateType>) {
         let mut ty = match expression {
@@ -257,7 +280,7 @@ impl TypeInferrer<'_> {
                  * We special case handling for '+', '-' and '?' here, because they're, well,
                  * special. '+' and '-' are especially special, as they are the only overloaded
                  * operators in C - they have interesting behaviour with pointers.
-                 * 
+                 *
                  * num + ptr -> ptr
                  * ptr + num -> ptr
                  * num + num -> num
@@ -275,7 +298,9 @@ impl TypeInferrer<'_> {
                     let left_ptr = left_ty.0.is_ptr(&self.infer_map);
                     let right_ptr = right_ty.0.is_ptr(&self.infer_map);
 
-                    let ret_tys = left_ty.1.into_iter()
+                    let ret_tys = left_ty
+                        .1
+                        .into_iter()
                         .chain(right_ty.1.into_iter())
                         .collect();
 
@@ -302,7 +327,9 @@ impl TypeInferrer<'_> {
 
                     let left_ptr = left_ty.0.is_ptr(&self.infer_map);
 
-                    let ret_tys = left_ty.1.into_iter()
+                    let ret_tys = left_ty
+                        .1
+                        .into_iter()
                         .chain(right_ty.1.into_iter())
                         .collect();
 
@@ -328,7 +355,9 @@ impl TypeInferrer<'_> {
 
                     self.make_equal(&if_t_ty.0, &if_f_ty.0);
 
-                    let ret_tys = cond_ty.1.into_iter()
+                    let ret_tys = cond_ty
+                        .1
+                        .into_iter()
                         .chain(if_t_ty.1.into_iter())
                         .chain(if_f_ty.1.into_iter())
                         .collect();
@@ -338,21 +367,30 @@ impl TypeInferrer<'_> {
                     let (params, ret) = self.get_operator_instance(op);
 
                     assert_eq!(params.len(), list.len());
-                    let ret_tys = params.iter().zip(list.iter()).flat_map(|(param, arg)| {
-                        let arg_ty = self.get_type(&arg);
-                        self.make_equal(&arg_ty.0, param);
-                        arg_ty.1
-                    }).collect();
+                    let ret_tys = params
+                        .iter()
+                        .zip(list.iter())
+                        .flat_map(|(param, arg)| {
+                            let arg_ty = self.get_type(&arg);
+                            self.make_equal(&arg_ty.0, param);
+                            arg_ty.1
+                        })
+                        .collect();
 
                     (ret, ret_tys)
                 }
-            },
+            }
             Expression::Unary(op, ExprList::List(list)) => {
                 if op.as_ref() == "*" {
                     assert_eq!(list.len(), 1);
                     let arg_ty = self.get_type(&list[0]);
                     if arg_ty.0.is_ptr(&self.infer_map) {
-                        (IntermediateType::Exact(Box::new(arg_ty.0.dereference(&self.infer_map).unwrap())), arg_ty.1)
+                        (
+                            IntermediateType::Exact(Box::new(
+                                arg_ty.0.dereference(&self.infer_map).unwrap(),
+                            )),
+                            arg_ty.1,
+                        )
                     } else {
                         panic!("Cannot dereference non-pointer");
                     }
@@ -360,15 +398,19 @@ impl TypeInferrer<'_> {
                     let (params, ret) = self.get_unary_operator_instance(op);
 
                     assert_eq!(params.len(), list.len());
-                    let ret_tys = params.iter().zip(list.iter()).flat_map(|(param, arg)| {
-                        let arg_ty = self.get_type(&arg);
-                        self.make_equal(&arg_ty.0, param);
-                        arg_ty.1
-                    }).collect();
+                    let ret_tys = params
+                        .iter()
+                        .zip(list.iter())
+                        .flat_map(|(param, arg)| {
+                            let arg_ty = self.get_type(&arg);
+                            self.make_equal(&arg_ty.0, param);
+                            arg_ty.1
+                        })
+                        .collect();
 
                     (ret, ret_tys)
                 }
-            },
+            }
             Expression::PostFix(expr, op) => {
                 let (param, ret) = self.get_postfix_operator_instance(op);
 
@@ -376,7 +418,7 @@ impl TypeInferrer<'_> {
                 self.make_equal(&arg_ty.0, &param);
 
                 (ret, arg_ty.1)
-            },
+            }
             Expression::ArrayAccess(expr, index) => self.get_array_access_type(expr, index),
             Expression::Call(expr, ArgList::Args(args)) => {
                 let (ty, mut ret_tys) = self.get_type(&*expr);
@@ -399,15 +441,21 @@ impl TypeInferrer<'_> {
 
         loop {
             match ty.0 {
-                IntermediateType::Any(id) if self.infer_map.contains_key(&id) => ty.0 = self.infer_map[&id].clone(),
-                _ => break
+                IntermediateType::Any(id) if self.infer_map.contains_key(&id) => {
+                    ty.0 = self.infer_map[&id].clone()
+                }
+                _ => break,
             }
         }
 
         ty
     }
 
-    fn struct_access(&mut self, expr: &Expression, ident: &Rc<str>) -> (IntermediateType, Vec<IntermediateType>) {
+    fn struct_access(
+        &mut self,
+        expr: &Expression,
+        ident: &Rc<str>,
+    ) -> (IntermediateType, Vec<IntermediateType>) {
         let (mut struct_ty, ret_ty) = self.get_type(expr);
         while let IntermediateType::Exact(box TypeSignature::Plain(name)) = &struct_ty {
             if let Some(ty) = self.get_ident_ty(name) {
@@ -433,7 +481,9 @@ impl TypeInferrer<'_> {
         expr: &PrimaryExpression,
     ) -> (IntermediateType, Vec<IntermediateType>) {
         match expr {
-            PrimaryExpression::Identifier(t) => (self.get_symbol_ty(t.as_ref()).unwrap(), Vec::new()),
+            PrimaryExpression::Identifier(t) => {
+                (self.get_symbol_ty(t.as_ref()).unwrap(), Vec::new())
+            }
             PrimaryExpression::Literal(lit) => match lit {
                 Literal::Integer(..) => (self.get_number_ty(), Vec::new()),
                 Literal::Float(..) => (
@@ -443,18 +493,19 @@ impl TypeInferrer<'_> {
                 Literal::StringLiteral(..) => (
                     IntermediateType::Exact(Box::new(TypeSignature::Pointer {
                         nullable: false,
-                        ty: Box::new(TypeSignature::Primitive(Primitive::Int(8)))
+                        ty: Box::new(TypeSignature::Primitive(Primitive::Int(8))),
                     })),
                     Vec::new(),
-                )
-            }
+                ),
+            },
             PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block)) => {
                 if let TypeSignature::Infer(_id) = return_type {
                     self.push_block();
                     for param in params {
                         match param {
-                            LambdaParam::LambdaParam(name, ty) => 
-                                self.push_symbol(name.clone(), From::from(*ty.clone())),
+                            LambdaParam::LambdaParam(name, ty) => {
+                                self.push_symbol(name.clone(), From::from(*ty.clone()))
+                            }
                             LambdaParam::Variadic => {}
                         }
                     }
@@ -494,16 +545,26 @@ impl TypeInferrer<'_> {
             }
             PrimaryExpression::Expression(expr) => self.get_type(expr),
             PrimaryExpression::StructInitialization(ident, fields) => {
-                let struct_ty = self.context.symbols.types.get(ident)
+                let struct_ty = self
+                    .context
+                    .symbols
+                    .types
+                    .get(ident)
                     .unwrap_or_else(|| &self.context.symbols.imported_types[ident]);
                 if let TypeSignature::Struct(_, struct_fields) = struct_ty {
-                    let mut struct_field_tys = struct_fields.iter()
+                    let mut struct_field_tys = struct_fields
+                        .iter()
                         .map(|StructField::Field { ty, name, .. }| (name, ty))
                         .collect::<Vec<_>>();
                     struct_field_tys.sort_by(|(l_name, _), (r_name, _)| l_name.cmp(&r_name));
 
-                    let mut arg_field_tys = fields.iter()
-                        .map(|StructInitializationField::StructInitializationField(name, e)| (name, self.get_type(e)))
+                    let mut arg_field_tys = fields
+                        .iter()
+                        .map(
+                            |StructInitializationField::StructInitializationField(name, e)| {
+                                (name, self.get_type(e))
+                            },
+                        )
                         .collect::<Vec<_>>();
                     arg_field_tys.sort_by(|(l_name, _), (r_name, _)| l_name.cmp(&r_name));
 
@@ -519,11 +580,18 @@ impl TypeInferrer<'_> {
                     }
                     (From::from(TypeSignature::Plain(ident.clone())), ret_tys)
                 } else {
-                    panic!("Cannot instantiate non-struct type {:?} as a struct", struct_ty);
+                    panic!(
+                        "Cannot instantiate non-struct type {:?} as a struct",
+                        struct_ty
+                    );
                 }
             }
             PrimaryExpression::VectorInitialization(ident, fields) => {
-                let vec_ty = self.context.symbols.types.get(ident)
+                let vec_ty = self
+                    .context
+                    .symbols
+                    .types
+                    .get(ident)
                     .unwrap_or_else(|| &self.context.symbols.imported_types[ident]);
                 if let TypeSignature::Vector(plain) = vec_ty {
                     let prim = From::from(TypeSignature::Primitive(*plain));
@@ -535,7 +603,10 @@ impl TypeInferrer<'_> {
                     }
                     (From::from(TypeSignature::Plain(ident.clone())), ret_tys)
                 } else {
-                    panic!("Cannot instantiate non-vector type {:?} as a vector", vec_ty);
+                    panic!(
+                        "Cannot instantiate non-vector type {:?} as a vector",
+                        vec_ty
+                    );
                 }
             }
             otherwise => panic!("Not implemented: {:?}", otherwise),
@@ -771,8 +842,8 @@ impl TypeInferrer<'_> {
                 }
             }
             TypeSignature::Primitive(prim)
-                | TypeSignature::Vector(prim)
-                | TypeSignature::Complex(prim) => panic!("Cannot call type {}", prim),
+            | TypeSignature::Vector(prim)
+            | TypeSignature::Complex(prim) => panic!("Cannot call type {}", prim),
             TypeSignature::Pointer { ty, .. } => self.call_exact(ty, args),
             TypeSignature::Struct(_name, _fields) => unimplemented!(),
             TypeSignature::Enum(_name, _fields) => unimplemented!(),
@@ -810,13 +881,9 @@ impl TypeInferrer<'_> {
             (IntermediateType::Number(id, num), IntermediateType::Exact(ty))
             | (IntermediateType::Exact(ty), IntermediateType::Number(id, num)) => {
                 self.make_num_exact(*id, num, ty)
-             }
-            (intermediate, IntermediateType::Exact(ty)) => {
-                self.unify_with_infer(intermediate, ty)
             }
-            (IntermediateType::Exact(ty), intermediate) => {
-                self.unify_with_infer(intermediate, ty)
-            }
+            (intermediate, IntermediateType::Exact(ty)) => self.unify_with_infer(intermediate, ty),
+            (IntermediateType::Exact(ty), intermediate) => self.unify_with_infer(intermediate, ty),
             (lvalue, IntermediateType::Any(id)) => {
                 if let Some(ty) = self.infer_map.get(id).cloned() {
                     self.make_equal(lvalue, &ty);
@@ -854,9 +921,7 @@ impl TypeInferrer<'_> {
                 }
             }
 
-            (IntermediateType::Number(id, num), ty) => {
-                self.make_num_exact(*id, num, ty)
-            }
+            (IntermediateType::Number(id, num), ty) => self.make_num_exact(*id, num, ty),
         }
     }
 
@@ -876,20 +941,24 @@ impl TypeInferrer<'_> {
             }
             (IntermediateNumber::Indeterminate, TypeSignature::Plain(_)) => unimplemented!(),
             (IntermediateNumber::Float, TypeSignature::Plain(_)) => unimplemented!(),
-            (_, t@TypeSignature::Struct(..)) | (_, t@TypeSignature::Enum(..))
-            | (_, t@TypeSignature::Tuple(..)) | (_, t@TypeSignature::Array(..))
-            | (_, t@TypeSignature::DynamicArray(..)) | (_, t@TypeSignature::Function(..))
-                => panic!("Cannot use {:?} like a number", t),
+            (_, t @ TypeSignature::Struct(..))
+            | (_, t @ TypeSignature::Enum(..))
+            | (_, t @ TypeSignature::Tuple(..))
+            | (_, t @ TypeSignature::Array(..))
+            | (_, t @ TypeSignature::DynamicArray(..))
+            | (_, t @ TypeSignature::Function(..)) => panic!("Cannot use {:?} like a number", t),
             (IntermediateNumber::Indeterminate, TypeSignature::Primitive(t))
-            | (IntermediateNumber::Float, TypeSignature::Primitive(t@Primitive::Float))
-            | (IntermediateNumber::Float, TypeSignature::Primitive(t@Primitive::Double))
-            | (IntermediateNumber::Double, TypeSignature::Primitive(t@Primitive::Double))
-            => TypeSignature::Primitive(*t),
+            | (IntermediateNumber::Float, TypeSignature::Primitive(t @ Primitive::Float))
+            | (IntermediateNumber::Float, TypeSignature::Primitive(t @ Primitive::Double))
+            | (IntermediateNumber::Double, TypeSignature::Primitive(t @ Primitive::Double)) => {
+                TypeSignature::Primitive(*t)
+            }
             (IntermediateNumber::Indeterminate, TypeSignature::Vector(t))
-            | (IntermediateNumber::Float, TypeSignature::Vector(t@Primitive::Float))
-            | (IntermediateNumber::Float, TypeSignature::Vector(t@Primitive::Double))
-            | (IntermediateNumber::Double, TypeSignature::Vector(t@Primitive::Double))
-            => TypeSignature::Vector(*t),
+            | (IntermediateNumber::Float, TypeSignature::Vector(t @ Primitive::Float))
+            | (IntermediateNumber::Float, TypeSignature::Vector(t @ Primitive::Double))
+            | (IntermediateNumber::Double, TypeSignature::Vector(t @ Primitive::Double)) => {
+                TypeSignature::Vector(*t)
+            }
             otherwise => panic!("Not implemented: {:?}", otherwise),
         };
 
@@ -968,28 +1037,34 @@ impl TypeInferrer<'_> {
             TypeSignature::Primitive(prim)
             | TypeSignature::Vector(prim)
             | TypeSignature::Complex(prim) => {
-                if let TypeSignature::Primitive(r_prim) 
-                        | TypeSignature::Vector(r_prim)
-                        | TypeSignature::Complex(r_prim) = rvalue {
+                if let TypeSignature::Primitive(r_prim)
+                | TypeSignature::Vector(r_prim)
+                | TypeSignature::Complex(r_prim) = rvalue
+                {
                     self.fail_if_prim(prim != r_prim, prim, r_prim);
                 } else {
                     self.fail_if(lvalue != rvalue, lvalue, rvalue);
                 }
             }
-            TypeSignature::Pointer { ty: left_ty, nullable: left_nullable } => match rvalue {
-                TypeSignature::Pointer { ty: right_ty, nullable: right_nullable} => {
+            TypeSignature::Pointer {
+                ty: left_ty,
+                nullable: left_nullable,
+            } => match rvalue {
+                TypeSignature::Pointer {
+                    ty: right_ty,
+                    nullable: right_nullable,
+                } => {
                     assert!(!*right_nullable || *left_nullable);
                     self.unify_types(left_ty, right_ty);
                 }
                 TypeSignature::Struct(..) => {
                     panic!("Cannot use struct {:?} as a pointer", rvalue);
                 }
-                TypeSignature::Array(right_ty, _)
-                | TypeSignature::DynamicArray(right_ty, _) => {
+                TypeSignature::Array(right_ty, _) | TypeSignature::DynamicArray(right_ty, _) => {
                     self.unify_types(left_ty, right_ty);
                 }
                 otherwise => panic!("Not implemented: {:?}", otherwise),
-            }
+            },
             TypeSignature::Struct(left_name, left_fields) => match rvalue {
                 TypeSignature::Struct(right_name, right_fields) => {
                     assert_eq!(left_name, right_name);
@@ -999,7 +1074,7 @@ impl TypeInferrer<'_> {
                     assert_eq!(left_name.as_ref(), Some(name));
                 }
                 otherwise => panic!("Not implemented: {:?}", otherwise),
-            }
+            },
             TypeSignature::Enum(_name, _fields) => unimplemented!(),
             TypeSignature::Union(_name, _fields) => unimplemented!(),
             TypeSignature::Tuple(_tys) => unimplemented!(),
@@ -1008,16 +1083,18 @@ impl TypeInferrer<'_> {
                 let right = rvalue.dereference(&self.infer_map).unwrap();
                 self.unify_types(&ty, &right);
             }
-            TypeSignature::Function(left_params, left_return_value) => {
-                match rvalue {
-                    TypeSignature::Function(right_params, right_return_value) => {
-                        left_params.iter().zip(right_params.iter())
-                            .for_each(|(left, right)| self.unify_types(left.ty_field(), right.ty_field()));
-                        self.unify_types(left_return_value, right_return_value);
-                    }
-                    otherwise => panic!("Not implemented: {:?}", otherwise),
+            TypeSignature::Function(left_params, left_return_value) => match rvalue {
+                TypeSignature::Function(right_params, right_return_value) => {
+                    left_params
+                        .iter()
+                        .zip(right_params.iter())
+                        .for_each(|(left, right)| {
+                            self.unify_types(left.ty_field(), right.ty_field())
+                        });
+                    self.unify_types(left_return_value, right_return_value);
                 }
-            }
+                otherwise => panic!("Not implemented: {:?}", otherwise),
+            },
             TypeSignature::Infer(infer) => {
                 self.unify_with_infer(infer, rvalue);
             }

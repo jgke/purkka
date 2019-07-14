@@ -655,7 +655,7 @@ impl TypeQualifiers {
 impl Expression {
     pub fn value(&self) -> Option<i128> {
         match self {
-            Expression::Expression(list) => list.last().unwrap().value()
+            Expression::Expression(list) => list.last().unwrap().value(),
         }
     }
 }
@@ -674,19 +674,15 @@ impl TernaryExpression {
         match self {
             TernaryExpression::GeneralExpression(e) => e.value(),
             TernaryExpression::Ternary(e, _, e_t, _, e_f) => {
-                e.value().and_then(|v| {
-                    if v != 0 {
-                        e_t.value()
-                    } else {
-                        e_f.value()
-                    }
-                })
+                e.value()
+                    .and_then(|v| if v != 0 { e_t.value() } else { e_f.value() })
             }
         }
     }
 }
 
 impl GeneralExpression {
+    #[rustfmt::skip]
     pub fn value(&self) -> Option<i128> {
         match self {
             GeneralExpression::CastExpression(e) => e.value(),
@@ -716,7 +712,7 @@ impl CastExpression {
     pub fn value(&self) -> Option<i128> {
         match self {
             CastExpression::UnaryExpression(e) => e.value(),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 }
@@ -732,8 +728,8 @@ impl UnaryExpression {
                 UnaryOperator::Plus(..) => e.value(),
                 UnaryOperator::Minus(..) => e.value().map(|v| -v),
                 UnaryOperator::BitNot(..) => e.value().map(|v| !v),
-                UnaryOperator::Not(..) => e.value().map(|v| if v != 0 { 1 } else { 0 })
-            }
+                UnaryOperator::Not(..) => e.value().map(|v| if v != 0 { 1 } else { 0 }),
+            },
             UnaryExpression::SizeofExpr(..) => unimplemented!(),
             UnaryExpression::SizeofTy(..) => unimplemented!(),
             UnaryExpression::AddressOfLabel(..) => None,
@@ -745,7 +741,7 @@ impl PostfixExpression {
     pub fn value(&self) -> Option<i128> {
         match self {
             PostfixExpression::PrimaryExpression(e) => e.value(),
-            _ => unimplemented!()
+            _ => unimplemented!(),
         }
     }
 }
@@ -755,12 +751,12 @@ impl PrimaryExpression {
         match self {
             PrimaryExpression::Number(num) => Some(num.parse().unwrap()),
             PrimaryExpression::Identifier(_) => None,
-            _ => panic!()
+            _ => panic!(),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Attribute {
-    Vector(usize)
+    Vector(usize),
 }

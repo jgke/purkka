@@ -28,7 +28,8 @@ pub fn get_file_cb<'a>(
         }
 
         if full_path.to_lowercase().ends_with(".prk") {
-            let (prk_tree, operators, symbols) = purkkaparser::parse_file(&full_path, &content, get_file);
+            let (prk_tree, operators, symbols) =
+                purkkaparser::parse_file(&full_path, &content, get_file);
             let declarations = purkkaparser::get_declarations(&prk_tree, false);
             let (parsed, context) = purkkaconverter::convert(prk_tree, operators, symbols);
             let formatted = cformat::format_c(&parsed, context.local_includes);
@@ -62,7 +63,9 @@ pub fn get_file_cb<'a>(
     })
 }
 
-pub fn get_file_content_cb<'a>(options: &'a PreprocessorOptions) -> impl Fn(&FileQuery) -> (String, String) + 'a {
+pub fn get_file_content_cb<'a>(
+    options: &'a PreprocessorOptions,
+) -> impl Fn(&FileQuery) -> (String, String) + 'a {
     move |req: &FileQuery| -> (String, String) {
         let mut contents = String::new();
         if_debug(IncludeName, || {

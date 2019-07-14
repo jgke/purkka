@@ -23,6 +23,8 @@ pub fn is_debug_enabled(ident: DebugVal) -> bool {
         .map(String::as_str)
     {
         true
+    } else if let Ok("1") = std::env::var("PURKKA_DEBUG").as_ref().map(String::as_str) {
+        true
     } else {
         false
     }

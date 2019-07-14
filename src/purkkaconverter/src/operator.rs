@@ -1,5 +1,4 @@
 /// Inline overrided operators
-
 use crate::traits::TreeTransformer;
 use crate::Context;
 use purkkasyntax::visitor::*;

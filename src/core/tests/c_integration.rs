@@ -312,10 +312,7 @@ fn expressions() {
     assert_eq!(
         parse("int foo() { if(foo) asm(something 1); else if (something) asm(something 2); else asm(something 3); }").c_content,
         "int foo() {\n    if(foo) asm(something 1);\n    else if(something) asm(something 2);\n    else asm(something 3);\n}\n");
-    assert_eq!(
-        parse("int a = { 1 };").c_content,
-        "int a = { 1, };\n"
-    );
+    assert_eq!(parse("int a = { 1 };").c_content, "int a = { 1, };\n");
 }
 
 #[test]

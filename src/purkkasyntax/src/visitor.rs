@@ -228,9 +228,8 @@ pub fn walk_primary_expression<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut 
             );
         }
         PrimaryExpression::VectorInitialization(_ident, list) => {
-            list.iter_mut().for_each(|mut e| {
-                visitor.visit_expression(e.deref_mut())
-            });
+            list.iter_mut()
+                .for_each(|mut e| visitor.visit_expression(e.deref_mut()));
         }
     }
 }

@@ -79,9 +79,8 @@ where
         let mut symbols = HashMap::new();
         symbols.insert(
             intern.get_ref("__extension__"),
-            Macro::Text(
-                Source::dummy(),
-                vec![]));
+            Macro::Text(Source::dummy(), vec![]),
+        );
         symbols.insert(
             intern.get_ref("__STDC__"),
             Macro::Text(
@@ -89,7 +88,9 @@ where
                 vec![MacroToken {
                     ty: MacroTokenType::Number(intern.get_ref("1")),
                     source: Source::dummy(),
-                }]));
+                }],
+            ),
+        );
         symbols.insert(
             intern.get_ref("__GNUC__"),
             Macro::Text(
@@ -97,7 +98,9 @@ where
                 vec![MacroToken {
                     ty: MacroTokenType::Number(intern.get_ref("4")),
                     source: Source::dummy(),
-                }]));
+                }],
+            ),
+        );
         symbols.insert(
             intern.get_ref("__GNUC_MINOR__"),
             Macro::Text(
@@ -105,7 +108,9 @@ where
                 vec![MacroToken {
                     ty: MacroTokenType::Number(intern.get_ref("6")),
                     source: Source::dummy(),
-                }]));
+                }],
+            ),
+        );
         symbols.insert(
             intern.get_ref("__GNUC_PATCHLEVEL__"),
             Macro::Text(
@@ -113,7 +118,9 @@ where
                 vec![MacroToken {
                     ty: MacroTokenType::Number(intern.get_ref("0")),
                     source: Source::dummy(),
-                }]));
+                }],
+            ),
+        );
         MacroContext {
             symbols,
             if_stack: Vec::new(),
@@ -296,8 +303,8 @@ where
         iter: &mut FragmentIterator,
         preserve_last: bool,
     ) {
-        while iter.peek().is_some() && iter.next() == Some(c1) {
-            if iter.peek() == Some(c2) {
+        while iter.peek().is_some() {
+            if iter.next() == Some(c1) && iter.peek() == Some(c2) {
                 break;
             }
         }

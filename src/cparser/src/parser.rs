@@ -1,5 +1,5 @@
-use std::convert::TryFrom;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::rc::Rc;
 
@@ -7,7 +7,7 @@ use debug::debug::{if_debug, DebugVal};
 use shared::traits::{multipeek, MultiPeek};
 
 use ctoken::token::Token;
-use purkkasyntax::{TypeSignature, Primitive};
+use purkkasyntax::{Primitive, TypeSignature};
 use resolve::Declarations;
 
 use crate::grammar::*;
@@ -156,8 +156,7 @@ macro_rules! op_table {
 }
 
 fn has_typedef(spec: &DeclarationSpecifiers) -> bool {
-    if let DeclarationSpecifiers::DeclarationSpecifiers(Some(spec), _) = spec
-    {
+    if let DeclarationSpecifiers::DeclarationSpecifiers(Some(spec), _) = spec {
         spec.0.typedef
     } else {
         false
@@ -310,9 +309,9 @@ where
                 let init_list = self.parse_init_declarator_list(declarator);
                 let attrs = self.maybe_parse_attributes();
                 ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
-                            Box::new(spec),
-                            init_list,
-                            Some(attrs),
+                    Box::new(spec),
+                    init_list,
+                    Some(attrs),
                 )))
             }
         };
@@ -472,16 +471,15 @@ where
                         "Conflicting type specifiers",
                     );
                 }
-                Some(Token::Identifier(_, ident)) if ident.as_ref() == "__float128" || ident.as_ref() == "__Float128" => {
+                Some(Token::Identifier(_, ident))
+                    if ident.as_ref() == "__float128" || ident.as_ref() == "__Float128" =>
+                {
                     read_token!(self, Token::Identifier);
                     data.replace_if_empty(PrimitiveType::Double, "Conflicting type specifiers");
                 }
                 Some(Token::Identifier(_, ident)) if ident.as_ref() == "_Complex" => {
                     read_token!(self, Token::Identifier);
-                    complex.replace_if_empty(
-                        Some(()),
-                        "_Complex specified twice",
-                    );
+                    complex.replace_if_empty(Some(()), "_Complex specified twice");
                 }
                 Some(Token::Identifier(_, ident)) if self.is_type(ident) => {
                     read_token!(self, Token::Identifier);
@@ -493,12 +491,19 @@ where
                 _ => break,
             }
         }
-        
+
         if longs == 0 && sign.is_none() && data.is_none() && ty.is_none() && complex.is_none() {
             None
-        } else if longs == 0 && sign.is_none() && data.is_none() && ty.is_none() && complex.is_some() {
+        } else if longs == 0
+            && sign.is_none()
+            && data.is_none()
+            && ty.is_none()
+            && complex.is_some()
+        {
             Some(CType::Complex(None, PrimitiveType::Double))
-        } else if (longs != 0 || sign.is_some() || data.is_some() || complex.is_some()) && ty.is_some() {
+        } else if (longs != 0 || sign.is_some() || data.is_some() || complex.is_some())
+            && ty.is_some()
+        {
             panic!("Conflicting type specifiers");
         } else if ty.is_some() {
             ty
@@ -518,9 +523,7 @@ where
                 | (_, Some(_), Some(PrimitiveType::Double)) => {
                     panic!("Signed floats are not supported")
                 }
-                (1, None, Some(PrimitiveType::Double)) => {
-                    (None, PrimitiveType::LongDouble)
-                }
+                (1, None, Some(PrimitiveType::Double)) => (None, PrimitiveType::LongDouble),
 
                 (t, _, _) if t > 2 => panic!("Type is too long! ({})", t),
                 _ => unreachable!(),
@@ -617,7 +620,10 @@ where
         }
     }
 
-    fn parse_enum_field(&mut self, field_index: &mut i128) -> (Rc<str>, Option<TernaryExpression>, i128) {
+    fn parse_enum_field(
+        &mut self,
+        field_index: &mut i128,
+    ) -> (Rc<str>, Option<TernaryExpression>, i128) {
         let ident = read_identifier_str!(self);
         let res = if let Some(Token::Assign(..)) = self.peek() {
             read_token!(self, Token::Assign);
@@ -684,9 +690,9 @@ where
             self.iter.peek_and_advance();
             loop {
                 match self.iter.peek_buf() {
-                    Some(Token::Volatile(..)) | Some(Token::Const(..)) | Some(Token::Restrict(..)) => {
-                        self.iter.peek_and_advance()
-                    }
+                    Some(Token::Volatile(..))
+                    | Some(Token::Const(..))
+                    | Some(Token::Restrict(..)) => self.iter.peek_and_advance(),
                     _ => break,
                 };
             }
@@ -733,9 +739,9 @@ where
 
     fn parse_direct_declarator(&mut self) -> Box<DirectDeclarator> {
         let mut decl = match self.peek() {
-            Some(Token::Identifier(..)) => Box::new(DirectDeclarator::Identifier(
-                read_identifier_str!(self)
-            )),
+            Some(Token::Identifier(..)) => {
+                Box::new(DirectDeclarator::Identifier(read_identifier_str!(self)))
+            }
             Some(Token::Asm(..)) => Box::new(DirectDeclarator::AsmStatement(Box::new(
                 self.parse_asm_statement(),
             ))),
@@ -1219,7 +1225,9 @@ where
         (Expression::Expression(exprs), size, ty)
     }
 
-    fn parse_assignment_expression(&mut self) -> (AssignmentExpression, Option<i128>, Option<TypeSignature>) {
+    fn parse_assignment_expression(
+        &mut self,
+    ) -> (AssignmentExpression, Option<i128>, Option<TypeSignature>) {
         let left = self.parse_ternary_expression();
         match self.peek() {
             Some(Token::Assign(..))
@@ -1240,42 +1248,64 @@ where
                     let op = self.next();
                     let assignment_op = self.assignment_operator(op.unwrap().clone());
                     let right = self.parse_assignment_expression();
-                    let res_val = left.1.as_ref().copied().and_then(|v1| right.1.as_ref().copied().map(|v2| match assignment_op {
-                        AssignmentOperator::Assign(..) => v2,
-                        AssignmentOperator::TimesAssign(..) => v1 * v2,
-                        AssignmentOperator::DivAssign(..) => v1 / v2,
-                        AssignmentOperator::ModAssign(..) => v1 % v2,
-                        AssignmentOperator::PlusAssign(..) => v1 + v2,
-                        AssignmentOperator::MinusAssign(..) => v1 - v2,
-                        AssignmentOperator::BitShiftLeftAssign(..) => v1 << v2,
-                        AssignmentOperator::BitShiftRightAssign(..) => v1 >> v2,
-                        AssignmentOperator::BitAndAssign(..) => v1 & v2,
-                        AssignmentOperator::BitXorAssign(..) => v1 ^ v2,
-                        AssignmentOperator::BitOrAssign(..) => v1 | v2,
-                    }));
-                    let res_ty = left.2.and_then(|v1| right.2.as_ref().cloned().map(|v2| match assignment_op {
-                        AssignmentOperator::Assign(..) => v2,
-                        _ => v1,
-                    }));
-                    let res = AssignmentExpression::Assignment(Box::new(u), assignment_op, Box::new(right.0));
+                    let res_val = left.1.as_ref().copied().and_then(|v1| {
+                        right.1.as_ref().copied().map(|v2| match assignment_op {
+                            AssignmentOperator::Assign(..) => v2,
+                            AssignmentOperator::TimesAssign(..) => v1 * v2,
+                            AssignmentOperator::DivAssign(..) => v1 / v2,
+                            AssignmentOperator::ModAssign(..) => v1 % v2,
+                            AssignmentOperator::PlusAssign(..) => v1 + v2,
+                            AssignmentOperator::MinusAssign(..) => v1 - v2,
+                            AssignmentOperator::BitShiftLeftAssign(..) => v1 << v2,
+                            AssignmentOperator::BitShiftRightAssign(..) => v1 >> v2,
+                            AssignmentOperator::BitAndAssign(..) => v1 & v2,
+                            AssignmentOperator::BitXorAssign(..) => v1 ^ v2,
+                            AssignmentOperator::BitOrAssign(..) => v1 | v2,
+                        })
+                    });
+                    let res_ty = left.2.and_then(|v1| {
+                        right.2.as_ref().cloned().map(|v2| match assignment_op {
+                            AssignmentOperator::Assign(..) => v2,
+                            _ => v1,
+                        })
+                    });
+                    let res = AssignmentExpression::Assignment(
+                        Box::new(u),
+                        assignment_op,
+                        Box::new(right.0),
+                    );
                     (res, res_val, res_ty)
                 } else {
                     panic!("Tried to assign to a rvalue")
                 }
             }
-            _ => (AssignmentExpression::TernaryExpression(left.0), left.1, left.2),
+            _ => (
+                AssignmentExpression::TernaryExpression(left.0),
+                left.1,
+                left.2,
+            ),
         }
     }
 
-    fn parse_ternary_expression(&mut self) -> (TernaryExpression, Option<i128>, Option<TypeSignature>) {
+    fn parse_ternary_expression(
+        &mut self,
+    ) -> (TernaryExpression, Option<i128>, Option<TypeSignature>) {
         let e = self.parse_general_expression();
         if let Some(Token::Ternary(..)) = self.peek() {
             let t1 = read_token!(self, Token::Ternary);
             let if_true = self.parse_expression();
             let t2 = read_token!(self, Token::Colon);
             let otherwise = self.parse_ternary_expression();
-            let expr = TernaryExpression::Ternary(*e.0, t1, Box::new(if_true.0), t2, Box::new(otherwise.0));
-            let expr_val = if let (Some(cond_val), Some(if_t_val), Some(if_f_val)) = (e.1, if_true.1, otherwise.1) {
+            let expr = TernaryExpression::Ternary(
+                *e.0,
+                t1,
+                Box::new(if_true.0),
+                t2,
+                Box::new(otherwise.0),
+            );
+            let expr_val = if let (Some(cond_val), Some(if_t_val), Some(if_f_val)) =
+                (e.1, if_true.1, otherwise.1)
+            {
                 if cond_val != 0 {
                     Some(if_t_val)
                 } else {
@@ -1292,7 +1322,7 @@ where
                         Some(false_ty)
                     }
                 }
-                (_, t, _) => t
+                (_, t, _) => t,
             };
             (expr, expr_val, expr_ty)
         } else {
@@ -1300,13 +1330,15 @@ where
         }
     }
 
-    fn parse_general_expression(&mut self) -> (Box<GeneralExpression>, Option<i128>, Option<TypeSignature>)  {
+    fn parse_general_expression(
+        &mut self,
+    ) -> (Box<GeneralExpression>, Option<i128>, Option<TypeSignature>) {
         let left = self.parse_cast_expression();
         self.parse_general_expression_(
             1,
             Box::new(GeneralExpression::CastExpression(Box::new(left.0))),
             left.1,
-            left.2
+            left.2,
         )
     }
 
@@ -1378,7 +1410,11 @@ where
                 let ty = self.parse_type_name();
                 let cp = read_token!(self, Token::CloseParen);
                 let e = self.parse_general_expression();
-                return (CastExpression::OpenParen(op, Box::new(ty), cp, e.0), e.1, e.2);
+                return (
+                    CastExpression::OpenParen(op, Box::new(ty), cp, e.0),
+                    e.1,
+                    e.2,
+                );
             }
         }
         let e = self.parse_unary_expression();
@@ -1395,7 +1431,11 @@ where
                     IncrementOrDecrement::Increment(..) => v + 1,
                     IncrementOrDecrement::Decrement(..) => v - 1,
                 });
-                (UnaryExpression::IncrementOrDecrement(op, Box::new(e.0)), val, e.2)
+                (
+                    UnaryExpression::IncrementOrDecrement(op, Box::new(e.0)),
+                    val,
+                    e.2,
+                )
             }
             Some(Token::BitAnd(..))
             | Some(Token::Times(..))
@@ -1407,17 +1447,22 @@ where
                 let op = self.unary_operator(t);
                 let e = self.parse_cast_expression();
                 let val = e.1.and_then(|v| match op {
-                    UnaryOperator::BitAnd(..) |  UnaryOperator::Times(..) => None,
+                    UnaryOperator::BitAnd(..) | UnaryOperator::Times(..) => None,
                     UnaryOperator::Plus(..) => Some(v),
                     UnaryOperator::Minus(..) => Some(-v),
                     UnaryOperator::BitNot(..) => Some(!v),
                     UnaryOperator::Not(..) => Some(if v != 0 { 0 } else { 1 }),
                 });
                 let ty = e.2.map(|t| match op {
-                    UnaryOperator::BitAnd(..) => TypeSignature::Pointer { ty: Box::new(t), nullable: false },
+                    UnaryOperator::BitAnd(..) => TypeSignature::Pointer {
+                        ty: Box::new(t),
+                        nullable: false,
+                    },
                     UnaryOperator::Times(..) => t.dereference(&HashMap::new()).unwrap(),
-                    UnaryOperator::Plus(..) | UnaryOperator::Minus(..)
-                        | UnaryOperator::BitNot(..) | UnaryOperator::Not(..) => t
+                    UnaryOperator::Plus(..)
+                    | UnaryOperator::Minus(..)
+                    | UnaryOperator::BitNot(..)
+                    | UnaryOperator::Not(..) => t,
                 });
                 (UnaryExpression::UnaryOperator(op, Box::new(e.0)), val, ty)
             }
@@ -1429,11 +1474,19 @@ where
                         read_token!(self, Token::OpenParen);
                         let ty = self.parse_type_name();
                         read_token!(self, Token::CloseParen);
-                        return (UnaryExpression::SizeofTy(Box::new(ty)), None, Some(TypeSignature::Primitive(Primitive::UInt(64))));
+                        return (
+                            UnaryExpression::SizeofTy(Box::new(ty)),
+                            None,
+                            Some(TypeSignature::Primitive(Primitive::UInt(64))),
+                        );
                     }
                 }
                 let e = self.parse_unary_expression();
-                (UnaryExpression::SizeofExpr(Box::new(e.0)), None, Some(TypeSignature::Primitive(Primitive::UInt(64))))
+                (
+                    UnaryExpression::SizeofExpr(Box::new(e.0)),
+                    None,
+                    Some(TypeSignature::Primitive(Primitive::UInt(64))),
+                )
             }
             /* GNU extension */
             Some(Token::And(..)) => {
@@ -1448,7 +1501,9 @@ where
         }
     }
 
-    fn parse_postfix_expression(&mut self) -> (PostfixExpression, Option<i128>, Option<TypeSignature>) {
+    fn parse_postfix_expression(
+        &mut self,
+    ) -> (PostfixExpression, Option<i128>, Option<TypeSignature>) {
         let expr = self.parse_primary_expression();
         let mut e = PostfixExpression::PrimaryExpression(expr.0);
         let mut val = expr.1;
@@ -1508,7 +1563,9 @@ where
     }
 
     #[allow(clippy::cognitive_complexity)]
-    fn parse_primary_expression(&mut self) -> (PrimaryExpression, Option<i128>, Option<TypeSignature>) {
+    fn parse_primary_expression(
+        &mut self,
+    ) -> (PrimaryExpression, Option<i128>, Option<TypeSignature>) {
         match self.peek() {
             Some(Token::Identifier(..)) => {
                 let s = read_identifier_str!(self);
@@ -1516,14 +1573,22 @@ where
                 if self.is_builtin(&s) {
                     (self.parse_builtin(s), None, None)
                 } else {
-                    (PrimaryExpression::Identifier(s), val, val.map(|_| TypeSignature::int()))
+                    (
+                        PrimaryExpression::Identifier(s),
+                        val,
+                        val.map(|_| TypeSignature::int()),
+                    )
                 }
             }
             Some(Token::Number(..)) => {
                 let t = self.next().unwrap().get_ident_str().clone();
                 let mut lc = t.to_ascii_lowercase();
                 let mut float = None;
-                while lc.ends_with('l') || lc.ends_with('u') || lc.ends_with('f') || lc.ends_with('d') {
+                while lc.ends_with('l')
+                    || lc.ends_with('u')
+                    || lc.ends_with('f')
+                    || lc.ends_with('d')
+                {
                     if lc.ends_with('f') {
                         float = Some(TypeSignature::Primitive(Primitive::Float));
                     } else if lc.ends_with('d') {
@@ -1544,17 +1609,25 @@ where
                     } else {
                         i128::from_str_radix(&lc, 10).unwrap()
                     };
-                    (PrimaryExpression::Number(t), Some(val), Some(TypeSignature::int()))
+                    (
+                        PrimaryExpression::Number(t),
+                        Some(val),
+                        Some(TypeSignature::int()),
+                    )
                 }
             }
-            Some(Token::StringLiteral(..)) => {
-                (PrimaryExpression::StringLiteral(self.next().unwrap().get_ident_str().clone()), None,
-                Some(TypeSignature::char().address_of())
-                )
-            }
+            Some(Token::StringLiteral(..)) => (
+                PrimaryExpression::StringLiteral(self.next().unwrap().get_ident_str().clone()),
+                None,
+                Some(TypeSignature::char().address_of()),
+            ),
             Some(Token::CharLiteral(..)) => {
                 let val = self.next().unwrap().get_char_val();
-                (PrimaryExpression::CharLiteral(val), Some(val as i128), Some(TypeSignature::char()))
+                (
+                    PrimaryExpression::CharLiteral(val),
+                    Some(val as i128),
+                    Some(TypeSignature::char()),
+                )
             }
             Some(Token::OpenParen(..)) => {
                 read_token!(self, Token::OpenParen);
@@ -1568,7 +1641,11 @@ where
                     read_token!(self, Token::OpenBrace);
                     let initializers = self.parse_initializer_list();
                     read_token!(self, Token::CloseBrace);
-                    (PrimaryExpression::StructValue(Box::new(ty), initializers), None, None)
+                    (
+                        PrimaryExpression::StructValue(Box::new(ty), initializers),
+                        None,
+                        None,
+                    )
                 } else {
                     let e = self.parse_expression();
                     read_token!(self, Token::CloseParen);
@@ -1674,7 +1751,8 @@ where
     }
 
     pub fn ext_decl_identifiers(&self, ext_decl: &ExternalDeclaration) -> Vec<Rc<str>> {
-        if let ExternalDeclaration::Declaration(box Declaration::Declaration(_, list, _)) = ext_decl {
+        if let ExternalDeclaration::Declaration(box Declaration::Declaration(_, list, _)) = ext_decl
+        {
             list.iter()
                 .map(|e| match e {
                     InitDeclarator::Declarator(decl) => self.get_decl_identifier(&**decl),
@@ -1721,10 +1799,16 @@ where
                             Some(Token::Comma(..)) => {
                                 read_token!(self, Token::Comma);
                             }
-                            Some(Token::Identifier(_, ident)) if ident.as_ref() == "vector_size" || ident.as_ref() == "__vector_size__" => {
+                            Some(Token::Identifier(_, ident))
+                                if ident.as_ref() == "vector_size"
+                                    || ident.as_ref() == "__vector_size__" =>
+                            {
                                 read_token!(self, Token::Identifier);
                                 read_token!(self, Token::OpenParen);
-                                let size = read_token!(self, Token::Number).get_ident_str().parse().unwrap();
+                                let size = read_token!(self, Token::Number)
+                                    .get_ident_str()
+                                    .parse()
+                                    .unwrap();
                                 attrs.push(Attribute::Vector(size));
                                 read_token!(self, Token::CloseParen);
                             }
@@ -1772,11 +1856,14 @@ where
 }
 
 pub fn get_declarations(tree: &S) -> (Declarations, Declarations) {
-    DeclarationContext { types: HashMap::new() }.get_declarations(tree)
+    DeclarationContext {
+        types: HashMap::new(),
+    }
+    .get_declarations(tree)
 }
 
 struct DeclarationContext {
-    types: HashMap<Rc<str>, TypeSignature>
+    types: HashMap<Rc<str>, TypeSignature>,
 }
 
 impl DeclarationContext {
@@ -1787,7 +1874,9 @@ impl DeclarationContext {
 
         for unit in units {
             let (mut decls, ty) = match &unit {
-                ExternalDeclaration::FunctionDefinition(def) => self.function_definition_to_type(def),
+                ExternalDeclaration::FunctionDefinition(def) => {
+                    self.function_definition_to_type(def)
+                }
                 ExternalDeclaration::Declaration(def) => {
                     let (mut decls, has_ty_defs, ty) = self.declaration_to_type(def);
                     if has_ty_defs {
@@ -1802,12 +1891,11 @@ impl DeclarationContext {
             };
             match &ty {
                 TypeSignature::Struct(Some(name), _)
-                    | TypeSignature::Enum(Some(name), _)
-                    | TypeSignature::Union(Some(name), _)
-                    => {
-                        self.types.insert(name.clone(), ty.clone());
-                        types.push((name.clone(), ty.clone()));
-                    }
+                | TypeSignature::Enum(Some(name), _)
+                | TypeSignature::Union(Some(name), _) => {
+                    self.types.insert(name.clone(), ty.clone());
+                    types.push((name.clone(), ty.clone()));
+                }
                 _ => {}
             }
             declarations.append(&mut decls);
@@ -1816,10 +1904,16 @@ impl DeclarationContext {
         (declarations, types)
     }
 
-    fn function_definition_to_type(&self, decl: &FunctionDefinition) -> (Declarations, TypeSignature) {
+    fn function_definition_to_type(
+        &self,
+        decl: &FunctionDefinition,
+    ) -> (Declarations, TypeSignature) {
         let FunctionDefinition::FunctionDefinition(spec, decl, _) = decl;
         let spec_ty = self.decl_spec_to_type(spec.as_ref().unwrap(), Vec::new());
-        (vec![self.declarator_to_type(decl, spec_ty.clone())], spec_ty)
+        (
+            vec![self.declarator_to_type(decl, spec_ty.clone())],
+            spec_ty,
+        )
     }
 
     fn declaration_to_type(&self, decl: &Declaration) -> (Declarations, bool, TypeSignature) {
@@ -1828,16 +1922,25 @@ impl DeclarationContext {
         let decl_tys = init_decls
             .iter()
             .map(|init_decl| match init_decl {
-                InitDeclarator::Declarator(decl) | InitDeclarator::Asm(decl, _) | InitDeclarator::Assign(decl, _, _)
-                    => self.declarator_to_type(&**decl, spec_ty.clone()),
+                InitDeclarator::Declarator(decl)
+                | InitDeclarator::Asm(decl, _)
+                | InitDeclarator::Assign(decl, _, _) => {
+                    self.declarator_to_type(&**decl, spec_ty.clone())
+                }
             })
             .collect();
         (decl_tys, has_typedef(&**spec), spec_ty)
     }
 
-    fn decl_spec_to_type(&self, spec: &DeclarationSpecifiers, attrs: Vec<Attribute>) -> TypeSignature {
+    fn decl_spec_to_type(
+        &self,
+        spec: &DeclarationSpecifiers,
+        attrs: Vec<Attribute>,
+    ) -> TypeSignature {
         let DeclarationSpecifiers::DeclarationSpecifiers(_, ty) = spec;
-        ty.as_ref().map(|t| self.type_specifier_to_type(t.clone(), attrs)).unwrap()
+        ty.as_ref()
+            .map(|t| self.type_specifier_to_type(t.clone(), attrs))
+            .unwrap()
     }
 
     fn declarator_to_type(&self, decl: &Declarator, ty: TypeSignature) -> (Rc<str>, TypeSignature) {
@@ -1850,7 +1953,11 @@ impl DeclarationContext {
         self.direct_decl_to_type(decl, ty)
     }
 
-    fn abstract_declarator_to_type(&self, decl: &AbstractDeclarator, ty: TypeSignature) -> TypeSignature {
+    fn abstract_declarator_to_type(
+        &self,
+        decl: &AbstractDeclarator,
+        ty: TypeSignature,
+    ) -> TypeSignature {
         let AbstractDeclarator::AbstractDeclarator(ptr, decl) = decl;
         let ty = if let Some(p) = ptr {
             self.ptr_to_ty(p, Box::new(ty))
@@ -1860,7 +1967,11 @@ impl DeclarationContext {
         self.direct_abstract_decl_to_type(&**decl, ty)
     }
 
-    fn direct_decl_to_type(&self, decl: &DirectDeclarator, ty: TypeSignature) -> (Rc<str>, TypeSignature) {
+    fn direct_decl_to_type(
+        &self,
+        decl: &DirectDeclarator,
+        ty: TypeSignature,
+    ) -> (Rc<str>, TypeSignature) {
         match decl {
             DirectDeclarator::Identifier(ident) => (ident.clone(), ty),
             DirectDeclarator::AsmStatement(_) => (From::from("_"), ty),
@@ -1875,12 +1986,22 @@ impl DeclarationContext {
             }
             DirectDeclarator::Function(decl, params) => {
                 let (name, ty) = self.direct_decl_to_type(&**decl, ty);
-                (name, TypeSignature::Function(params.iter().map(|f| self.function_param(f)).collect(), Box::new(ty)))
+                (
+                    name,
+                    TypeSignature::Function(
+                        params.iter().map(|f| self.function_param(f)).collect(),
+                        Box::new(ty),
+                    ),
+                )
             }
         }
     }
 
-    fn direct_abstract_decl_to_type(&self, decl: &DirectAbstractDeclarator, ty: TypeSignature) -> TypeSignature {
+    fn direct_abstract_decl_to_type(
+        &self,
+        decl: &DirectAbstractDeclarator,
+        ty: TypeSignature,
+    ) -> TypeSignature {
         match decl {
             DirectAbstractDeclarator::Epsilon() => ty,
             DirectAbstractDeclarator::Parens(decl) => self.abstract_declarator_to_type(&**decl, ty),
@@ -1894,7 +2015,10 @@ impl DeclarationContext {
             }
             DirectAbstractDeclarator::Function(decl, params) => {
                 let ty = self.direct_abstract_decl_to_type(&**decl, ty);
-                TypeSignature::Function(params.iter().map(|f| self.function_param(f)).collect(), Box::new(ty))
+                TypeSignature::Function(
+                    params.iter().map(|f| self.function_param(f)).collect(),
+                    Box::new(ty),
+                )
             }
         }
     }
@@ -1908,11 +2032,15 @@ impl DeclarationContext {
         }
     }
 
-    fn type_specifier_to_type(&self, mut ty: TypeSpecifier, attrs: Vec<Attribute>) -> TypeSignature {
-        use TypeSignature::Primitive as P;
+    fn type_specifier_to_type(
+        &self,
+        mut ty: TypeSpecifier,
+        attrs: Vec<Attribute>,
+    ) -> TypeSignature {
         use CType::Primitive as CP;
         use PrimitiveType::*;
-        
+        use TypeSignature::Primitive as P;
+
         let mut complex = false;
 
         if let CType::Complex(sign, t) = ty {
@@ -1931,8 +2059,10 @@ impl DeclarationContext {
             CP(None, Int) | CP(Some(true), Int) => P(Primitive::Int(32)),
             CP(Some(false), Int) => P(Primitive::UInt(32)),
 
-            CP(None, Long) | CP(Some(true), Long)
-                | CP(None, LongLong) | CP(Some(true), LongLong) => P(Primitive::Int(64)),
+            CP(None, Long)
+            | CP(Some(true), Long)
+            | CP(None, LongLong)
+            | CP(Some(true), LongLong) => P(Primitive::Int(64)),
             CP(Some(false), Long) | CP(Some(false), LongLong) => P(Primitive::UInt(64)),
 
             CP(None, Float) | CP(Some(true), Float) => P(Primitive::Float),
@@ -1941,12 +2071,12 @@ impl DeclarationContext {
             CP(None, Double) | CP(Some(true), Double) => P(Primitive::Double),
             CP(Some(false), Double) => P(Primitive::Double),
 
-            CP(None, LongDouble) | CP(Some(true), LongDouble)=> P(Primitive::Double),
+            CP(None, LongDouble) | CP(Some(true), LongDouble) => P(Primitive::Double),
             CP(Some(false), LongDouble) => P(Primitive::Double),
 
             CType::Compound(compound) => self.compound_type_to_type(&compound),
             CType::Custom(ty) => TypeSignature::Plain(ty.clone()),
-            CType::Complex(..) => unreachable!()
+            CType::Complex(..) => unreachable!(),
         };
 
         if let P(prim) = ty {
@@ -1966,22 +2096,48 @@ impl DeclarationContext {
 
     fn compound_type_to_type(&self, ty: &CompoundType) -> TypeSignature {
         match ty {
-            CompoundType::Struct(name, Some(fields)) =>
-                TypeSignature::Struct(Some(name.clone()), fields.iter().flat_map(|f| self.struct_field(f).into_iter()).collect()),
-            CompoundType::Struct(name, None) => self.types.get(name).cloned()
+            CompoundType::Struct(name, Some(fields)) => TypeSignature::Struct(
+                Some(name.clone()),
+                fields
+                    .iter()
+                    .flat_map(|f| self.struct_field(f).into_iter())
+                    .collect(),
+            ),
+            CompoundType::Struct(name, None) => self
+                .types
+                .get(name)
+                .cloned()
                 .unwrap_or_else(|| TypeSignature::Plain(name.clone())),
-            CompoundType::AnonymousStruct(fields) =>
-                TypeSignature::Struct(None, fields.iter().flat_map(|f| self.struct_field(f).into_iter()).collect()),
-            CompoundType::Union(name, Some(fields)) =>
-                TypeSignature::Union(Some(name.clone()), fields.iter().flat_map(|f| self.struct_field(f).into_iter()).collect()),
+            CompoundType::AnonymousStruct(fields) => TypeSignature::Struct(
+                None,
+                fields
+                    .iter()
+                    .flat_map(|f| self.struct_field(f).into_iter())
+                    .collect(),
+            ),
+            CompoundType::Union(name, Some(fields)) => TypeSignature::Union(
+                Some(name.clone()),
+                fields
+                    .iter()
+                    .flat_map(|f| self.struct_field(f).into_iter())
+                    .collect(),
+            ),
             CompoundType::Union(name, None) => self.types[name].clone(),
-            CompoundType::AnonymousUnion(fields) =>
-                TypeSignature::Union(None, fields.iter().flat_map(|f| self.struct_field(f).into_iter()).collect()),
-            CompoundType::Enum(name, Some(fields)) =>
-                TypeSignature::Enum(Some(name.clone()), fields.iter().map(|f| self.enum_field(f)).collect()),
+            CompoundType::AnonymousUnion(fields) => TypeSignature::Union(
+                None,
+                fields
+                    .iter()
+                    .flat_map(|f| self.struct_field(f).into_iter())
+                    .collect(),
+            ),
+            CompoundType::Enum(name, Some(fields)) => TypeSignature::Enum(
+                Some(name.clone()),
+                fields.iter().map(|f| self.enum_field(f)).collect(),
+            ),
             CompoundType::Enum(name, None) => self.types[name].clone(),
-            CompoundType::AnonymousEnum(fields) =>
-                TypeSignature::Enum(None, fields.iter().map(|f| self.enum_field(f)).collect()),
+            CompoundType::AnonymousEnum(fields) => {
+                TypeSignature::Enum(None, fields.iter().map(|f| self.enum_field(f)).collect())
+            }
         }
     }
 
@@ -1989,21 +2145,32 @@ impl DeclarationContext {
         let spec_ty = self.decl_spec_to_type(&*f.0, Vec::new());
         f.1.iter()
             .map(|(decl, maybe_bitfield)| {
-                let bitfield = maybe_bitfield.as_ref().map(|b| usize::try_from(b.value().unwrap()).unwrap());
+                let bitfield = maybe_bitfield
+                    .as_ref()
+                    .map(|b| usize::try_from(b.value().unwrap()).unwrap());
 
                 let (name, ty) = match decl {
                     EitherDeclarator::Anonymous(_) => unimplemented!(),
-                    EitherDeclarator::Declarator(decl) => self.declarator_to_type(decl, spec_ty.clone())
+                    EitherDeclarator::Declarator(decl) => {
+                        self.declarator_to_type(decl, spec_ty.clone())
+                    }
                 };
-                purkkasyntax::StructField::Field { name, ty: Box::new(ty), bitfield }
+                purkkasyntax::StructField::Field {
+                    name,
+                    ty: Box::new(ty),
+                    bitfield,
+                }
             })
             .collect()
     }
 
     fn enum_field(&self, f: &EnumField) -> purkkasyntax::EnumField {
-        purkkasyntax::EnumField::Field { name: f.0.clone(), value: f.2, ty: None }
+        purkkasyntax::EnumField::Field {
+            name: f.0.clone(),
+            value: f.2,
+            ty: None,
+        }
     }
-
 
     fn function_param(&self, f: &FunctionParam) -> purkkasyntax::Param {
         match f {
@@ -2023,8 +2190,8 @@ impl DeclarationContext {
                     let spec_ty = self.decl_spec_to_type(spec, Vec::new());
                     purkkasyntax::Param::Param(From::from("_"), Box::new(spec_ty))
                 }
-            }
-            FunctionParam::Varargs => purkkasyntax::Param::Variadic
+            },
+            FunctionParam::Varargs => purkkasyntax::Param::Variadic,
         }
     }
 }

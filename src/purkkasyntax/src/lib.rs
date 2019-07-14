@@ -63,7 +63,7 @@ grammar! {
         | #Token::Struct #Token::Identifier #Token::OpenBrace StructFieldList #Token::CloseBrace
         | #Token::Enum #Token::Identifier #Token::OpenBrace EnumFieldList #Token::CloseBrace
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum Typedef { 
+        pub enum Typedef {
             Alias(bool, Rc<str>, Box<TypeSignature>),
             Struct(Rc<str>, Vec<StructField>),
             Enum(Rc<str>, Vec<EnumField>),
@@ -368,7 +368,7 @@ impl TypeSignature {
     pub fn is_ptr(&self, context: &HashMap<i128, IntermediateType>) -> bool {
         use TypeSignature::*;
         match self {
-            Pointer { ..} | Array(..) | DynamicArray(..) => true,
+            Pointer { .. } | Array(..) | DynamicArray(..) => true,
             Infer(infer) => infer.is_ptr(context),
             _ => false,
         }
@@ -392,33 +392,40 @@ impl TypeSignature {
         }
     }
 
-    pub fn access(&self, ident: &str, context: &HashMap<i128, IntermediateType>) -> (Option<i128>, Option<TypeSignature>) {
+    pub fn access(
+        &self,
+        ident: &str,
+        context: &HashMap<i128, IntermediateType>,
+    ) -> (Option<i128>, Option<TypeSignature>) {
         match self {
             TypeSignature::Struct(_, fields) | TypeSignature::Union(_, fields) => {
-                    for StructField::Field { name, ty, .. } in fields {
-                        if name.as_ref() == ident {
-                            return (None, Some(*ty.clone()));
-                        }
+                for StructField::Field { name, ty, .. } in fields {
+                    if name.as_ref() == ident {
+                        return (None, Some(*ty.clone()));
                     }
-                    (None, None)
+                }
+                (None, None)
             }
             TypeSignature::Enum(_, fields) => {
-                    for EnumField::Field { name, value, .. } in fields {
-                        if name.as_ref() == ident {
-                            return (Some(*value), Some(TypeSignature::Primitive(Primitive::Int(32))));
-                        }
+                for EnumField::Field { name, value, .. } in fields {
+                    if name.as_ref() == ident {
+                        return (
+                            Some(*value),
+                            Some(TypeSignature::Primitive(Primitive::Int(32))),
+                        );
                     }
-                    (None, None)
+                }
+                (None, None)
             }
             TypeSignature::Infer(infer) => infer.access(ident, context),
-            _ => (None, None)
+            _ => (None, None),
         }
     }
 
     pub fn address_of(self) -> TypeSignature {
         TypeSignature::Pointer {
             ty: Box::new(self),
-            nullable: false
+            nullable: false,
         }
     }
 
@@ -523,7 +530,7 @@ impl IntermediateType {
                 } else {
                     false
                 }
-            },
+            }
             IntermediateType::Number(..) => false,
             IntermediateType::Exact(t) => t.is_ptr(context),
         }
@@ -537,7 +544,7 @@ impl IntermediateType {
                 } else {
                     false
                 }
-            },
+            }
             IntermediateType::Number(..) => false,
             IntermediateType::Exact(t) => t.is_compound(context),
         }
@@ -551,13 +558,17 @@ impl IntermediateType {
                 } else {
                     None
                 }
-            },
+            }
             IntermediateType::Number(..) => None,
             IntermediateType::Exact(t) => t.dereference(context),
         }
     }
 
-    pub fn access(&self, ident: &str, context: &HashMap<i128, IntermediateType>) -> (Option<i128>, Option<TypeSignature>) {
+    pub fn access(
+        &self,
+        ident: &str,
+        context: &HashMap<i128, IntermediateType>,
+    ) -> (Option<i128>, Option<TypeSignature>) {
         match self {
             IntermediateType::Any(id) => {
                 if let Some(ty) = context.get(id) {
@@ -565,7 +576,7 @@ impl IntermediateType {
                 } else {
                     (None, None)
                 }
-            },
+            }
             IntermediateType::Number(..) => (None, None),
             IntermediateType::Exact(t) => t.access(ident, context),
         }
@@ -584,7 +595,7 @@ pub enum IntermediateNumber {
 pub enum Param {
     TypeOnly(Box<TypeSignature>),
     Param(Rc<str>, Box<TypeSignature>),
-    Variadic
+    Variadic,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -592,7 +603,7 @@ pub enum StructField {
     Field {
         name: Rc<str>,
         ty: Box<TypeSignature>,
-        bitfield: Option<usize>
+        bitfield: Option<usize>,
     },
 }
 

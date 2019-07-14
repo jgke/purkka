@@ -32,7 +32,7 @@ pub fn format_c<H: std::hash::BuildHasher>(tree: &S, includes: HashSet<Rc<str>, 
 
     let S::TranslationUnit(TranslationUnit::Units(units)) = tree;
     for unit in units {
-        if let ExternalDeclaration::Declaration(decl) = unit  {
+        if let ExternalDeclaration::Declaration(decl) = unit {
             match &**decl {
                 Declaration::Declaration(_, list, _) if list.is_empty() => {
                     context.declaration(&**decl);
@@ -248,7 +248,8 @@ impl Context {
     fn external_declaration(&mut self, tree: &ExternalDeclaration) {
         match tree {
             // rendered already in format_c()
-            ExternalDeclaration::Declaration(box Declaration::Declaration(_, list, _)) if list.is_empty() => {},
+            ExternalDeclaration::Declaration(box Declaration::Declaration(_, list, _))
+                if list.is_empty() => {}
             ExternalDeclaration::Declaration(decl) => self.declaration(decl),
             ExternalDeclaration::FunctionDefinition(def) => self.function_definition(def),
             f => panic!("Not implemented.: {:?}", f),

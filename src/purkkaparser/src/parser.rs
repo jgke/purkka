@@ -83,7 +83,7 @@ pub struct Operator {
     pub left_associative: bool,
 
     pub ty: TypeSignature,
-    pub handler: Option<Expression>
+    pub handler: Option<Expression>,
 }
 
 pub type OperatorMap = HashMap<Rc<str>, Operator>;
@@ -105,47 +105,47 @@ pub struct Symbols {
 }
 
 fn unary_num_to_bool() -> TypeSignature {
-    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate); 
+    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate);
     let num = Box::new(TypeSignature::Infer(intermediate));
     TypeSignature::Function(
         vec![Param::TypeOnly(num.clone())],
-        Box::new(TypeSignature::Primitive(Primitive::Int(32)))
+        Box::new(TypeSignature::Primitive(Primitive::Int(32))),
     )
 }
 
 fn unary_num_to_num() -> TypeSignature {
-    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate); 
+    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate);
     let num = Box::new(TypeSignature::Infer(intermediate));
-    TypeSignature::Function(
-        vec![Param::TypeOnly(num.clone())],
-        num.clone()
-    )
+    TypeSignature::Function(vec![Param::TypeOnly(num.clone())], num.clone())
 }
 
 fn unary_num_to_ptr() -> TypeSignature {
-    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate); 
+    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate);
     let num = Box::new(TypeSignature::Infer(intermediate));
     TypeSignature::Function(
         vec![Param::TypeOnly(num.clone())],
-        Box::new(TypeSignature::Pointer { nullable: false, ty: num.clone() })
+        Box::new(TypeSignature::Pointer {
+            nullable: false,
+            ty: num.clone(),
+        }),
     )
 }
 
 fn bin_num_to_bool() -> TypeSignature {
-    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate); 
+    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate);
     let num = Box::new(TypeSignature::Infer(intermediate));
     TypeSignature::Function(
         vec![Param::TypeOnly(num.clone()), Param::TypeOnly(num.clone())],
-        Box::new(TypeSignature::Primitive(Primitive::Int(32)))
+        Box::new(TypeSignature::Primitive(Primitive::Int(32))),
     )
 }
 
 fn bin_num_to_num() -> TypeSignature {
-    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate); 
+    let intermediate = IntermediateType::generic_number(IntermediateNumber::Indeterminate);
     let num = Box::new(TypeSignature::Infer(intermediate));
     TypeSignature::Function(
         vec![Param::TypeOnly(num.clone()), Param::TypeOnly(num.clone())],
-        num.clone()
+        num.clone(),
     )
 }
 
@@ -154,11 +154,11 @@ fn bin_any_to_any() -> TypeSignature {
     let num = Box::new(TypeSignature::Infer(intermediate));
     TypeSignature::Function(
         vec![Param::TypeOnly(num.clone()), Param::TypeOnly(num.clone())],
-        num.clone()
+        num.clone(),
     )
 }
 
-
+#[rustfmt::skip]
 fn default_bin_ops() -> OperatorMap {
     let mut infix_operators = HashMap::new();
 
@@ -199,6 +199,7 @@ fn default_bin_ops() -> OperatorMap {
     infix_operators
 }
 
+#[rustfmt::skip]
 fn default_unary_ops() -> OperatorMap {
     let mut unary_operators = HashMap::new();
 
@@ -216,6 +217,7 @@ fn default_unary_ops() -> OperatorMap {
     unary_operators
 }
 
+#[rustfmt::skip]
 fn default_postfix_ops() -> OperatorMap {
     let mut postfix_operators = HashMap::new();
 
@@ -226,8 +228,13 @@ fn default_postfix_ops() -> OperatorMap {
     postfix_operators
 }
 
-pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator,
-             current_file: &str, get_file: &dyn Fn(FileQuery) -> ResolveResult) -> (S, Operators, Symbols) {
+pub fn parse(
+    iter: Iter,
+    sources: &[Source],
+    fragment_iter: &FragmentIterator,
+    current_file: &str,
+    get_file: &dyn Fn(FileQuery) -> ResolveResult,
+) -> (S, Operators, Symbols) {
     let mut context = ParseContext {
         operators: Operators {
             unary: default_unary_ops(),
@@ -239,7 +246,7 @@ pub fn parse(iter: Iter, sources: &[Source], fragment_iter: &FragmentIterator,
         sources,
         symbols: Symbols::default(),
         current_file,
-        get_file
+        get_file,
     };
     let tu = S::TranslationUnit(context.parse_translation_unit());
     (tu, context.operators, context.symbols)
@@ -316,19 +323,31 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn get_ty(&self, s: &str) -> Option<&TypeSignature> {
-        self.symbols.types.get(s)
+        self.symbols
+            .types
+            .get(s)
             .or_else(|| self.symbols.imported_types.get(s))
     }
 
-    fn push_operator(&mut self, left_associative: bool, precedence: usize, s: Rc<str>, ty: TypeSignature, body: Expression) {
-        if self.operators.infix.contains_key(&s)  {
+    fn push_operator(
+        &mut self,
+        left_associative: bool,
+        precedence: usize,
+        s: Rc<str>,
+        ty: TypeSignature,
+        body: Expression,
+    ) {
+        if self.operators.infix.contains_key(&s) {
             panic!("Operator {} already defined", s);
         }
 
         if left_associative {
-            self.operators.infix.insert(s, Operator::binop(precedence, ty, Some(body)));
+            self.operators
+                .infix
+                .insert(s, Operator::binop(precedence, ty, Some(body)));
         } else {
-            self.operators.infix
+            self.operators
+                .infix
                 .insert(s, Operator::binop_right(precedence, ty, Some(body)));
         }
     }
@@ -423,9 +442,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                                 .map(|size| match first {
                                     Some('i') => TypeSignature::Primitive(Primitive::Int(size)),
                                     Some('u') => TypeSignature::Primitive(Primitive::UInt(size)),
-                                    _ => unreachable!()
+                                    _ => unreachable!(),
                                 })
-                            .unwrap_or_else(|_| TypeSignature::Plain(t))
+                                .unwrap_or_else(|_| TypeSignature::Plain(t))
                         } else {
                             TypeSignature::Plain(t)
                         }
@@ -604,7 +623,11 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let name = self.next().identifier_s().unwrap().clone();
                 read_token!(self, Token::Colon);
                 let ty = Box::new(self.parse_type());
-                Some(StructField::Field { name, ty, bitfield: None })
+                Some(StructField::Field {
+                    name,
+                    ty,
+                    bitfield: None,
+                })
             }
             _ => None,
         }
@@ -676,8 +699,14 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             params.iter().cloned().map(From::from).collect(),
             Box::new(return_type.clone()),
         );
-        let body = self.lambda_to_expr(params, return_type, block) ;
-        self.push_operator(left_associative, precedence, op.clone(), ty.clone(), body.clone());
+        let body = self.lambda_to_expr(params, return_type, block);
+        self.push_operator(
+            left_associative,
+            precedence,
+            op.clone(),
+            ty.clone(),
+            body.clone(),
+        );
         OperatorOverload::OperatorOverload(op, Box::new(ty), Box::new(body))
     }
 
@@ -702,9 +731,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             unreachable!();
         };
         let content = (self.get_file)(FileQuery::new(self.current_file, &file, true, false));
-        content.declarations.unwrap().into_iter().for_each(|(name, decl)| {
-            self.symbols.imported_declarations.insert(name, decl);
-        });
+        content
+            .declarations
+            .unwrap()
+            .into_iter()
+            .for_each(|(name, decl)| {
+                self.symbols.imported_declarations.insert(name, decl);
+            });
         for (name, ty) in content.types.unwrap() {
             self.symbols.imported_types.insert(name.clone(), ty.clone());
         }
@@ -719,7 +752,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::OpenBrace);
                 let fields = self.parse_struct_list();
                 read_token!(self, Token::CloseBrace);
-                self.symbols.types.insert(name.clone(), TypeSignature::Struct(Some(name.clone()), fields.clone()));
+                self.symbols.types.insert(
+                    name.clone(),
+                    TypeSignature::Struct(Some(name.clone()), fields.clone()),
+                );
                 Typedef::Struct(name, fields)
             }
             Some(Token::Enum(..)) => unimplemented!(),
@@ -816,7 +852,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let t = self.next().identifier_s().unwrap().clone();
                 let ty = self.get_ty(&t).cloned();
                 match self.peek() {
-                    Some(Token::OpenBrace(..)) if ty.as_ref().map(|t| t.is_compound(&HashMap::new())) == Some(true) => {
+                    Some(Token::OpenBrace(..))
+                        if ty.as_ref().map(|t| t.is_compound(&HashMap::new())) == Some(true) =>
+                    {
                         let fields = self.parse_initialization_fields(&t);
                         PrimaryExpression::StructInitialization(t, fields)
                     }
@@ -1097,7 +1135,8 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             panic!("Cannot instantiate non-struct type {} as struct", ty);
         };
 
-        let mut remaining_names = struct_fields.iter()
+        let mut remaining_names = struct_fields
+            .iter()
             .map(|StructField::Field { name, .. }| name.clone())
             .rev()
             .collect::<Vec<_>>();
@@ -1131,7 +1170,8 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                                     }
                                 }
 
-                                remaining_names.iter()
+                                remaining_names
+                                    .iter()
                                     .position(|name| name == &ident)
                                     .map(|i| remaining_names.remove(i));
 
@@ -1157,8 +1197,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                             }
                         }
                         Some(Token::Comma(..)) => {
-                            let ident = remaining_names.pop()
-                                .unwrap_or_else(|| panic!(format!("Struct {} has only {} fields", ty, used_names.len())));
+                            let ident = remaining_names.pop().unwrap_or_else(|| {
+                                panic!(format!(
+                                    "Struct {} has only {} fields",
+                                    ty,
+                                    used_names.len()
+                                ))
+                            });
                             used_names.insert(ident.clone());
                             fields.push(StructInitializationField::StructInitializationField(
                                 ident.clone(),
@@ -1190,7 +1235,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn parse_vector_initialization_field(&mut self) -> Option<Expression> {
         match self.peek() {
             Some(Token::CloseBrace(..)) => None,
-            _ => Some(self.parse_expression())
+            _ => Some(self.parse_expression()),
         }
     }
 }
@@ -1203,7 +1248,13 @@ mod tests {
     fn to_token(prec: &OperatorMap, s: &str) -> Token {
         prec.get(s)
             .map(|_| Token::Operator(0, From::from(s)))
-            .or_else(|| if s == ":" { Some(Token::Colon(0)) } else { None } )
+            .or_else(|| {
+                if s == ":" {
+                    Some(Token::Colon(0))
+                } else {
+                    None
+                }
+            })
             .unwrap_or_else(|| Token::Integer(0, s.parse().unwrap()))
     }
 
@@ -1279,7 +1330,7 @@ mod tests {
             sources: &Vec::new(),
 
             current_file: "",
-            get_file: &|_| panic!()
+            get_file: &|_| panic!(),
         };
         let result = eval_tree(&context.parse_expression());
         println!("{} = {} (expected: {})", expr, result, expected);
@@ -1316,8 +1367,9 @@ mod tests {
             &vec![],
             &FragmentIterator::new("", ""),
             "",
-            &|_| panic!()
-        ).0
+            &|_| panic!(),
+        )
+        .0
     }
 
     #[test]

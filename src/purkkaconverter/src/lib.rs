@@ -1,14 +1,14 @@
 #![feature(box_patterns, drain_filter)]
 
-use std::convert::TryInto;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryInto;
 use std::rc::Rc;
 
 use cparser::grammar as cp;
 use ctoken::token as ct;
 use purkkaparser::parser::{Operators, Symbols};
 use purkkasyntax as pp;
-use purkkasyntax::{TypeSignature, Primitive};
+use purkkasyntax::{Primitive, TypeSignature};
 use purkkatoken::token as pt;
 
 pub mod traits;
@@ -16,10 +16,10 @@ pub mod traits;
 mod array;
 mod declarations;
 mod imports;
+pub mod inference;
 mod lambda;
 mod operator;
 mod typedef;
-pub mod inference;
 
 use traits::TreeTransformer;
 
@@ -59,10 +59,12 @@ pub fn convert(mut purkka_tree: pp::S, operators: Operators, symbols: Symbols) -
 pub fn fetch_identifiers_from_prk(tree: &mut pp::S) -> HashMap<Rc<str>, pp::Declaration> {
     let mut decls = FetchDeclarations::new();
     decls.fetch_declarations(tree);
-    decls.declarations.into_iter()
+    decls
+        .declarations
+        .into_iter()
         .map(|decl| {
-             let pp::Declaration::Declaration(_, _, name, _, _) = &decl;
-             (name.clone(), decl)
+            let pp::Declaration::Declaration(_, _, name, _, _) = &decl;
+            (name.clone(), decl)
         })
         .collect()
 }
@@ -103,11 +105,18 @@ impl Context {
     pub fn translation_unit(&mut self, k: pp::TranslationUnit) -> cp::TranslationUnit {
         match k {
             pp::TranslationUnit::Units(u) => {
-                let tys = self.symbols.types.clone().into_iter()
+                let tys = self
+                    .symbols
+                    .types
+                    .clone()
+                    .into_iter()
                     .map(|ty| self.format_type_as_external_decl(ty.1))
                     .collect::<Vec<_>>();
-                let funcs = self.functions.drain(..)
-                    .collect::<Vec<_>>().into_iter()
+                let funcs = self
+                    .functions
+                    .drain(..)
+                    .collect::<Vec<_>>()
+                    .into_iter()
                     .map(|(n, u)| self.format_lambda_as_external_decl(n.clone(), u.clone()))
                     .collect::<Vec<_>>();
                 cp::TranslationUnit::Units(
@@ -137,15 +146,12 @@ impl Context {
         ))
     }
 
-    fn format_type_as_external_decl(
-        &mut self,
-        ty: pp::TypeSignature
-    ) -> cp::ExternalDeclaration {
-        cp::ExternalDeclaration::Declaration(
-            Box::new(cp::Declaration::Declaration(
-                Box::new(self.type_to_declaration_specifiers(ty.clone())),
-                vec![],
-                None)))
+    fn format_type_as_external_decl(&mut self, ty: pp::TypeSignature) -> cp::ExternalDeclaration {
+        cp::ExternalDeclaration::Declaration(Box::new(cp::Declaration::Declaration(
+            Box::new(self.type_to_declaration_specifiers(ty.clone())),
+            vec![],
+            None,
+        )))
     }
 
     pub fn cond_and_block_to_selection_statement(
@@ -364,19 +370,21 @@ impl Context {
     pub fn parameter_list_from_params(
         &mut self,
         params: Vec<pp::LambdaParam>,
-        ) -> Vec<cp::FunctionParam> {
+    ) -> Vec<cp::FunctionParam> {
         params
             .into_iter()
-            .map(|t|
-                 match t {
-                     pp::LambdaParam::LambdaParam(name, ty) => {
-                         let decl_spec = self.type_to_declaration_specifiers(*ty.clone());
-                         let decl = self.format_decl(name, *ty);
-                         cp::FunctionParam::Parameter(
-                             cp::ParameterDeclaration::Declarator(Box::new(decl_spec), Box::new(decl)))
-                     }
-                     pp::LambdaParam::Variadic => cp::FunctionParam::Varargs
-                 }).collect()
+            .map(|t| match t {
+                pp::LambdaParam::LambdaParam(name, ty) => {
+                    let decl_spec = self.type_to_declaration_specifiers(*ty.clone());
+                    let decl = self.format_decl(name, *ty);
+                    cp::FunctionParam::Parameter(cp::ParameterDeclaration::Declarator(
+                        Box::new(decl_spec),
+                        Box::new(decl),
+                    ))
+                }
+                pp::LambdaParam::Variadic => cp::FunctionParam::Varargs,
+            })
+            .collect()
     }
 
     pub fn unit_to_external_decl(&mut self, k: pp::Unit) -> cp::ExternalDeclaration {
@@ -384,30 +392,43 @@ impl Context {
             pp::Unit::Declaration(decl) => {
                 cp::ExternalDeclaration::Declaration(Box::new(self.convert_declaration(*decl)))
             }
-            pp::Unit::Typedef(ty) => {
-                match *ty {
-                    pp::Typedef::Alias(..) => unreachable!(),
-                    pp::Typedef::Struct(name, fields) => {
-                        let c_ty = cp::CType::Compound(cp::CompoundType::Struct(name, Some(
-                                    fields.into_iter().map(|field| self.struct_field(field)).collect()
-                        )));
-                        cp::ExternalDeclaration::Declaration(
-                            Box::new(cp::Declaration::Declaration(
-                                Box::new(cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))),
-                                Vec::new(),
-                                None)))
-                    }
-                    other => panic!("Not implemented: {:?}", other),
+            pp::Unit::Typedef(ty) => match *ty {
+                pp::Typedef::Alias(..) => unreachable!(),
+                pp::Typedef::Struct(name, fields) => {
+                    let c_ty = cp::CType::Compound(cp::CompoundType::Struct(
+                        name,
+                        Some(
+                            fields
+                                .into_iter()
+                                .map(|field| self.struct_field(field))
+                                .collect(),
+                        ),
+                    ));
+                    cp::ExternalDeclaration::Declaration(Box::new(cp::Declaration::Declaration(
+                        Box::new(cp::DeclarationSpecifiers::DeclarationSpecifiers(
+                            None,
+                            Some(c_ty),
+                        )),
+                        Vec::new(),
+                        None,
+                    )))
                 }
-            }
+                other => panic!("Not implemented: {:?}", other),
+            },
             other => panic!("Not implemented: {:?}", other),
         }
     }
 
-    pub fn struct_field(&mut self, pp::StructField::Field {name, ty, .. }: pp::StructField) -> cp::StructField {
+    pub fn struct_field(
+        &mut self,
+        pp::StructField::Field { name, ty, .. }: pp::StructField,
+    ) -> cp::StructField {
         let c_ty = self.type_to_declaration_specifiers(*ty.clone());
         let decl = self.format_decl(name, *ty);
-        (Box::new(c_ty), vec![(cp::EitherDeclarator::Declarator(decl), None)])
+        (
+            Box::new(c_ty),
+            vec![(cp::EitherDeclarator::Declarator(decl), None)],
+        )
     }
 
     pub fn convert_declaration(&mut self, k: pp::Declaration) -> cp::Declaration {
@@ -450,9 +471,12 @@ impl Context {
                     "char" => cp::CType::Primitive(None, cp::PrimitiveType::Char),
                     "float" => cp::CType::Primitive(None, cp::PrimitiveType::Float),
                     "double" => cp::CType::Primitive(None, cp::PrimitiveType::Double),
-                    t if self.symbols.types.contains_key(t) =>
-                        return self.type_to_declaration_specifiers(self.symbols.types[t].clone()),
-                    t if self.symbols.imported_types.contains_key(t) => cp::CType::Custom(ty.clone()),
+                    t if self.symbols.types.contains_key(t) => {
+                        return self.type_to_declaration_specifiers(self.symbols.types[t].clone())
+                    }
+                    t if self.symbols.imported_types.contains_key(t) => {
+                        cp::CType::Custom(ty.clone())
+                    }
                     //t if self.symbols.imported_types.contains_key(t) =>
                     //    return self.type_to_declaration_specifiers(self.symbols.imported_types[t].clone()),
                     other => panic!("Not implemented: {:?}", other),
@@ -466,10 +490,18 @@ impl Context {
                     Primitive::Int(16) => cp::CType::Primitive(None, cp::PrimitiveType::Short),
                     Primitive::Int(32) => cp::CType::Primitive(None, cp::PrimitiveType::Int),
                     Primitive::Int(64) => cp::CType::Primitive(None, cp::PrimitiveType::Long),
-                    Primitive::UInt(8) => cp::CType::Primitive(Some(false), cp::PrimitiveType::Char),
-                    Primitive::UInt(16) => cp::CType::Primitive(Some(false), cp::PrimitiveType::Short),
-                    Primitive::UInt(32) => cp::CType::Primitive(Some(false), cp::PrimitiveType::Int),
-                    Primitive::UInt(64) => cp::CType::Primitive(Some(false), cp::PrimitiveType::Long),
+                    Primitive::UInt(8) => {
+                        cp::CType::Primitive(Some(false), cp::PrimitiveType::Char)
+                    }
+                    Primitive::UInt(16) => {
+                        cp::CType::Primitive(Some(false), cp::PrimitiveType::Short)
+                    }
+                    Primitive::UInt(32) => {
+                        cp::CType::Primitive(Some(false), cp::PrimitiveType::Int)
+                    }
+                    Primitive::UInt(64) => {
+                        cp::CType::Primitive(Some(false), cp::PrimitiveType::Long)
+                    }
                     Primitive::Float => cp::CType::Primitive(None, cp::PrimitiveType::Float),
                     Primitive::Double => cp::CType::Primitive(None, cp::PrimitiveType::Double),
                     other => panic!("Not implemented: {:?}", other),
@@ -477,7 +509,9 @@ impl Context {
                 cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))
             }
             TypeSignature::Infer(..) => unreachable!(),
-            TypeSignature::Array(ty, _) | TypeSignature::DynamicArray(ty, _) => self.type_to_declaration_specifiers(*ty),
+            TypeSignature::Array(ty, _) | TypeSignature::DynamicArray(ty, _) => {
+                self.type_to_declaration_specifiers(*ty)
+            }
             TypeSignature::Pointer { ty, .. } => self.type_to_declaration_specifiers(*ty),
             TypeSignature::Function(_params, ret_ty) => {
                 self.type_to_declaration_specifiers(*ret_ty)
@@ -508,22 +542,26 @@ impl Context {
 
     pub fn format_direct_decl(&mut self, name: Rc<str>, ty: TypeSignature) -> cp::DirectDeclarator {
         match ty {
-            TypeSignature::Plain(_) | TypeSignature::Primitive(_) | TypeSignature::Struct(_, _) =>
-                cp::DirectDeclarator::Identifier(name),
+            TypeSignature::Plain(_) | TypeSignature::Primitive(_) | TypeSignature::Struct(_, _) => {
+                cp::DirectDeclarator::Identifier(name)
+            }
             TypeSignature::Pointer { ty, .. } => self.format_direct_decl(name, *ty),
             TypeSignature::Function(params, _ret_ty) => self
                 .function_pointer_from_params(name, params.into_iter().map(From::from).collect()),
             TypeSignature::Array(ty, size) => cp::DirectDeclarator::Array(
                 Box::new(self.format_direct_decl(name, *ty)),
-                size.map(|lit| Box::new(self.general_expression(
-                            pp::Expression::PrimaryExpression(
-                                pp::PrimaryExpression::Literal(
-                                    pp::Literal::Integer(
-                                        pt::Token::Integer(0, lit.try_into().unwrap())))))))
+                size.map(|lit| {
+                    Box::new(self.general_expression(pp::Expression::PrimaryExpression(
+                        pp::PrimaryExpression::Literal(pp::Literal::Integer(pt::Token::Integer(
+                            0,
+                            lit.try_into().unwrap(),
+                        ))),
+                    )))
+                }),
             ),
             TypeSignature::DynamicArray(ty, expr) => cp::DirectDeclarator::Array(
                 Box::new(self.format_direct_decl(name, *ty)),
-                Some(Box::new(self.general_expression(*expr)))
+                Some(Box::new(self.general_expression(*expr))),
             ),
             other => panic!("Not implemented: {:?}", other),
         }
@@ -548,7 +586,9 @@ impl Context {
         ty: TypeSignature,
     ) -> cp::DirectAbstractDeclarator {
         match ty {
-            TypeSignature::Plain(_) | TypeSignature::Primitive(_) => cp::DirectAbstractDeclarator::Epsilon(),
+            TypeSignature::Plain(_) | TypeSignature::Primitive(_) => {
+                cp::DirectAbstractDeclarator::Epsilon()
+            }
             TypeSignature::Struct(_, _) => cp::DirectAbstractDeclarator::Epsilon(),
             TypeSignature::Pointer { ty, .. } => self.format_abstract_direct_decl(*ty),
             other => panic!("Not implemented: {:?}", other),
@@ -564,10 +604,9 @@ impl Context {
     fn is_assignment_op(&self, op: &Rc<str>) -> bool {
         match op.as_ref() {
             "=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<=" | ">>=" | "&=" | "^=" | "|=" => true,
-            _ => false
+            _ => false,
         }
     }
-
 
     pub fn assignment_expression(&mut self, expr: pp::Expression) -> cp::AssignmentExpression {
         match expr {
@@ -583,17 +622,21 @@ impl Context {
                     "%=" => cp::AssignmentOperator::ModAssign(ct::Token::ModAssign(0)),
                     "+=" => cp::AssignmentOperator::PlusAssign(ct::Token::PlusAssign(0)),
                     "-=" => cp::AssignmentOperator::MinusAssign(ct::Token::MinusAssign(0)),
-                    "<<=" => cp::AssignmentOperator::BitShiftLeftAssign(ct::Token::BitShiftLeftAssign(0)),
-                    ">>=" => cp::AssignmentOperator::BitShiftRightAssign(ct::Token::BitShiftRightAssign(0)),
+                    "<<=" => {
+                        cp::AssignmentOperator::BitShiftLeftAssign(ct::Token::BitShiftLeftAssign(0))
+                    }
+                    ">>=" => cp::AssignmentOperator::BitShiftRightAssign(
+                        ct::Token::BitShiftRightAssign(0),
+                    ),
                     "&=" => cp::AssignmentOperator::BitAndAssign(ct::Token::BitAndAssign(0)),
                     "^=" => cp::AssignmentOperator::BitXorAssign(ct::Token::BitXorAssign(0)),
                     "|=" => cp::AssignmentOperator::BitOrAssign(ct::Token::BitOrAssign(0)),
 
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 };
                 cp::AssignmentExpression::Assignment(left, tok, right)
             }
-            _ => cp::AssignmentExpression::TernaryExpression(self.ternary_expression(expr))
+            _ => cp::AssignmentExpression::TernaryExpression(self.ternary_expression(expr)),
         }
     }
 
@@ -612,15 +655,15 @@ impl Context {
                     Box::new(if_f),
                 )
             }
-            _ => cp::TernaryExpression::GeneralExpression(self.general_expression(k))
+            _ => cp::TernaryExpression::GeneralExpression(self.general_expression(k)),
         }
     }
 
     fn is_general_op(&self, op: &Rc<str>) -> bool {
         match op.as_ref() {
-            "||" | "&&" | "^" | "|" | "&" | "!=" | "==" | ">=" | "<=" | ">" | "<" | "<<" | ">>" |
-            "-" | "+" | "%" | "/" | "*" => true,
-            _ => false
+            "||" | "&&" | "^" | "|" | "&" | "!=" | "==" | ">=" | "<=" | ">" | "<" | "<<" | ">>"
+            | "-" | "+" | "%" | "/" | "*" => true,
+            _ => false,
         }
     }
 
@@ -637,12 +680,22 @@ impl Context {
                     "%" => cp::GeneralExpression::Mod(left, ct::Token::Mod(0), right),
                     "+" => cp::GeneralExpression::Plus(left, ct::Token::Plus(0), right),
                     "-" => cp::GeneralExpression::Minus(left, ct::Token::Minus(0), right),
-                    "<<" => cp::GeneralExpression::BitShiftLeft(left, ct::Token::BitShiftLeft(0), right),
-                    ">>" => cp::GeneralExpression::BitShiftRight(left, ct::Token::BitShiftRight(0), right),
+                    "<<" => {
+                        cp::GeneralExpression::BitShiftLeft(left, ct::Token::BitShiftLeft(0), right)
+                    }
+                    ">>" => cp::GeneralExpression::BitShiftRight(
+                        left,
+                        ct::Token::BitShiftRight(0),
+                        right,
+                    ),
                     "<" => cp::GeneralExpression::LessThan(left, ct::Token::LessThan(0), right),
                     ">" => cp::GeneralExpression::MoreThan(left, ct::Token::MoreThan(0), right),
-                    "<=" => cp::GeneralExpression::LessEqThan(left, ct::Token::LessEqThan(0), right),
-                    ">=" => cp::GeneralExpression::MoreEqThan(left, ct::Token::MoreEqThan(0), right),
+                    "<=" => {
+                        cp::GeneralExpression::LessEqThan(left, ct::Token::LessEqThan(0), right)
+                    }
+                    ">=" => {
+                        cp::GeneralExpression::MoreEqThan(left, ct::Token::MoreEqThan(0), right)
+                    }
                     "==" => cp::GeneralExpression::Equals(left, ct::Token::Equals(0), right),
                     "!=" => cp::GeneralExpression::NotEquals(left, ct::Token::NotEquals(0), right),
                     "&" => cp::GeneralExpression::BitAnd(left, ct::Token::BitAnd(0), right),
@@ -651,10 +704,10 @@ impl Context {
                     "&&" => cp::GeneralExpression::And(left, ct::Token::And(0), right),
                     "||" => cp::GeneralExpression::Or(left, ct::Token::Or(0), right),
 
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 }
             }
-            _ => cp::GeneralExpression::CastExpression(Box::new(self.cast_expression(k)))
+            _ => cp::GeneralExpression::CastExpression(Box::new(self.cast_expression(k))),
         }
     }
 
@@ -674,7 +727,7 @@ impl Context {
         match op {
             "++" => cp::IncrementOrDecrement::Increment(ct::Token::Increment(0)),
             "--" => cp::IncrementOrDecrement::Decrement(ct::Token::Decrement(0)),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -687,7 +740,8 @@ impl Context {
                 match op.as_ref() {
                     "++" | "--" => cp::UnaryExpression::IncrementOrDecrement(
                         self.increment_or_decrement(op.as_ref()),
-                        Box::new(self.unary_expression(arg))),
+                        Box::new(self.unary_expression(arg)),
+                    ),
                     op => {
                         let unary_op = match op {
                             "&" => cp::UnaryOperator::BitAnd(ct::Token::BitAnd(0)),
@@ -696,13 +750,16 @@ impl Context {
                             "-" => cp::UnaryOperator::Minus(ct::Token::Minus(0)),
                             "~" => cp::UnaryOperator::BitNot(ct::Token::BitNot(0)),
                             "!" => cp::UnaryOperator::Not(ct::Token::Not(0)),
-                            _ => unreachable!()
+                            _ => unreachable!(),
                         };
-                        cp::UnaryExpression::UnaryOperator(unary_op, Box::new(self.cast_expression(arg)))
+                        cp::UnaryExpression::UnaryOperator(
+                            unary_op,
+                            Box::new(self.cast_expression(arg)),
+                        )
                     }
                 }
             }
-            _ => cp::UnaryExpression::PostfixExpression(Box::new(self.postfix_expression(k)))
+            _ => cp::UnaryExpression::PostfixExpression(Box::new(self.postfix_expression(k))),
         }
     }
 
@@ -712,9 +769,12 @@ impl Context {
                 let inc_or_dec = match op.as_ref() {
                     "++" => cp::IncrementOrDecrement::Increment(ct::Token::Increment(0)),
                     "--" => cp::IncrementOrDecrement::Decrement(ct::Token::Decrement(0)),
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 };
-                cp::PostfixExpression::Increment(Box::new(self.postfix_expression(*expr)), inc_or_dec)
+                cp::PostfixExpression::Increment(
+                    Box::new(self.postfix_expression(*expr)),
+                    inc_or_dec,
+                )
             }
             pp::Expression::ArrayAccess(array_expr, index_expr) => cp::PostfixExpression::Index(
                 Box::new(self.postfix_expression(*array_expr)),
@@ -735,7 +795,7 @@ impl Context {
             pp::Expression::StructAccess(expr, ident) => cp::PostfixExpression::Member(
                 Box::new(self.postfix_expression(*expr)),
                 cp::MemberAccess::Dot(ct::Token::Dot(0)),
-                ct::Token::Identifier(0, ident)
+                ct::Token::Identifier(0, ident),
             ),
             _ => cp::PostfixExpression::PrimaryExpression(self.primary_expression(k)),
         }
@@ -744,7 +804,7 @@ impl Context {
     pub fn primary_expression(&mut self, k: pp::Expression) -> cp::PrimaryExpression {
         match k {
             pp::Expression::PrimaryExpression(primary) => self.primary_to_primary(primary),
-            _ => cp::PrimaryExpression::Expression(Box::new(self.expression(k)))
+            _ => cp::PrimaryExpression::Expression(Box::new(self.expression(k))),
         }
     }
 
@@ -753,38 +813,67 @@ impl Context {
             pp::PrimaryExpression::Identifier(ident) => cp::PrimaryExpression::Identifier(ident),
             pp::PrimaryExpression::Literal(literal) => self.literal_to_primary(literal),
             pp::PrimaryExpression::BlockExpression(..) => unimplemented!(),
-            pp::PrimaryExpression::Expression(expr) => cp::PrimaryExpression::Expression(Box::new(self.expression(*expr))),
+            pp::PrimaryExpression::Expression(expr) => {
+                cp::PrimaryExpression::Expression(Box::new(self.expression(*expr)))
+            }
             pp::PrimaryExpression::Lambda(..) => unreachable!(),
-            pp::PrimaryExpression::StructInitialization(ident, fields) => cp::PrimaryExpression::StructValue(
-                Box::new(self.type_to_type_name(pp::TypeSignature::Struct(Some(ident), Vec::new()))),
-                fields.iter()
-                    .map(|pp::StructInitializationField::StructInitializationField(name, expr)| (name, expr))
-                    .map(|(name, field)| (name, self.assignment_expression(*field.clone())))
-                    .map(|(name, expr)|
-                         cp::Initializer::Initializer(
-                             Some(name.clone()),
-                             Box::new(cp::AssignmentOrInitializerList::AssignmentExpression(expr))))
-                    .collect()
-            ),
-            pp::PrimaryExpression::VectorInitialization(ident, fields) => cp::PrimaryExpression::StructValue(
-                Box::new(self.type_to_type_name(pp::TypeSignature::Plain(ident))),
-                fields.into_iter()
-                    .map(|field| self.assignment_expression(field))
-                    .map(|expr|
-                         cp::Initializer::Initializer(
-                             None,
-                             Box::new(cp::AssignmentOrInitializerList::AssignmentExpression(expr))))
-                    .collect()
-            ),
+            pp::PrimaryExpression::StructInitialization(ident, fields) => {
+                cp::PrimaryExpression::StructValue(
+                    Box::new(
+                        self.type_to_type_name(pp::TypeSignature::Struct(Some(ident), Vec::new())),
+                    ),
+                    fields
+                        .iter()
+                        .map(
+                            |pp::StructInitializationField::StructInitializationField(
+                                name,
+                                expr,
+                            )| (name, expr),
+                        )
+                        .map(|(name, field)| (name, self.assignment_expression(*field.clone())))
+                        .map(|(name, expr)| {
+                            cp::Initializer::Initializer(
+                                Some(name.clone()),
+                                Box::new(cp::AssignmentOrInitializerList::AssignmentExpression(
+                                    expr,
+                                )),
+                            )
+                        })
+                        .collect(),
+                )
+            }
+            pp::PrimaryExpression::VectorInitialization(ident, fields) => {
+                cp::PrimaryExpression::StructValue(
+                    Box::new(self.type_to_type_name(pp::TypeSignature::Plain(ident))),
+                    fields
+                        .into_iter()
+                        .map(|field| self.assignment_expression(field))
+                        .map(|expr| {
+                            cp::Initializer::Initializer(
+                                None,
+                                Box::new(cp::AssignmentOrInitializerList::AssignmentExpression(
+                                    expr,
+                                )),
+                            )
+                        })
+                        .collect(),
+                )
+            }
         }
     }
 
     pub fn literal_to_primary(&mut self, k: pp::Literal) -> cp::PrimaryExpression {
         match k {
-             pp::Literal::Integer(pt::Token::Integer(_, i)) => cp::PrimaryExpression::Number(From::from(i.to_string())),
-             pp::Literal::Float(pt::Token::Float(_, i)) => cp::PrimaryExpression::Number(From::from(i.to_string())),
-             pp::Literal::StringLiteral(pt::Token::StringLiteral(_, i)) => cp::PrimaryExpression::StringLiteral(From::from(i.to_string())),
-             _ => unreachable!()
+            pp::Literal::Integer(pt::Token::Integer(_, i)) => {
+                cp::PrimaryExpression::Number(From::from(i.to_string()))
+            }
+            pp::Literal::Float(pt::Token::Float(_, i)) => {
+                cp::PrimaryExpression::Number(From::from(i.to_string()))
+            }
+            pp::Literal::StringLiteral(pt::Token::StringLiteral(_, i)) => {
+                cp::PrimaryExpression::StringLiteral(From::from(i.to_string()))
+            }
+            _ => unreachable!(),
         }
     }
 }

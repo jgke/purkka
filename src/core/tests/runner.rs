@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Command;
 
-use core::core::{DEFAULT_INCLUDE_PATH, get_file_cb, get_file_content_cb};
+use core::core::{get_file_cb, get_file_content_cb, DEFAULT_INCLUDE_PATH};
 use preprocessor::PreprocessorOptions;
 use resolve::*;
 
@@ -12,14 +12,12 @@ fn parse(content: &str, filename: &str) -> ResolveResult {
     let options = PreprocessorOptions {
         include_path: DEFAULT_INCLUDE_PATH.to_vec(),
         include_files: Vec::new(),
-        definitions: Vec::new()
+        definitions: Vec::new(),
     };
     let cb = get_file_content_cb(&options);
-    let get_file_content = |req: &FileQuery| {
-        match req.requested_file.as_str() {
-            t if t == filename => (content.to_string(), req.requested_file.clone()),
-            _ => cb(req)
-        }
+    let get_file_content = |req: &FileQuery| match req.requested_file.as_str() {
+        t if t == filename => (content.to_string(), req.requested_file.clone()),
+        _ => cb(req),
     };
 
     let options = PreprocessorOptions {
