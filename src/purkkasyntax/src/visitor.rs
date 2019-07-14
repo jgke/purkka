@@ -105,7 +105,7 @@ pub fn walk_operator_overload<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut O
 
 pub fn walk_declaration<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Declaration) {
     match s {
-        Declaration::Declaration(_, _, _, ty, assignment) => {
+        Declaration::Declaration(_, _, _, _, ty, assignment) => {
             visitor.visit_ty(ty);
             if let Some(assignment) = assignment {
                 visitor.visit_expression(assignment);

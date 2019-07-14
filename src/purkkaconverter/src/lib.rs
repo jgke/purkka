@@ -33,7 +33,7 @@ use typedef::InlineTypedef;
 
 #[derive(Clone, Debug)]
 pub struct Context {
-    pub functions: Vec<(Rc<str>, pp::Lambda)>,
+    pub functions: Vec<(Rc<str>, pp::Lambda, bool)>,
     pub global_includes: HashSet<Rc<str>>,
     pub local_includes: HashSet<Rc<str>>,
     pub operators: Operators,
@@ -63,7 +63,7 @@ pub fn fetch_identifiers_from_prk(tree: &mut pp::S) -> HashMap<Rc<str>, pp::Decl
         .declarations
         .into_iter()
         .map(|decl| {
-            let pp::Declaration::Declaration(_, _, name, _, _) = &decl;
+            let pp::Declaration::Declaration(_, _, _, name, _, _) = &decl;
             (name.clone(), decl)
         })
         .collect()
@@ -84,13 +84,13 @@ impl Context {
         }
     }
 
-    fn push_function(&mut self, name: Rc<str>, lambda: pp::Lambda) {
-        self.functions.push((name, lambda));
+    fn push_function(&mut self, name: Rc<str>, lambda: pp::Lambda, inline: bool) {
+        self.functions.push((name, lambda, inline));
     }
 
     fn push_anonymous_function(&mut self, lambda: pp::Lambda) -> Rc<str> {
         let name: Rc<str> = From::from(format!("_lambda_{}", self.functions.len()));
-        self.functions.push((name.clone(), lambda));
+        self.functions.push((name.clone(), lambda, true));
         name
     }
 
@@ -117,7 +117,7 @@ impl Context {
                     .drain(..)
                     .collect::<Vec<_>>()
                     .into_iter()
-                    .map(|(n, u)| self.format_lambda_as_external_decl(n.clone(), u.clone()))
+                    .map(|(n, u, i)| self.format_lambda_as_external_decl(n.clone(), u.clone(), i))
                     .collect::<Vec<_>>();
                 cp::TranslationUnit::Units(
                     tys.into_iter()
@@ -133,17 +133,24 @@ impl Context {
         &mut self,
         name: Rc<str>,
         pp::Lambda::Lambda(params, ty, block): pp::Lambda,
+        inline: bool,
     ) -> cp::ExternalDeclaration {
+        use cp::DeclarationSpecifiers::DeclarationSpecifiers as DSpec;
+        let DSpec(mut specs, ty) = self.type_to_declaration_specifiers(ty.clone());
+        if let Some(ref mut specs) = specs {
+            specs.0.inline = inline;
+        } else if inline {
+            let mut s = cp::Specifiers::default(); 
+            s.0.inline = true;
+            specs = Some(s);
+        }
+        let params = self.function_params_from_params(name.clone(), params);
+        let statements = self.block_to_statement_list(block);
         cp::ExternalDeclaration::FunctionDefinition(Box::new(
             cp::FunctionDefinition::FunctionDefinition(
-                Some(Box::new(self.type_to_declaration_specifiers(ty.clone()))),
-                Box::new(cp::Declarator::Declarator(
-                    None,
-                    Box::new(self.function_params_from_params(name.clone(), params)),
-                )),
-                Box::new(cp::CompoundStatement::Statements(
-                    self.block_to_statement_list(block),
-                )),
+                Some(Box::new(DSpec(specs, ty))),
+                Box::new(cp::Declarator::Declarator(None, Box::new(params))),
+                Box::new(cp::CompoundStatement::Statements(statements)),
             ),
         ))
     }
@@ -441,7 +448,7 @@ impl Context {
 
     pub fn convert_declaration(&mut self, k: pp::Declaration) -> cp::Declaration {
         match k {
-            pp::Declaration::Declaration(_, _mutable, name, ty, Some(expr)) => {
+            pp::Declaration::Declaration(_, _mutable, _inline, name, ty, Some(expr)) => {
                 cp::Declaration::Declaration(
                     Box::new(self.type_to_declaration_specifiers(*ty.clone())),
                     vec![cp::InitDeclarator::Assign(
@@ -454,7 +461,7 @@ impl Context {
                     None,
                 )
             }
-            pp::Declaration::Declaration(_, _mutable, name, ty, None) => {
+            pp::Declaration::Declaration(_, _mutable, _inline, name, ty, None) => {
                 cp::Declaration::Declaration(
                     Box::new(self.type_to_declaration_specifiers(*ty.clone())),
                     vec![cp::InitDeclarator::Declarator(Box::new(

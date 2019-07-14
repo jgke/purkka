@@ -43,9 +43,9 @@ grammar! {
     Declaration
        -> Declaration. Visibility Mutability #Token::Identifier MaybeType #Token::SemiColon
         | Definition. Visibility Mutability #Token::Identifier MaybeType #Token::Operator Expression #Token::SemiColon
-        | Function. Visibility #Token::Fun #Token::Identifier Function
+        | Function. Visibility Inline_ #Token::Fun #Token::Identifier Function
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum Declaration { Declaration(bool, bool, Rc<str>, Box<TypeSignature>, Option<Box<Expression>>) }
+        pub enum Declaration { Declaration(bool, bool, bool, Rc<str>, Box<TypeSignature>, Option<Box<Expression>>) }
         ;
 
     Function
@@ -155,6 +155,11 @@ grammar! {
     Visibility
        -> Public. #Token::Pub
         | Private. Epsilon
+        ;
+
+    Inline_
+       -> NoInline. Epsilon
+        | Inline. #Token::Inline
         ;
 
     ImportFile
@@ -342,9 +347,9 @@ grammar! {
 impl_enter!(S, TranslationUnit, TranslationUnit, translation_unit, 1);
 impl_enter!(TranslationUnit, Units, "Vec<Unit>", units, 1);
 impl_enter!(Unit, Declaration, Declaration, declaration, 1);
-impl_enter_unbox!(Declaration, Declaration, TypeSignature, ty, 4);
-impl_enter_unbox_fmap!(Declaration, Declaration, Expression, expr, 5);
-impl_enter!(Declaration, Declaration, "Rc<str>", identifier, 3);
+impl_enter_unbox!(Declaration, Declaration, TypeSignature, ty, 5);
+impl_enter_unbox_fmap!(Declaration, Declaration, Expression, expr, 6);
+impl_enter!(Declaration, Declaration, "Rc<str>", identifier, 4);
 
 impl_enter!(Token, Identifier, "Rc<str>", identifier_s, 2);
 
@@ -656,6 +661,7 @@ impl Declaration {
         if let Declaration::Declaration(
             _,
             false,
+            _,
             _,
             _,
             Some(box Expression::PrimaryExpression(PrimaryExpression::Lambda(..))),

@@ -374,15 +374,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Let(..)) => true,
             Some(Token::Const(..)) => false,
             Some(Token::Fun(..)) => {
-                let ident = Some(read_token!(self, Token::Identifier))
-                    .as_ref()
-                    .identifier_s()
-                    .unwrap()
-                    .clone();
+                let inline = maybe_read_token!(self, Token::Inline).is_some();
+                let ident = read_identifier_str!(self);
                 let (params, return_type, block) = self.parse_lambda();
                 return Declaration::Declaration(
                     visible,
                     false,
+                    inline,
                     ident,
                     Box::new(self.get_inferred_type()),
                     Some(Box::new(self.lambda_to_expr(params, return_type, block))),
@@ -406,9 +404,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Operator(_, t)) if &**t == "=" => {
                 read_token!(self, Token::Operator);
                 let expr = Box::new(self.parse_expression());
-                Declaration::Declaration(visible, mutable, ident, ty, Some(expr))
+                Declaration::Declaration(visible, mutable, false, ident, ty, Some(expr))
             }
-            _ => Declaration::Declaration(visible, mutable, ident, ty, None),
+            _ => Declaration::Declaration(visible, mutable, false, ident, ty, None),
         };
 
         if semi {

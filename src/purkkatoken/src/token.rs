@@ -32,6 +32,8 @@ pub enum Token {
     For(usize),
     Fun(usize),
     If(usize),
+    Import(usize),
+    Inline(usize),
     Let(usize),
     NewOperator(usize),
     Pragma(usize),
@@ -41,8 +43,6 @@ pub enum Token {
     Struct(usize),
     Type(usize),
     While(usize),
-
-    Import(usize),
 }
 
 use Token::*;
@@ -73,6 +73,7 @@ pub static KEYWORDS: &[(&str, TokenConstructor)] = &[
     ("fun", Fun),
     ("if", If),
     ("import", Import),
+    ("inline", Inline),
     ("let", Let),
     ("operator", NewOperator),
     ("pragma", Pragma),
@@ -105,6 +106,7 @@ impl Token {
             Identifier(i, ..) => i,
             If(i, ..) => i,
             Import(i, ..) => i,
+            Inline(i, ..) => i,
             Integer(i, ..) => i,
             Let(i, ..) => i,
             NewOperator(i, ..) => i,
