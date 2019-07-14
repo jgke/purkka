@@ -802,6 +802,7 @@ impl TypeInferrer<'_> {
                     (None, ret_tys)
                 })
                 .unwrap_or((None, Vec::new())),
+            Statement::Pragma(_pragma) => (None, Vec::new())
         }
     }
 

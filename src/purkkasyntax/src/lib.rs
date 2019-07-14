@@ -307,13 +307,19 @@ grammar! {
         | BlockExpression
         | Expression #Token::SemiColon
         | ReturnStatement #Token::SemiColon
+        | PragmaStatement
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Statement {
             Declaration(Box<Declaration>),
             BlockExpression(Box<BlockExpression>),
             Expression(Box<Expression>),
             Return(Option<Box<Expression>>),
+            Pragma(Rc<str>),
         }
+        ;
+
+    PragmaStatement
+       -> #Token::Pragma #Token::StringLiteral
         ;
 
     ReturnStatement

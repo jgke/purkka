@@ -1917,19 +1917,23 @@ impl DeclarationContext {
     }
 
     fn declaration_to_type(&self, decl: &Declaration) -> (Declarations, bool, TypeSignature) {
-        let Declaration::Declaration(spec, init_decls, attrs) = decl;
-        let spec_ty = self.decl_spec_to_type(&**spec, attrs.clone().unwrap_or_else(Vec::new));
-        let decl_tys = init_decls
-            .iter()
-            .map(|init_decl| match init_decl {
-                InitDeclarator::Declarator(decl)
-                | InitDeclarator::Asm(decl, _)
-                | InitDeclarator::Assign(decl, _, _) => {
-                    self.declarator_to_type(&**decl, spec_ty.clone())
-                }
-            })
-            .collect();
-        (decl_tys, has_typedef(&**spec), spec_ty)
+        match decl {
+            Declaration::Declaration(spec, init_decls, attrs) => {
+                let spec_ty = self.decl_spec_to_type(&**spec, attrs.clone().unwrap_or_else(Vec::new));
+                let decl_tys = init_decls
+                    .iter()
+                    .map(|init_decl| match init_decl {
+                        InitDeclarator::Declarator(decl)
+                            | InitDeclarator::Asm(decl, _)
+                            | InitDeclarator::Assign(decl, _, _) => {
+                                self.declarator_to_type(&**decl, spec_ty.clone())
+                            }
+                    })
+                .collect();
+                (decl_tys, has_typedef(&**spec), spec_ty)
+            }
+            Declaration::Pragma(..) => unreachable!()
+        }
     }
 
     fn decl_spec_to_type(

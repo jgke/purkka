@@ -266,6 +266,20 @@ impl Context {
                 self.push(";");
                 self.newline = true;
             }
+            Declaration::Pragma(pragma) => {
+                self.pragma(pragma);
+            }
+        }
+    }
+
+    fn pragma(&mut self, tree: &Pragma) {
+        match tree {
+            Pragma::Pragma(s) => {
+                self.push("#pragma");
+                self.push(s);
+                self.newline = true;
+                self.push("");
+            }
         }
     }
 

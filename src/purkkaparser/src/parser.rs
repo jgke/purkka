@@ -1079,6 +1079,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             // directly return the block_expr since it doesn't need a semicolon
             BlockExpression => return Statement::BlockExpression(Box::new(self.parse_block_expression())),
             Declaration => return Statement::Declaration(Box::new(self.parse_declaration(semi))),
+            PragmaStatement => return Statement::Pragma(self.parse_pragma()),
             // Expressions can contain BlockExpressions, so this is
             // partially unreachable
             Expression => Statement::Expression(Box::new(self.parse_expression())),
@@ -1095,6 +1096,15 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             read_token!(self, Token::SemiColon);
         }
         res
+    }
+
+    fn parse_pragma(&mut self) -> Rc<str> {
+        read_token!(self, Token::Pragma);
+        if let Token::StringLiteral(_, s) = read_token!(self, Token::StringLiteral) {
+            s
+        } else {
+            unreachable!();
+        }
     }
 
     fn parse_args(&mut self) -> ArgList {

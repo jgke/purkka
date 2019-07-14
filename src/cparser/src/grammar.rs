@@ -523,6 +523,7 @@ grammar! {
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Declaration {
             Declaration(Box<DeclarationSpecifiers>, Vec<InitDeclarator>, Option<Vec<Attribute>>),
+            Pragma(Pragma),
         }
         ;
 
@@ -759,4 +760,9 @@ impl PrimaryExpression {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Attribute {
     Vector(usize),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Pragma {
+    Pragma(Rc<str>),
 }

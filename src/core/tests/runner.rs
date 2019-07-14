@@ -76,6 +76,7 @@ fn check_result_files() {
                 .arg("-Wextra")
                 .arg("-Werror")
                 .arg("-Wno-unused-parameter")
+                .arg("-fopenmp")
                 .arg("-O2")
                 .arg("-o")
                 .arg("/dev/null")

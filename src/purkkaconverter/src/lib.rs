@@ -338,6 +338,9 @@ impl Context {
                     cp::JumpStatement::ReturnVoid(ct::Token::Return(0), ct::Token::Semicolon(0)),
                 )))
             }
+            pp::Statement::Pragma(s) => {
+                cp::StatementOrDeclaration::Declaration(cp::Declaration::Pragma(cp::Pragma::Pragma(s)))
+            }
         }
     }
 

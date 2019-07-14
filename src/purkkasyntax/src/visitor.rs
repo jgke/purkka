@@ -297,6 +297,7 @@ pub fn walk_statement<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Statement
                 .iter_mut()
                 .for_each(|b| visitor.visit_expression(b));
         }
+        Statement::Pragma(_pragma) => {}
     }
 }
 
