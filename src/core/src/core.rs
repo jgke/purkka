@@ -197,7 +197,7 @@ pub fn real_main() {
         println!("{:?}", result);
         if let Some(file) = &output {
             let path = path::PathBuf::from(file);
-            if let Ok(_) = File::open(path.clone()) {
+            if File::open(path.clone()).is_ok() {
                 panic!("File {} exists, exiting", file);
             } else {
                 let mut file = File::create(path).unwrap();

@@ -739,6 +739,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         self.parse_expression_(1)
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn parse_expression_(&mut self, precedence: usize) -> Expression {
         let mut expr = if let Some(Token::Operator(_, op)) = self.peek() {
             match self.operators.unary.get(op).cloned() {
@@ -1088,6 +1089,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         ArgList::Args(args)
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn parse_initialization_fields(&mut self, ty: &Rc<str>) -> Vec<StructInitializationField> {
         let struct_fields = if let TypeSignature::Struct(_, fields) = &self.symbols.types[ty] {
             fields
@@ -1156,7 +1158,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                         }
                         Some(Token::Comma(..)) => {
                             let ident = remaining_names.pop()
-                                .expect(&format!("Struct {} has only {} fields", ty, used_names.len()));
+                                .unwrap_or_else(|| panic!(format!("Struct {} has only {} fields", ty, used_names.len())));
                             used_names.insert(ident.clone());
                             fields.push(StructInitializationField::StructInitializationField(
                                 ident.clone(),

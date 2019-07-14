@@ -2,14 +2,16 @@ use std::rc::Rc;
 
 use purkkasyntax::TypeSignature;
 
+pub type Declarations = Vec<(Rc<str>, TypeSignature)>;
+
 #[derive(Clone, Debug)]
 pub struct ResolveResult {
     pub full_path: String,
     pub c_content: String,
     pub h_content: Option<String>,
     pub dependencies: Option<Vec<String>>,
-    pub declarations: Option<Vec<(Rc<str>, TypeSignature)>>,
-    pub types: Option<Vec<(Rc<str>, TypeSignature)>>,
+    pub declarations: Option<Declarations>,
+    pub types: Option<Declarations>,
 }
 
 #[derive(Clone, Debug)]

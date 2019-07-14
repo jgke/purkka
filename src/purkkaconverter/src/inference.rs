@@ -165,7 +165,7 @@ impl TypeInferrer<'_> {
                 let args_tys = args.iter()
                     .map(|arg| match arg.ty_field() {
                         TypeSignature::Infer(IntermediateType::Any(0)) =>
-                            any_ty.get_or_insert_with(|| IntermediateType::new_any()).clone(),
+                            any_ty.get_or_insert_with(IntermediateType::new_any).clone(),
                         TypeSignature::Infer(IntermediateType::Number(0, num)) =>
                                 num_ty.get_or_insert_with(|| IntermediateType::new_number(*num)).clone(),
                             ty => From::from(ty.clone())
@@ -174,12 +174,12 @@ impl TypeInferrer<'_> {
 
                 let ret = match &**ret {
                     TypeSignature::Infer(IntermediateType::Any(0)) =>
-                        any_ty.unwrap_or_else(|| IntermediateType::new_any()).clone(),
+                        any_ty.unwrap_or_else( IntermediateType::new_any).clone(),
                     TypeSignature::Infer(IntermediateType::Number(0, num)) =>
-                        num_ty.unwrap_or_else(|| From::from(IntermediateType::new_number(*num))),
+                        num_ty.unwrap_or_else(|| IntermediateType::new_number(*num)),
                     ty => From::from(ty.clone())
                 };
-                return (args_tys, From::from(ret))
+                (args_tys, ret)
             }
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
@@ -196,7 +196,7 @@ impl TypeInferrer<'_> {
                 let args_tys = args.iter()
                     .map(|arg| match arg.ty_field() {
                         TypeSignature::Infer(IntermediateType::Any(0)) =>
-                            any_ty.get_or_insert_with(|| IntermediateType::new_any()).clone(),
+                            any_ty.get_or_insert_with(IntermediateType::new_any).clone(),
                         TypeSignature::Infer(IntermediateType::Number(0, num)) =>
                                 num_ty.get_or_insert_with(|| IntermediateType::new_number(*num)).clone(),
                             ty => From::from(ty.clone())
@@ -205,12 +205,12 @@ impl TypeInferrer<'_> {
 
                 let ret = match &**ret {
                     TypeSignature::Infer(IntermediateType::Any(0)) =>
-                        any_ty.unwrap_or_else(|| IntermediateType::new_any()).clone(),
+                        any_ty.unwrap_or_else(IntermediateType::new_any).clone(),
                     TypeSignature::Infer(IntermediateType::Number(0, num)) =>
-                        num_ty.unwrap_or_else(|| From::from(IntermediateType::new_number(*num))),
+                        num_ty.unwrap_or_else(|| IntermediateType::new_number(*num)),
                     ty => From::from(ty.clone())
                 };
-                return (args_tys, From::from(ret))
+                (args_tys, ret)
             }
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
@@ -229,7 +229,7 @@ impl TypeInferrer<'_> {
                 let arg = &args[0];
                 let arg_ty = match arg.ty_field() {
                     TypeSignature::Infer(IntermediateType::Any(0)) =>
-                        any_ty.get_or_insert_with(|| IntermediateType::new_any()).clone(),
+                        any_ty.get_or_insert_with(IntermediateType::new_any).clone(),
                     TypeSignature::Infer(IntermediateType::Number(0, num)) =>
                         num_ty.get_or_insert_with(|| IntermediateType::new_number(*num)).clone(),
                     ty => From::from(ty.clone())
@@ -237,12 +237,12 @@ impl TypeInferrer<'_> {
 
                 let ret = match &**ret {
                     TypeSignature::Infer(IntermediateType::Any(0)) =>
-                        any_ty.unwrap_or_else(|| IntermediateType::new_any()).clone(),
+                        any_ty.unwrap_or_else(IntermediateType::new_any).clone(),
                     TypeSignature::Infer(IntermediateType::Number(0, num)) =>
-                        num_ty.unwrap_or_else(|| From::from(IntermediateType::new_number(*num))),
+                        num_ty.unwrap_or_else(|| IntermediateType::new_number(*num)),
                     ty => From::from(ty.clone())
                 };
-                return (arg_ty, From::from(ret))
+                (arg_ty, ret)
             }
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
@@ -417,7 +417,7 @@ impl TypeInferrer<'_> {
             }
         }
         if let IntermediateType::Exact(box TypeSignature::Struct(_, fields)) = &struct_ty {
-            for StructField::Field { name, ty, bitfield: _ } in fields {
+            for StructField::Field { name, ty, .. } in fields {
                 if name.as_ref() == ident.as_ref() {
                     return (From::from(*ty.clone()), ret_ty);
                 }
@@ -498,7 +498,7 @@ impl TypeInferrer<'_> {
                     .unwrap_or_else(|| &self.context.symbols.imported_types[ident]);
                 if let TypeSignature::Struct(_, struct_fields) = struct_ty {
                     let mut struct_field_tys = struct_fields.iter()
-                        .map(|StructField::Field { ty, name, bitfield: _ }| (name, ty))
+                        .map(|StructField::Field { ty, name, .. }| (name, ty))
                         .collect::<Vec<_>>();
                     struct_field_tys.sort_by(|(l_name, _), (r_name, _)| l_name.cmp(&r_name));
 
@@ -872,7 +872,7 @@ impl TypeInferrer<'_> {
 
         let res_ty = match (num, ty) {
             (_, TypeSignature::Infer(i)) => {
-                return self.make_equal(&IntermediateType::Number(id, num.clone()), i)
+                return self.make_equal(&IntermediateType::Number(id, *num), i)
             }
             (IntermediateNumber::Indeterminate, TypeSignature::Plain(_)) => unimplemented!(),
             (IntermediateNumber::Float, TypeSignature::Plain(_)) => unimplemented!(),
@@ -905,18 +905,18 @@ impl TypeInferrer<'_> {
         num_2: &IntermediateNumber,
     ) {
         if let Some(ty) = self.infer_map.get(&id_1).cloned() {
-            return self.make_equal(&ty, &IntermediateType::Number(id_2, num_2.clone()));
+            return self.make_equal(&ty, &IntermediateType::Number(id_2, *num_2));
         } else if let Some(ty) = self.infer_map.get(&id_2).cloned() {
-            return self.make_equal(&IntermediateType::Number(id_1, num_1.clone()), &ty);
+            return self.make_equal(&IntermediateType::Number(id_1, *num_1), &ty);
         }
         match (num_1, num_2) {
             (IntermediateNumber::Indeterminate, t) => {
                 self.infer_map
-                    .insert(id_1, IntermediateType::Number(id_2, t.clone()));
+                    .insert(id_1, IntermediateType::Number(id_2, *t));
             }
             (t, IntermediateNumber::Indeterminate) => {
                 self.infer_map
-                    .insert(id_2, IntermediateType::Number(id_1, t.clone()));
+                    .insert(id_2, IntermediateType::Number(id_1, *t));
             }
             (IntermediateNumber::Float, IntermediateNumber::Float) => {}
             (IntermediateNumber::Double, IntermediateNumber::Double) => {}

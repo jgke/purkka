@@ -105,6 +105,7 @@ dependencies = [
  "lalr 0.1.0",
  "preprocessor 0.1.0",
  "purkkasyntax 0.1.0",
+ "resolve 0.1.0",
  "shared 0.1.0",
 ]
 

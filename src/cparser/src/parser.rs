@@ -8,6 +8,7 @@ use shared::traits::{multipeek, MultiPeek};
 
 use ctoken::token::Token;
 use purkkasyntax::{TypeSignature, Primitive};
+use resolve::Declarations;
 
 use crate::grammar::*;
 use crate::*;
@@ -1506,6 +1507,7 @@ where
         }
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn parse_primary_expression(&mut self) -> (PrimaryExpression, Option<i128>, Option<TypeSignature>) {
         match self.peek() {
             Some(Token::Identifier(..)) => {
@@ -1521,28 +1523,28 @@ where
                 let t = self.next().unwrap().get_ident_str().clone();
                 let mut lc = t.to_ascii_lowercase();
                 let mut float = None;
-                while lc.ends_with("l") || lc.ends_with("u") || lc.ends_with("f") || lc.ends_with("d") {
-                    if lc.ends_with("f") {
+                while lc.ends_with('l') || lc.ends_with('u') || lc.ends_with('f') || lc.ends_with('d') {
+                    if lc.ends_with('f') {
                         float = Some(TypeSignature::Primitive(Primitive::Float));
-                    } else if lc.ends_with("d") {
+                    } else if lc.ends_with('d') {
                         float = Some(TypeSignature::Primitive(Primitive::Double));
                     }
                     lc.pop();
                 }
-                if lc.contains(".") {
+                if lc.contains('.') {
                     float = Some(TypeSignature::Primitive(Primitive::Float));
                 }
                 if let Some(ty) = float {
-                    (PrimaryExpression::Number(From::from(t)), None, Some(ty))
+                    (PrimaryExpression::Number(t), None, Some(ty))
                 } else {
                     let val = if lc.starts_with("0x") {
                         i128::from_str_radix(&lc[2..], 16).unwrap()
-                    } else if lc.starts_with("0") && lc.len() > 1 {
+                    } else if lc.starts_with('0') && lc.len() > 1 {
                         i128::from_str_radix(&lc[1..], 8).unwrap()
                     } else {
                         i128::from_str_radix(&lc, 10).unwrap()
                     };
-                    (PrimaryExpression::Number(From::from(t)), Some(val), Some(TypeSignature::int()))
+                    (PrimaryExpression::Number(t), Some(val), Some(TypeSignature::int()))
                 }
             }
             Some(Token::StringLiteral(..)) => {
@@ -1750,29 +1752,26 @@ where
 
     fn parse_attribute(&mut self) {
         read_token!(self, Token::Identifier);
-        match self.peek() {
-            Some(Token::OpenParen(..)) => {
-                read_token!(self, Token::OpenParen);
-                loop {
-                    if maybe_read_token!(self, Token::CloseParen).is_some() {
-                        break;
+        if let Some(Token::OpenParen(..)) = self.peek() {
+            read_token!(self, Token::OpenParen);
+            loop {
+                if maybe_read_token!(self, Token::CloseParen).is_some() {
+                    break;
+                } else {
+                    self.parse_assignment_expression();
+                    if maybe_read_token!(self, Token::Comma).is_some() {
+                        continue;
                     } else {
-                        self.parse_assignment_expression();
-                        if maybe_read_token!(self, Token::Comma).is_some() {
-                            continue;
-                        } else {
-                            read_token!(self, Token::CloseParen);
-                            break;
-                        }
+                        read_token!(self, Token::CloseParen);
+                        break;
                     }
                 }
             }
-            _ => {}
         }
     }
 }
 
-pub fn get_declarations(tree: &S) -> (Vec<(Rc<str>, TypeSignature)>, Vec<(Rc<str>, TypeSignature)>) {
+pub fn get_declarations(tree: &S) -> (Declarations, Declarations) {
     DeclarationContext { types: HashMap::new() }.get_declarations(tree)
 }
 
@@ -1781,7 +1780,7 @@ struct DeclarationContext {
 }
 
 impl DeclarationContext {
-    pub fn get_declarations(mut self, tree: &S) -> (Vec<(Rc<str>, TypeSignature)>, Vec<(Rc<str>, TypeSignature)>) {
+    pub fn get_declarations(mut self, tree: &S) -> (Declarations, Declarations) {
         let mut declarations = Vec::new();
         let mut types = Vec::new();
         let S::TranslationUnit(TranslationUnit::Units(units)) = tree;
@@ -1817,15 +1816,15 @@ impl DeclarationContext {
         (declarations, types)
     }
 
-    fn function_definition_to_type(&self, decl: &FunctionDefinition) -> (Vec<(Rc<str>, TypeSignature)>, TypeSignature) {
+    fn function_definition_to_type(&self, decl: &FunctionDefinition) -> (Declarations, TypeSignature) {
         let FunctionDefinition::FunctionDefinition(spec, decl, _) = decl;
         let spec_ty = self.decl_spec_to_type(spec.as_ref().unwrap(), Vec::new());
         (vec![self.declarator_to_type(decl, spec_ty.clone())], spec_ty)
     }
 
-    fn declaration_to_type(&self, decl: &Declaration) -> (Vec<(Rc<str>, TypeSignature)>, bool, TypeSignature) {
+    fn declaration_to_type(&self, decl: &Declaration) -> (Declarations, bool, TypeSignature) {
         let Declaration::Declaration(spec, init_decls, attrs) = decl;
-        let spec_ty = self.decl_spec_to_type(&**spec, attrs.clone().unwrap_or_else(|| Vec::new()));
+        let spec_ty = self.decl_spec_to_type(&**spec, attrs.clone().unwrap_or_else(Vec::new));
         let decl_tys = init_decls
             .iter()
             .map(|init_decl| match init_decl {

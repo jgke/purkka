@@ -395,7 +395,7 @@ impl TypeSignature {
     pub fn access(&self, ident: &str, context: &HashMap<i128, IntermediateType>) -> (Option<i128>, Option<TypeSignature>) {
         match self {
             TypeSignature::Struct(_, fields) | TypeSignature::Union(_, fields) => {
-                    for StructField::Field { name, ty, bitfield: _ } in fields {
+                    for StructField::Field { name, ty, .. } in fields {
                         if name.as_ref() == ident {
                             return (None, Some(*ty.clone()));
                         }
@@ -403,7 +403,7 @@ impl TypeSignature {
                     (None, None)
             }
             TypeSignature::Enum(_, fields) => {
-                    for EnumField::Field { name, ty: _, value } in fields {
+                    for EnumField::Field { name, value, .. } in fields {
                         if name.as_ref() == ident {
                             return (Some(*value), Some(TypeSignature::Primitive(Primitive::Int(32))));
                         }

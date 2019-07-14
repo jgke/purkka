@@ -12,6 +12,7 @@ ctoken = { path="../ctoken" }
 debug = { path="../debug" }
 fragment = { path="../fragment" }
 lalr = { path="../lalr" }
-shared = { path="../shared" }
 preprocessor = { path="../preprocessor" }
 purkkasyntax = { path="../purkkasyntax" }
+resolve = { path="../resolve" }
+shared = { path="../shared" }

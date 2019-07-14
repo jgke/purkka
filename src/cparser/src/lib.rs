@@ -8,12 +8,10 @@ pub mod parser;
 #[macro_use]
 pub mod grammar;
 
-use std::rc::Rc;
-
 use ctoken::token::Token;
 use fragment::fragment::{FragmentIterator, Source};
 use preprocessor::macrotoken::{preprocessor_to_parser, MacroToken};
-use purkkasyntax::TypeSignature;
+use resolve::Declarations;
 
 fn get_source_index(token: &Token) -> usize {
     match token {
@@ -143,6 +141,6 @@ pub fn parse(
     }
 }
 
-pub fn get_declarations(tree: &grammar::S) -> (Vec<(Rc<str>, TypeSignature)>, Vec<(Rc<str>, TypeSignature)>) {
+pub fn get_declarations(tree: &grammar::S) -> (Declarations, Declarations) {
     parser::get_declarations(tree)
 }

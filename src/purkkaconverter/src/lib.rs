@@ -404,7 +404,7 @@ impl Context {
         }
     }
 
-    pub fn struct_field(&mut self, pp::StructField::Field {name, ty, bitfield: _ }: pp::StructField) -> cp::StructField {
+    pub fn struct_field(&mut self, pp::StructField::Field {name, ty, .. }: pp::StructField) -> cp::StructField {
         let c_ty = self.type_to_declaration_specifiers(*ty.clone());
         let decl = self.format_decl(name, *ty);
         (Box::new(c_ty), vec![(cp::EitherDeclarator::Declarator(decl), None)])

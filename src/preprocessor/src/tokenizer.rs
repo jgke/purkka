@@ -296,11 +296,9 @@ where
         iter: &mut FragmentIterator,
         preserve_last: bool,
     ) {
-        while iter.peek().is_some() {
-            if iter.next() == Some(c1) {
-                if iter.peek() == Some(c2) {
-                    break;
-                }
+        while iter.peek().is_some() && iter.next() == Some(c1) {
+            if iter.peek() == Some(c2) {
+                break;
             }
         }
         if !preserve_last {
