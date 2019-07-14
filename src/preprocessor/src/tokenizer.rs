@@ -78,6 +78,11 @@ where
         let mut intern = StringInterner::new();
         let mut symbols = HashMap::new();
         symbols.insert(
+            intern.get_ref("__extension__"),
+            Macro::Text(
+                Source::dummy(),
+                vec![]));
+        symbols.insert(
             intern.get_ref("__STDC__"),
             Macro::Text(
                 Source::dummy(),

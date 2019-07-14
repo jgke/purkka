@@ -1,4 +1,3 @@
-use crate::tokentype::Keyword::*;
 use crate::tokentype::Operator::*;
 
 #[allow(dead_code)]
@@ -47,78 +46,6 @@ pub enum Operator {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum UnaryOperator {
-    BitNot,
-    Not,
-    Dereference,
-    AddressOf,
-    UnaryPlus,
-    UnaryMinus,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Keyword {
-    Asm,
-    Auto,
-    Break,
-    Case,
-    Char,
-    Const,
-    Continue,
-    Default,
-    Do,
-    Double,
-    Else,
-    Enum,
-    Extern,
-    Float,
-    For,
-    Goto,
-    If,
-    Int,
-    Long,
-    Register,
-    Return,
-    Short,
-    Signed,
-    Sizeof,
-    Static,
-    Struct,
-    Switch,
-    Typedef,
-    Union,
-    Unsigned,
-    Void,
-    Volatile,
-    While,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum StorageClass {
-    Auto,
-    Extern,
-    Register,
-    Static,
-    Typedef,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TypeSpecifier {
-    Char,
-    Double,
-    Float,
-    Int,
-    Long,
-    Short,
-    Void,
-    Enum,
-    Struct,
-    Union,
-    Signed,
-    Unsigned,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Punctuation {
     OpenBracket,
     CloseBracket,
@@ -129,12 +56,6 @@ pub enum Punctuation {
     Comma,
     Semicolon,
     Varargs,
-    //Macro
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Constant {
-    Integer(),
 }
 
 pub static OPERATORS: &[(&str, &Operator)] = &[
@@ -234,42 +155,6 @@ pub static PUNCTUATION: &[(&str, &Punctuation)] = &[
     (";", &Punctuation::Semicolon),
     ("...", &Punctuation::Varargs),
     //("#", &Punctuation::Macro)
-];
-
-pub static KEYWORDS: &[(&str, &Keyword)] = &[
-    ("asm", &Asm),
-    ("auto", &Auto),
-    ("break", &Break),
-    ("case", &Case),
-    ("char", &Char),
-    ("const", &Const),
-    ("continue", &Continue),
-    ("default", &Default),
-    ("do", &Do),
-    ("double", &Double),
-    ("else", &Else),
-    ("enum", &Enum),
-    ("extern", &Extern),
-    ("float", &Float),
-    ("for", &For),
-    ("goto", &Goto),
-    ("if", &If),
-    ("int", &Int),
-    ("long", &Long),
-    ("register", &Register),
-    ("return", &Return),
-    ("short", &Short),
-    ("signed", &Signed),
-    ("sizeof", &Sizeof),
-    ("static", &Static),
-    ("struct", &Struct),
-    ("switch", &Switch),
-    ("typedef", &Typedef),
-    ("union", &Union),
-    ("unsigned", &Unsigned),
-    ("void", &Void),
-    ("volatile", &Volatile),
-    ("while", &While),
 ];
 
 impl std::fmt::Display for Operator {

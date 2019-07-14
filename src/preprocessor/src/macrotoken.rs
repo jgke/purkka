@@ -70,7 +70,7 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
         MacroTokenType::Operator(Operator::MacroPaste) => panic!("Macro token found: {:?}", t),
 
         MacroTokenType::Identifier(ident) => match ident.as_ref() {
-            "asm" => Asm(index),
+            "asm" | "__asm" | "__asm__" => Asm(index),
             "auto" => Auto(index),
             "break" => Break(index),
             "case" => Case(index),
@@ -90,12 +90,13 @@ pub fn preprocessor_to_parser(context: &FragmentIterator, t: &MacroToken, index:
             "int" => Int(index),
             "long" => Long(index),
             "register" => Register(index),
+            "restrict" | "__restrict" | "__restrict__" => Restrict(index),
             "return" => Return(index),
             "short" => Short(index),
             "signed" => Signed(index),
             "sizeof" => Sizeof(index),
             "static" => Static(index),
-            "inline" | "__inline" => Inline(index),
+            "inline" | "__inline" | "__inline__" => Inline(index),
             "struct" => Struct(index),
             "switch" => Switch(index),
             "typedef" => Typedef(index),
