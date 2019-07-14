@@ -316,7 +316,6 @@ where
             }
         };
 
-
         read_token!(self, Token::Semicolon);
 
         if has_typedef {
@@ -411,6 +410,7 @@ where
                 Some(Token::Register(..)) => spec.0.register = true,
                 Some(Token::Const(..)) => spec.1.const_ = true,
                 Some(Token::Volatile(..)) => spec.1.volatile = true,
+                Some(Token::Restrict(..)) => spec.1.restrict = true,
                 _ => break,
             }
             self.next();
@@ -420,6 +420,7 @@ where
     #[allow(clippy::cognitive_complexity)]
     fn parse_type_specifier(&mut self) -> Option<TypeSpecifier> {
         let mut longs = 0;
+        let mut complex = None;
         let mut sign = None;
         let mut data = None;
         let mut ty = None;
@@ -470,6 +471,17 @@ where
                         "Conflicting type specifiers",
                     );
                 }
+                Some(Token::Identifier(_, ident)) if ident.as_ref() == "__float128" || ident.as_ref() == "__Float128" => {
+                    read_token!(self, Token::Identifier);
+                    data.replace_if_empty(PrimitiveType::Double, "Conflicting type specifiers");
+                }
+                Some(Token::Identifier(_, ident)) if ident.as_ref() == "_Complex" => {
+                    read_token!(self, Token::Identifier);
+                    complex.replace_if_empty(
+                        Some(()),
+                        "_Complex specified twice",
+                    );
+                }
                 Some(Token::Identifier(_, ident)) if self.is_type(ident) => {
                     read_token!(self, Token::Identifier);
                     ty.replace_if_empty(
@@ -480,35 +492,43 @@ where
                 _ => break,
             }
         }
-
-        if longs == 0 && sign.is_none() && data.is_none() && ty.is_none() {
+        
+        if longs == 0 && sign.is_none() && data.is_none() && ty.is_none() && complex.is_none() {
             None
+        } else if longs == 0 && sign.is_none() && data.is_none() && ty.is_none() && complex.is_some() {
+            Some(CType::Complex(None, PrimitiveType::Double))
+        } else if (longs != 0 || sign.is_some() || data.is_some() || complex.is_some()) && ty.is_some() {
+            panic!("Conflicting type specifiers");
+        } else if ty.is_some() {
+            ty
         } else {
-            match (longs, sign, data, ty) {
-                (0, None, None, Some(ty)) => Some(ty),
-                (_, _, _, Some(_)) => panic!("Conflicting type specifiers"),
+            let (sign, data) = match (longs, sign, data) {
+                (0, sign, Some(primitive)) => (sign, primitive),
+                (0, sign, None) => (sign, PrimitiveType::Int),
 
-                (0, sign, Some(primitive), None) => Some(CType::Primitive(sign, primitive)),
-                (0, sign, None, None) => Some(CType::Primitive(sign, PrimitiveType::Int)),
-
-                (1, sign, Some(PrimitiveType::Int), None) | (1, sign, None, None) => {
-                    Some(CType::Primitive(sign, PrimitiveType::Long))
+                (1, sign, Some(PrimitiveType::Int)) | (1, sign, None) => {
+                    (sign, PrimitiveType::Long)
                 }
-                (2, sign, Some(PrimitiveType::Int), None) | (2, sign, None, None) => {
-                    Some(CType::Primitive(sign, PrimitiveType::LongLong))
+                (2, sign, Some(PrimitiveType::Int)) | (2, sign, None) => {
+                    (sign, PrimitiveType::LongLong)
                 }
 
-                (_, Some(_), Some(PrimitiveType::Float), _)
-                | (_, Some(_), Some(PrimitiveType::Double), _) => {
+                (_, Some(_), Some(PrimitiveType::Float))
+                | (_, Some(_), Some(PrimitiveType::Double)) => {
                     panic!("Signed floats are not supported")
                 }
-                (1, None, Some(PrimitiveType::Double), None) => {
-                    Some(CType::Primitive(None, PrimitiveType::LongDouble))
+                (1, None, Some(PrimitiveType::Double)) => {
+                    (None, PrimitiveType::LongDouble)
                 }
 
-                /* t > 2 */
-                (t, _, _, _) if t > 2 => panic!("Type is too long! ({})", t),
+                (t, _, _) if t > 2 => panic!("Type is too long! ({})", t),
                 _ => unreachable!(),
+            };
+
+            if complex.is_some() {
+                Some(CType::Complex(sign, data))
+            } else {
+                Some(CType::Primitive(sign, data))
             }
         }
     }
@@ -663,7 +683,7 @@ where
             self.iter.peek_and_advance();
             loop {
                 match self.iter.peek_buf() {
-                    Some(Token::Volatile(..)) | Some(Token::Const(..)) => {
+                    Some(Token::Volatile(..)) | Some(Token::Const(..)) | Some(Token::Restrict(..)) => {
                         self.iter.peek_and_advance()
                     }
                     _ => break,
@@ -699,6 +719,7 @@ where
                     match self.peek() {
                         Some(Token::Const(..)) => spec.const_ = true,
                         Some(Token::Volatile(..)) => spec.volatile = true,
+                        Some(Token::Restrict(..)) => spec.restrict = true,
                         _ => break,
                     }
                     self.next();
@@ -1687,38 +1708,42 @@ where
 
     fn maybe_parse_attributes(&mut self) -> Vec<Attribute> {
         let mut attrs = Vec::new();
-        match self.peek() {
-            Some(Token::Identifier(_, ident)) if ident.as_ref() == "__attribute__" => {
-                read_token!(self, Token::Identifier);
-                read_token!(self, Token::OpenParen);
-                read_token!(self, Token::OpenParen);
-                loop {
-                    match self.peek() {
-                        Some(Token::Comma(..)) => {
-                            read_token!(self, Token::Comma);
-                        }
-                        Some(Token::Identifier(_, ident)) if ident.as_ref() == "vector_size" || ident.as_ref() == "__vector_size__" => {
-                            read_token!(self, Token::Identifier);
-                            read_token!(self, Token::OpenParen);
-                            let size = read_token!(self, Token::Number).get_ident_str().parse().unwrap();
-                            attrs.push(Attribute::Vector(size));
-                            read_token!(self, Token::CloseParen);
-                        }
-                        Some(Token::Identifier(..)) => {
-                            self.parse_attribute();
-                            if maybe_read_token!(self, Token::Comma).is_some() {
-                                continue;
-                            } else {
-                                break;
+        loop {
+            match self.peek() {
+                Some(Token::Identifier(_, ident)) if ident.as_ref() == "__attribute__" => {
+                    read_token!(self, Token::Identifier);
+                    read_token!(self, Token::OpenParen);
+                    read_token!(self, Token::OpenParen);
+                    loop {
+                        match self.peek() {
+                            Some(Token::Comma(..)) => {
+                                read_token!(self, Token::Comma);
                             }
+                            Some(Token::Identifier(_, ident)) if ident.as_ref() == "vector_size" || ident.as_ref() == "__vector_size__" => {
+                                read_token!(self, Token::Identifier);
+                                read_token!(self, Token::OpenParen);
+                                let size = read_token!(self, Token::Number).get_ident_str().parse().unwrap();
+                                attrs.push(Attribute::Vector(size));
+                                read_token!(self, Token::CloseParen);
+                            }
+                            Some(Token::Identifier(..)) => {
+                                self.parse_attribute();
+                                if maybe_read_token!(self, Token::Comma).is_some() {
+                                    continue;
+                                } else {
+                                    break;
+                                }
+                            }
+                            _ => break,
                         }
-                        _ => break,
                     }
+                    read_token!(self, Token::CloseParen);
+                    read_token!(self, Token::CloseParen);
                 }
-                read_token!(self, Token::CloseParen);
-                read_token!(self, Token::CloseParen);
+                _ => {
+                    break;
+                }
             }
-            _ => {}
         }
         attrs
     }
@@ -1768,7 +1793,6 @@ impl DeclarationContext {
                     let (mut decls, has_ty_defs, ty) = self.declaration_to_type(def);
                     if has_ty_defs {
                         for (name, ty) in decls.into_iter() {
-                            println!("{}, {:?}", &name, &ty);
                             types.push((name.clone(), ty.clone()));
                         }
                         decls = Vec::new();
@@ -1814,7 +1838,7 @@ impl DeclarationContext {
 
     fn decl_spec_to_type(&self, spec: &DeclarationSpecifiers, attrs: Vec<Attribute>) -> TypeSignature {
         let DeclarationSpecifiers::DeclarationSpecifiers(_, ty) = spec;
-        ty.as_ref().map(|t| self.type_specifier_to_type(t, attrs)).unwrap()
+        ty.as_ref().map(|t| self.type_specifier_to_type(t.clone(), attrs)).unwrap()
     }
 
     fn declarator_to_type(&self, decl: &Declarator, ty: TypeSignature) -> (Rc<str>, TypeSignature) {
@@ -1885,10 +1909,17 @@ impl DeclarationContext {
         }
     }
 
-    fn type_specifier_to_type(&self, ty: &TypeSpecifier, attrs: Vec<Attribute>) -> TypeSignature {
+    fn type_specifier_to_type(&self, mut ty: TypeSpecifier, attrs: Vec<Attribute>) -> TypeSignature {
         use TypeSignature::Primitive as P;
         use CType::Primitive as CP;
         use PrimitiveType::*;
+        
+        let mut complex = false;
+
+        if let CType::Complex(sign, t) = ty {
+            ty = CType::Primitive(sign, t);
+            complex = true;
+        }
 
         let ty = match ty {
             CType::Void => P(Primitive::Void),
@@ -1914,9 +1945,16 @@ impl DeclarationContext {
             CP(None, LongDouble) | CP(Some(true), LongDouble)=> P(Primitive::Double),
             CP(Some(false), LongDouble) => P(Primitive::Double),
 
-            CType::Compound(compound) => self.compound_type_to_type(compound),
+            CType::Compound(compound) => self.compound_type_to_type(&compound),
             CType::Custom(ty) => TypeSignature::Plain(ty.clone()),
+            CType::Complex(..) => unreachable!()
         };
+
+        if let P(prim) = ty {
+            if complex {
+                return TypeSignature::Complex(prim);
+            }
+        }
 
         if let P(prim) = ty {
             if !attrs.is_empty() {

@@ -84,6 +84,7 @@ fn get_source_index(token: &Token) -> usize {
         Token::Plus(index) => *index,
         Token::PlusAssign(index) => *index,
         Token::Register(index) => *index,
+        Token::Restrict(index) => *index,
         Token::Return(index) => *index,
         Token::Semicolon(index) => *index,
         Token::Short(index) => *index,

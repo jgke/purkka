@@ -996,6 +996,17 @@ impl Context {
                 }
                 self.push_token(&t);
             }
+            CType::Complex(sign, ty) => {
+                self.push_token(&Token::Identifier(0, From::from("_Complex")));
+                if let Some(token) = self.sign_to_token(*sign) {
+                    self.push_token(&token);
+                }
+                let (long, t) = self.ty_to_token(*ty);
+                if long {
+                    self.push_token(&Token::Long(0));
+                }
+                self.push_token(&t);
+            }
             CType::Void => self.push_token(&Token::Void(0)),
             CType::Custom(ident) => self.push_token(&Token::Identifier(0, ident.clone())),
 

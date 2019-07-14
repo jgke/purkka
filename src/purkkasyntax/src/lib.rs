@@ -347,6 +347,7 @@ pub enum TypeSignature {
     Plain(Rc<str>),
     Primitive(Primitive),
     Vector(Primitive),
+    Complex(Primitive),
     Pointer {
         nullable: bool,
         ty: Box<TypeSignature>,
@@ -436,7 +437,7 @@ pub enum Primitive {
     Int(usize),
     UInt(usize),
     Float,
-    Double
+    Double,
 }
 
 impl std::fmt::Display for Primitive {

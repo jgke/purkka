@@ -462,10 +462,12 @@ grammar! {
     TypeQualifiers
        -> #Token::Const
         | #Token::Volatile
+        | #Token::Restrict
         @ #[derive(Clone, Debug, Default, PartialEq)]
         pub struct TypeQualifiers {
             pub const_: bool,
             pub volatile: bool,
+            pub restrict: bool,
         }
         ;
 
@@ -587,6 +589,7 @@ pub enum CType {
     Void,
     Primitive(TypeSign, PrimitiveType),
     Compound(CompoundType),
+    Complex(TypeSign, PrimitiveType),
     Custom(Rc<str>),
 }
 

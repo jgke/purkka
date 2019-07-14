@@ -353,8 +353,13 @@ fn attributes() {
     assert!(parse("void __attribute__ ((__always_inline__)) foo(void) { };").is_ok());
 }
 
+#[test]
+fn float_extensions() {
+    assert!(parse("__float128 a = 1.0;").is_ok());
+}
+
 //#[test]
-fn extensions() {
+fn typeof_extension() {
     assert!(parse(
         "int a = ({
         typedef int foo;

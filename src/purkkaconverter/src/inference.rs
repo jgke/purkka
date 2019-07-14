@@ -770,8 +770,9 @@ impl TypeInferrer<'_> {
                     panic!("Cannot call type {}", name)
                 }
             }
-            TypeSignature::Primitive(prim) => panic!("Cannot call type {}", prim),
-            TypeSignature::Vector(prim) => panic!("Cannot call type {}", prim),
+            TypeSignature::Primitive(prim)
+                | TypeSignature::Vector(prim)
+                | TypeSignature::Complex(prim) => panic!("Cannot call type {}", prim),
             TypeSignature::Pointer { ty, .. } => self.call_exact(ty, args),
             TypeSignature::Struct(_name, _fields) => unimplemented!(),
             TypeSignature::Enum(_name, _fields) => unimplemented!(),
@@ -863,6 +864,12 @@ impl TypeInferrer<'_> {
         if let Some(num_ty) = self.infer_map.get(&id).cloned() {
             return self.unify_with_infer(&num_ty, &ty);
         }
+        if let TypeSignature::Plain(name) = ty {
+            if let Some(ty) = self.get_ident_ty(name) {
+                return self.make_num_exact(id, num, &ty);
+            }
+        }
+
         let res_ty = match (num, ty) {
             (_, TypeSignature::Infer(i)) => {
                 return self.make_equal(&IntermediateType::Number(id, num.clone()), i)
@@ -873,10 +880,16 @@ impl TypeInferrer<'_> {
             | (_, t@TypeSignature::Tuple(..)) | (_, t@TypeSignature::Array(..))
             | (_, t@TypeSignature::DynamicArray(..)) | (_, t@TypeSignature::Function(..))
                 => panic!("Cannot use {:?} like a number", t),
-            (IntermediateNumber::Indeterminate, TypeSignature::Primitive(t)) => TypeSignature::Primitive(*t),
-            (IntermediateNumber::Float, TypeSignature::Primitive(t@Primitive::Float))
+            (IntermediateNumber::Indeterminate, TypeSignature::Primitive(t))
+            | (IntermediateNumber::Float, TypeSignature::Primitive(t@Primitive::Float))
             | (IntermediateNumber::Float, TypeSignature::Primitive(t@Primitive::Double))
-            | (IntermediateNumber::Double, TypeSignature::Primitive(t@Primitive::Double)) => TypeSignature::Primitive(*t),
+            | (IntermediateNumber::Double, TypeSignature::Primitive(t@Primitive::Double))
+            => TypeSignature::Primitive(*t),
+            (IntermediateNumber::Indeterminate, TypeSignature::Vector(t))
+            | (IntermediateNumber::Float, TypeSignature::Vector(t@Primitive::Float))
+            | (IntermediateNumber::Float, TypeSignature::Vector(t@Primitive::Double))
+            | (IntermediateNumber::Double, TypeSignature::Vector(t@Primitive::Double))
+            => TypeSignature::Vector(*t),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         };
 
@@ -938,28 +951,27 @@ impl TypeInferrer<'_> {
             return self.unify_with_infer(infer, lvalue);
         }
 
+        if let TypeSignature::Plain(name) = rvalue {
+            if let Some(ty) = self.get_ident_ty(name) {
+                return self.unify_types(&lvalue, &ty);
+            }
+        }
+
         match lvalue {
             TypeSignature::Plain(name) => {
                 if let Some(ty) = self.get_ident_ty(name) {
                     self.unify_types(&ty, rvalue);
-                } else if let TypeSignature::Plain(name) = rvalue {
-                    if let Some(ty) = self.get_ident_ty(name) {
-                        self.unify_types(&lvalue, &ty);
-                    } else {
-                        self.fail_if(lvalue != rvalue, lvalue, rvalue);
-                    }
                 } else {
                     self.fail_if(lvalue != rvalue, lvalue, rvalue);
                 }
             }
-            TypeSignature::Primitive(_) => self.fail_if(lvalue != rvalue, lvalue, rvalue),
-            TypeSignature::Vector(_) => {
-                if let TypeSignature::Plain(name) = rvalue {
-                    if let Some(ty) = self.get_ident_ty(name) {
-                        self.unify_types(&lvalue, &ty);
-                    } else {
-                        self.fail_if(lvalue != rvalue, lvalue, rvalue);
-                    }
+            TypeSignature::Primitive(prim)
+            | TypeSignature::Vector(prim)
+            | TypeSignature::Complex(prim) => {
+                if let TypeSignature::Primitive(r_prim) 
+                        | TypeSignature::Vector(r_prim)
+                        | TypeSignature::Complex(r_prim) = rvalue {
+                    self.fail_if_prim(prim != r_prim, prim, r_prim);
                 } else {
                     self.fail_if(lvalue != rvalue, lvalue, rvalue);
                 }
@@ -971,6 +983,10 @@ impl TypeInferrer<'_> {
                 }
                 TypeSignature::Struct(..) => {
                     panic!("Cannot use struct {:?} as a pointer", rvalue);
+                }
+                TypeSignature::Array(right_ty, _)
+                | TypeSignature::DynamicArray(right_ty, _) => {
+                    self.unify_types(left_ty, right_ty);
                 }
                 otherwise => panic!("Not implemented: {:?}", otherwise),
             }
@@ -1009,6 +1025,12 @@ impl TypeInferrer<'_> {
     }
 
     fn fail_if(&self, cond: bool, left: &TypeSignature, right: &TypeSignature) {
+        if cond {
+            panic!("Cannot assign {:?} to {:?}", right, left)
+        }
+    }
+
+    fn fail_if_prim(&self, cond: bool, left: &Primitive, right: &Primitive) {
         if cond {
             panic!("Cannot assign {:?} to {:?}", right, left)
         }

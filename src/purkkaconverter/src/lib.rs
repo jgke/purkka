@@ -462,9 +462,14 @@ impl Context {
             TypeSignature::Primitive(prim) | TypeSignature::Vector(prim) => {
                 let c_ty = match prim {
                     Primitive::Void => cp::CType::Void,
+                    Primitive::Int(8) => cp::CType::Primitive(None, cp::PrimitiveType::Char),
+                    Primitive::Int(16) => cp::CType::Primitive(None, cp::PrimitiveType::Short),
                     Primitive::Int(32) => cp::CType::Primitive(None, cp::PrimitiveType::Int),
                     Primitive::Int(64) => cp::CType::Primitive(None, cp::PrimitiveType::Long),
-                    Primitive::Int(8) => cp::CType::Primitive(None, cp::PrimitiveType::Char),
+                    Primitive::UInt(8) => cp::CType::Primitive(Some(false), cp::PrimitiveType::Char),
+                    Primitive::UInt(16) => cp::CType::Primitive(Some(false), cp::PrimitiveType::Short),
+                    Primitive::UInt(32) => cp::CType::Primitive(Some(false), cp::PrimitiveType::Int),
+                    Primitive::UInt(64) => cp::CType::Primitive(Some(false), cp::PrimitiveType::Long),
                     Primitive::Float => cp::CType::Primitive(None, cp::PrimitiveType::Float),
                     Primitive::Double => cp::CType::Primitive(None, cp::PrimitiveType::Double),
                     other => panic!("Not implemented: {:?}", other),

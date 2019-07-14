@@ -47,7 +47,6 @@ pub fn get_file_cb<'a>(
                     let parsed = cparser::parse(output, &context).unwrap();
                     let formatted = cformat::format_c(&parsed, HashSet::new());
                     let (declarations, types) = cparser::get_declarations(&parsed);
-                    dbg!(&types);
                     ResolveResult {
                         full_path,
                         c_content: formatted,

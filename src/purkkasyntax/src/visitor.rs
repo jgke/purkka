@@ -119,6 +119,7 @@ pub fn walk_ty<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut TypeSignature) {
         TypeSignature::Plain(..) => {}
         TypeSignature::Primitive(..) => {}
         TypeSignature::Vector(..) => {}
+        TypeSignature::Complex(..) => {}
         TypeSignature::Pointer { ty, .. } => visitor.visit_ty(ty.deref_mut()),
         TypeSignature::Struct(_, ref mut fields) => fields
             .iter_mut()
