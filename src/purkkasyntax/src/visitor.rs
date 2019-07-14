@@ -303,12 +303,12 @@ pub fn walk_statement<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Statement
 
 pub fn walk_lambda<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Lambda) {
     match s {
-        Lambda::Lambda(params, ty, block_expr) => {
+        Lambda::Lambda(params, ty, block) => {
             params
                 .iter_mut()
                 .for_each(|p| visitor.visit_lambda_param(p));
             visitor.visit_ty(ty);
-            visitor.visit_block_expression(block_expr);
+            visitor.visit_block(block);
         }
     }
 }

@@ -229,7 +229,7 @@ grammar! {
        -> #Token::Fun ParamList #Token::Operator Block
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Lambda {
-            Lambda(Vec<LambdaParam>, TypeSignature, BlockExpression),
+            Lambda(Vec<LambdaParam>, TypeSignature, Block),
         }
         ;
 

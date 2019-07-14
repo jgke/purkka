@@ -1,0 +1,25 @@
+fun for_loop() {
+    for(let i = 0; i < 5; i++) {
+    }
+}
+
+fun blocks_0() {
+    let a = 1;
+    a as void;
+}
+
+fun blocks_1() {
+    {
+        let a = 1;
+        a as void;
+    }
+}
+
+fun blocks_2() {
+    {
+        {
+            let a = 1;
+            a as void;
+        }
+    }
+}

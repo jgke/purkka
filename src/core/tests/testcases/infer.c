@@ -7,9 +7,8 @@ int bar(int left, int right) {
     int res = left + right;
     return res;
 }
-void for_each(void (*f)(int ), int *list, int n) { {
-        for(int i = 0; i < n; i++) {
-            f(list[i]);
-        }
+void for_each(void (*f)(int ), int *list, int n) {
+    for(int i = 0; i < n; i++) {
+        f(list[i]);
     }
 }

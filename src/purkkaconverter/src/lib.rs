@@ -141,7 +141,9 @@ impl Context {
                     None,
                     Box::new(self.function_params_from_params(name.clone(), params)),
                 )),
-                Box::new(self.block_expression_to_compound_statement(block)),
+                Box::new(cp::CompoundStatement::Statements(
+                    self.block_to_statement_list(block),
+                )),
             ),
         ))
     }
@@ -174,6 +176,17 @@ impl Context {
         block: pp::BlockExpression,
     ) -> cp::CompoundStatement {
         match block {
+            pp::BlockExpression::Block(block) => {
+                cp::CompoundStatement::Statements(self.block_to_statement_list(block))
+            }
+            _ => cp::CompoundStatement::Statements(vec![cp::StatementOrDeclaration::Statement(
+                self.block_expression_to_statement(block),
+            )]),
+        }
+    }
+
+    pub fn block_expression_to_statement(&mut self, block: pp::BlockExpression) -> cp::Statement {
+        match block {
             pp::BlockExpression::If(arms, otherwise) => {
                 let mut iter = arms.into_iter();
                 let first = iter.next().unwrap();
@@ -196,44 +209,38 @@ impl Context {
                     )))
                 });
 
-                cp::CompoundStatement::Statements(vec![cp::StatementOrDeclaration::Statement(
-                    cp::Statement::SelectionStatement(Box::new(
-                        self.cond_and_block_to_selection_statement(
-                            *first.0,
-                            *first.1,
-                            tail.map(Box::new),
-                        ),
-                    )),
-                )])
+                cp::Statement::SelectionStatement(Box::new(
+                    self.cond_and_block_to_selection_statement(
+                        *first.0,
+                        *first.1,
+                        tail.map(Box::new),
+                    ),
+                ))
             }
-            pp::BlockExpression::Block(block) => {
-                cp::CompoundStatement::Statements(self.block_to_statement_list(block))
-            }
+            pp::BlockExpression::Block(block) => cp::Statement::CompoundStatement(Box::new(
+                cp::CompoundStatement::Statements(self.block_to_statement_list(block)),
+            )),
             pp::BlockExpression::For(first, second, third, block, None) => {
-                cp::CompoundStatement::Statements(vec![cp::StatementOrDeclaration::Statement(
-                    cp::Statement::IterationStatement(Box::new(cp::IterationStatement::For(
-                        ct::Token::For(0),
-                        ct::Token::OpenParen(0),
-                        self.expressions_to_for_expr(
-                            first.map(|t| *t),
-                            second.map(|t| *t),
-                            third.map(|t| *t),
-                        ),
-                        ct::Token::CloseParen(0),
-                        Box::new(self.block_to_statement(*block)),
-                    ))),
-                )])
+                cp::Statement::IterationStatement(Box::new(cp::IterationStatement::For(
+                    ct::Token::For(0),
+                    ct::Token::OpenParen(0),
+                    self.expressions_to_for_expr(
+                        first.map(|t| *t),
+                        second.map(|t| *t),
+                        third.map(|t| *t),
+                    ),
+                    ct::Token::CloseParen(0),
+                    Box::new(self.block_to_statement(*block)),
+                )))
             }
             pp::BlockExpression::While(expr, block, None) => {
-                cp::CompoundStatement::Statements(vec![cp::StatementOrDeclaration::Statement(
-                    cp::Statement::IterationStatement(Box::new(cp::IterationStatement::While(
-                        ct::Token::While(0),
-                        ct::Token::OpenParen(0),
-                        Box::new(self.expression(*expr)),
-                        ct::Token::CloseParen(0),
-                        Box::new(self.block_to_statement(*block)),
-                    ))),
-                )])
+                cp::Statement::IterationStatement(Box::new(cp::IterationStatement::While(
+                    ct::Token::While(0),
+                    ct::Token::OpenParen(0),
+                    Box::new(self.expression(*expr)),
+                    ct::Token::CloseParen(0),
+                    Box::new(self.block_to_statement(*block)),
+                )))
             }
             other => panic!("Not implemented: {:?}", other),
         }
@@ -317,9 +324,7 @@ impl Context {
                 cp::StatementOrDeclaration::Declaration(self.convert_declaration(*decl))
             }
             pp::Statement::BlockExpression(block) => {
-                cp::StatementOrDeclaration::Statement(cp::Statement::CompoundStatement(Box::new(
-                    self.block_expression_to_compound_statement(*block),
-                )))
+                cp::StatementOrDeclaration::Statement(self.block_expression_to_statement(*block))
             }
             pp::Statement::Expression(expr) => {
                 cp::StatementOrDeclaration::Statement(cp::Statement::ExpressionStatement(Box::new(
@@ -338,9 +343,9 @@ impl Context {
                     cp::JumpStatement::ReturnVoid(ct::Token::Return(0), ct::Token::Semicolon(0)),
                 )))
             }
-            pp::Statement::Pragma(s) => {
-                cp::StatementOrDeclaration::Declaration(cp::Declaration::Pragma(cp::Pragma::Pragma(s)))
-            }
+            pp::Statement::Pragma(s) => cp::StatementOrDeclaration::Declaration(
+                cp::Declaration::Pragma(cp::Pragma::Pragma(s)),
+            ),
         }
     }
 

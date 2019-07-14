@@ -84,7 +84,7 @@ impl ASTVisitor for TypeInferrer<'_> {
                 LambdaParam::Variadic => {}
             }
         }
-        walk_block_expression(self, e);
+        walk_block(self, e);
         self.pop_block();
     }
 
@@ -509,7 +509,7 @@ impl TypeInferrer<'_> {
                             LambdaParam::Variadic => {}
                         }
                     }
-                    let block_ty = self.get_block_expr_type(&*block);
+                    let block_ty = self.get_block_type(&*block);
                     let ret_tys = block_ty.1;
                     if let Some((last, rest)) = ret_tys.split_last() {
                         for ty in rest {
@@ -802,7 +802,7 @@ impl TypeInferrer<'_> {
                     (None, ret_tys)
                 })
                 .unwrap_or((None, Vec::new())),
-            Statement::Pragma(_pragma) => (None, Vec::new())
+            Statement::Pragma(_pragma) => (None, Vec::new()),
         }
     }
 

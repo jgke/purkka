@@ -886,7 +886,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         }
     }
 
-    fn parse_lambda(&mut self) -> (Vec<LambdaParam>, TypeSignature, BlockExpression) {
+    fn parse_lambda(&mut self) -> (Vec<LambdaParam>, TypeSignature, Block) {
         let params = self.parse_lambda_param_list();
         let return_type = match self.peek() {
             Some(Token::Operator(_, t)) if &**t == "->" => {
@@ -899,11 +899,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Operator(_, t)) if &**t == "=>" => {
                 read_token!(self, Token::Operator);
                 let expr = self.parse_expression();
-                BlockExpression::Block(Block::Statements(vec![Statement::Return(Some(Box::new(
-                    expr,
-                )))]))
+                Block::Statements(vec![Statement::Return(Some(Box::new(expr)))])
             }
-            _ => self.parse_block_expression(),
+            _ => self.parse_block(),
         };
         (params, return_type, block)
     }
@@ -939,7 +937,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         &self,
         params: Vec<LambdaParam>,
         return_type: TypeSignature,
-        block: BlockExpression,
+        block: Block,
     ) -> Expression {
         Expression::PrimaryExpression(PrimaryExpression::Lambda(Lambda::Lambda(
             params,

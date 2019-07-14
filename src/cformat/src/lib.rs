@@ -173,7 +173,6 @@ impl Context {
                             // Special cases
                             t => match t {
                                 Token::OpenBrace(_) => {
-                                    self.newline = false;
                                     self.whitespace = true;
                                     self.push("{");
                                     self.newline = true;
@@ -278,7 +277,6 @@ impl Context {
                 self.push("#pragma");
                 self.push(s);
                 self.newline = true;
-                self.push("");
             }
         }
     }
@@ -290,14 +288,15 @@ impl Context {
                     .iter()
                     .for_each(|d| self.declaration_specifiers(d));
                 self.declarator(&**decl);
-                self.compound_statement(compound);
+                self.compound_statement(false, compound);
             }
         }
     }
 
-    fn compound_statement(&mut self, tree: &CompoundStatement) {
+    fn compound_statement(&mut self, newline: bool, tree: &CompoundStatement) {
         match tree {
             CompoundStatement::Statements(statements) => {
+                self.newline = newline;
                 self.push_token(&Token::OpenBrace(0));
                 self.statement_list(statements);
                 self.push_token(&Token::CloseBrace(0));
@@ -308,15 +307,15 @@ impl Context {
     fn statement_list(&mut self, tree: &[StatementOrDeclaration]) {
         for stat_or_decl in tree {
             match stat_or_decl {
-                StatementOrDeclaration::Statement(statement) => self.statement(statement),
+                StatementOrDeclaration::Statement(statement) => self.statement(true, statement),
                 StatementOrDeclaration::Declaration(decl) => self.declaration(decl),
             }
         }
     }
 
-    fn statement(&mut self, tree: &Statement) {
+    fn statement(&mut self, newline: bool, tree: &Statement) {
         match tree {
-            Statement::CompoundStatement(compound) => self.compound_statement(compound),
+            Statement::CompoundStatement(compound) => self.compound_statement(newline, compound),
             Statement::ExpressionStatement(expr) => self.expression_statement(&**expr),
             Statement::JumpStatement(jumpy) => self.jump_statement(jumpy),
             Statement::SelectionStatement(statement) => self.selection_statement(statement),
@@ -348,10 +347,10 @@ impl Context {
                 self.expression(&**e);
                 self.push_token(&Token::CloseParen(0));
                 self.whitespace = true;
-                self.statement(s);
+                self.statement(false, s);
                 if let Some(e) = otherwise {
                     self.push_token(&Token::Else(0));
-                    self.statement(e);
+                    self.statement(false, e);
                 }
             }
             SelectionStatement::Switch(e, s) => {
@@ -360,7 +359,7 @@ impl Context {
                 self.expression(&**e);
                 self.push_token(&Token::CloseParen(0));
                 self.whitespace = true;
-                self.statement(s);
+                self.statement(false, s);
             }
         }
     }
@@ -371,7 +370,7 @@ impl Context {
                 self.push_token(case);
                 self.general_expression(&**e);
                 self.push_token(c);
-                self.statement(s);
+                self.statement(false, s);
             }
             LabeledStatement::RangeCase(case, e, v, e2, c, s) => {
                 self.push_token(case);
@@ -379,17 +378,17 @@ impl Context {
                 self.push_token(v);
                 self.general_expression(&**e2);
                 self.push_token(c);
-                self.statement(s);
+                self.statement(false, s);
             }
             LabeledStatement::Default(kw, c, s) => {
                 self.push_token(kw);
                 self.push_token(c);
-                self.statement(s);
+                self.statement(false, s);
             }
             LabeledStatement::Identifier(ident, c, s) => {
                 self.push_token(ident);
                 self.push_token(c);
-                self.statement(s);
+                self.statement(false, s);
             }
         }
     }
@@ -401,11 +400,11 @@ impl Context {
                 self.push_token(op);
                 self.expression(&**e);
                 self.push_token(cp);
-                self.statement(s);
+                self.statement(false, s);
             }
             IterationStatement::Do(d, s, w, op, e, cp, semi) => {
                 self.push_token(d);
-                self.statement(s);
+                self.statement(false, s);
                 self.push_token(w);
                 self.push_token(op);
                 self.expression(&**e);
@@ -424,7 +423,7 @@ impl Context {
                 self.expression_statement(&**e2);
                 self.newline = false;
                 self.push_token(cp);
-                self.statement(s);
+                self.statement(false, s);
             }
             IterationStatement::For(f, op, ForExpr::ForExpr(e1, e2, e3), cp, s) => {
                 self.push_token(f);
@@ -440,7 +439,7 @@ impl Context {
                 self.whitespace = true;
                 self.expression(&**e3);
                 self.push_token(cp);
-                self.statement(s);
+                self.statement(false, s);
             }
         }
     }
@@ -721,7 +720,7 @@ impl Context {
             }
             PrimaryExpression::Statement(stat) => {
                 self.push_token(&Token::OpenParen(0));
-                self.compound_statement(stat);
+                self.compound_statement(false, stat);
                 self.push_token(&Token::CloseParen(0));
             }
             PrimaryExpression::StructValue(ty, list) => {
