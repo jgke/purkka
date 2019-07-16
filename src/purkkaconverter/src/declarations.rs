@@ -8,6 +8,7 @@ pub struct FetchDeclarations {
     pub types: Vec<Typedef>,
 }
 
+#[allow(unused_must_use)]
 impl FetchDeclarations {
     pub fn new() -> FetchDeclarations {
         FetchDeclarations {
@@ -21,16 +22,20 @@ impl FetchDeclarations {
 }
 
 impl ASTVisitor for FetchDeclarations {
-    fn visit_declaration(&mut self, e: &mut Declaration) {
+    unit_result!();
+    type Err = ();
+    fn visit_declaration(&mut self, e: &mut Declaration) -> Result<(), ()> {
         match e {
             Declaration::Declaration(..) => self.declarations.push(e.clone()),
         }
+        Ok(self.ok())
     }
-    fn visit_typedef(&mut self, e: &mut Typedef) {
+    fn visit_typedef(&mut self, e: &mut Typedef) -> Result<(), ()> {
         match e {
             Typedef::Struct(..) => self.types.push(e.clone()),
             Typedef::Enum(..) => self.types.push(e.clone()),
             Typedef::Alias(..) => {}
         }
+        Ok(self.ok())
     }
 }

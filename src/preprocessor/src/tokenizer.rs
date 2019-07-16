@@ -33,8 +33,7 @@ enum MacroType {
     Else,
     Endif,
 
-    // Source of all problems with the preprocessor
-    Include,
+    Include(bool),
 
     // Define function/object, undef
     Define,
@@ -75,58 +74,170 @@ where
     CB: FnMut(FileQuery) -> ResolveResult,
 {
     pub(crate) fn new(get_file: CB) -> MacroContext<CB> {
-        let mut intern = StringInterner::new();
-        let mut symbols = HashMap::new();
-        symbols.insert(
-            intern.get_ref("__extension__"),
-            Macro::Text(Source::dummy(), vec![]),
-        );
-        symbols.insert(
-            intern.get_ref("__STDC__"),
-            Macro::Text(
-                Source::dummy(),
-                vec![MacroToken {
-                    ty: MacroTokenType::Number(intern.get_ref("1")),
-                    source: Source::dummy(),
-                }],
-            ),
-        );
-        symbols.insert(
-            intern.get_ref("__GNUC__"),
-            Macro::Text(
-                Source::dummy(),
-                vec![MacroToken {
-                    ty: MacroTokenType::Number(intern.get_ref("4")),
-                    source: Source::dummy(),
-                }],
-            ),
-        );
-        symbols.insert(
-            intern.get_ref("__GNUC_MINOR__"),
-            Macro::Text(
-                Source::dummy(),
-                vec![MacroToken {
-                    ty: MacroTokenType::Number(intern.get_ref("6")),
-                    source: Source::dummy(),
-                }],
-            ),
-        );
-        symbols.insert(
-            intern.get_ref("__GNUC_PATCHLEVEL__"),
-            Macro::Text(
-                Source::dummy(),
-                vec![MacroToken {
-                    ty: MacroTokenType::Number(intern.get_ref("0")),
-                    source: Source::dummy(),
-                }],
-            ),
-        );
+        let mut syms = (StringInterner::new(), HashMap::new());
+        syms.empty("__extension__");
+        syms.num("__STDC__", "1");
+        syms.num("__STDC_HOSTED__", "1");
+        syms.num("__GNUC__", "7");
+        syms.num("__GNUC_MINOR__", "4");
+
+        syms.num("__X86_64__", "1");
+        syms.num("__LP64__", "1");
+
+        /* common types */
+        syms.ident("__SIZE_TYPE__", "long unsigned int");
+        syms.ident("__PTRDIFF_TYPE__", "long int");
+        syms.ident("__WCHAR_TYPE__", "int");
+        syms.ident("__WINT_TYPE__", "unsigned int");
+        syms.ident("__INTMAX_TYPE__", "long int");
+        syms.ident("__UINTMAX_TYPE__", "long unsigned int");
+        syms.ident("__SIG_ATOMIC_TYPE__", "int");
+        syms.ident("__INT8_TYPE__", "signed char");
+        syms.ident("__INT16_TYPE__", "short int");
+        syms.ident("__INT32_TYPE__", "int");
+        syms.ident("__INT64_TYPE__", "long int");
+        syms.ident("__UINT8_TYPE__", "unsigned char");
+        syms.ident("__UINT16_TYPE__", "short unsigned int");
+        syms.ident("__UINT32_TYPE__", "unsigned int");
+        syms.ident("__UINT64_TYPE__", "long unsigned int");
+        syms.ident("__INT_LEAST8_TYPE__", "signed char");
+        syms.ident("__INT_LEAST16_TYPE__", "short int");
+        syms.ident("__INT_LEAST32_TYPE__", "int");
+        syms.ident("__INT_LEAST64_TYPE__", "long int");
+        syms.ident("__UINT_LEAST8_TYPE__", "unsigned char");
+        syms.ident("__UINT_LEAST16_TYPE__", "short unsigned int");
+        syms.ident("__UINT_LEAST32_TYPE__", "unsigned int");
+        syms.ident("__UINT_LEAST64_TYPE__", "long unsigned int");
+        syms.ident("__INT_FAST8_TYPE__", "signed char");
+        syms.ident("__INT_FAST16_TYPE__", "long int");
+        syms.ident("__INT_FAST32_TYPE__", "long int");
+        syms.ident("__INT_FAST64_TYPE__", "long int");
+        syms.ident("__UINT_FAST8_TYPE__", "unsigned char");
+        syms.ident("__UINT_FAST16_TYPE__", "long unsigned int");
+        syms.ident("__UINT_FAST32_TYPE__", "long unsigned int");
+        syms.ident("__UINT_FAST64_TYPE__", "long unsigned int");
+        syms.ident("__INTPTR_TYPE__", "long int");
+        syms.ident("__UINTPTR_TYPE__", "long unsigned int");
+
+        syms.ident("_Float16", "float");
+        syms.ident("_Float32", "float");
+        syms.ident("_Float32x", "float");
+        syms.ident("_Float64", "double");
+        syms.ident("_Float64x", "double");
+        syms.ident("_Float128", "double");
+        syms.ident("_Float128x", "double");
+
+        syms.num("__CHAR_BIT__", "8");
+
+        syms.num("__SCHAR_MAX__", "0x7f");
+        syms.num("__WCHAR_MAX__", "0x7fffffff");
+        syms.num("__SHRT_MAX__", "0x7fff");
+        syms.num("__INT_MAX__", "0x7fffffff");
+        syms.num("__LONG_MAX__", "0x7fffffffffffffffL");
+        syms.num("__LONG_LONG_MAX__", "0x7fffffffffffffffLL");
+        syms.num("__WINT_MAX__", "0xffffffffU");
+        syms.num("__SIZE_MAX__", "0xffffffffffffffffUL");
+        syms.num("__PTRDIFF_MAX__", "0x7fffffffffffffffL");
+        syms.num("__INTMAX_MAX__", "0x7fffffffffffffffL");
+        syms.num("__UINTMAX_MAX__", "0xffffffffffffffffUL");
+        syms.num("__SIG_ATOMIC_MAX__", "0x7fffffff");
+        syms.num("__INT8_MAX__", "0x7f");
+        syms.num("__INT16_MAX__", "0x7fff");
+        syms.num("__INT32_MAX__", "0x7fffffff");
+        syms.num("__INT64_MAX__", "0x7fffffffffffffffL");
+        syms.num("__UINT8_MAX__", "0xff");
+        syms.num("__UINT16_MAX__", "0xffff");
+        syms.num("__UINT32_MAX__", "0xffffffffU");
+        syms.num("__UINT64_MAX__", "0xffffffffffffffffUL");
+        syms.num("__INT_LEAST8_MAX__", "0x7f");
+        syms.num("__INT_LEAST16_MAX__", "0x7fff");
+        syms.num("__INT_LEAST32_MAX__", "0x7fffffff");
+        syms.num("__INT_LEAST64_MAX__", "0x7fffffffffffffffL");
+        syms.num("__UINT_LEAST8_MAX__", "0xff");
+        syms.num("__UINT_LEAST16_MAX__", "0xffff");
+        syms.num("__UINT_LEAST32_MAX__", "0xffffffffU");
+        syms.num("__UINT_LEAST64_MAX__", "0xffffffffffffffffUL");
+        syms.num("__INT_FAST8_MAX__", "0x7f");
+        syms.num("__INT_FAST16_MAX__", "0x7fffffffffffffffL");
+        syms.num("__INT_FAST32_MAX__", "0x7fffffffffffffffL");
+        syms.num("__INT_FAST64_MAX__", "0x7fffffffffffffffL");
+        syms.num("__UINT_FAST8_MAX__", "0xff");
+        syms.num("__UINT_FAST16_MAX__", "0xffffffffffffffffUL");
+        syms.num("__UINT_FAST32_MAX__", "0xffffffffffffffffUL");
+        syms.num("__UINT_FAST64_MAX__", "0xffffffffffffffffUL");
+        syms.num("__INTPTR_MAX__", "0x7fffffffffffffffL");
+        syms.num("__UINTPTR_MAX__", "0xffffffffffffffffUL");
+        syms.num("__WCHAR_MIN__", "(-0x7fffffff - 1)");
+        syms.num("__WINT_MIN__", "0U");
+        syms.num("__SIG_ATOMIC_MIN__", "(-0x7fffffff - 1)");
+
+        syms.ident("__INT8_C", "__INT8_C");
+        syms.ident("__INT16_C", "__INT16_C");
+        syms.ident("__INT32_C", "__INT32_C");
+        syms.ident("__INT64_C", "__INT64_C");
+        syms.ident("__UINT8_C", "__UINT8_C");
+        syms.ident("__UINT16_C", "__UINT16_C");
+        syms.ident("__UINT32_C", "__UINT32_C");
+        syms.ident("__UINT64_C", "__UINT64_C");
+        syms.ident("__INTMAX_C", "__INTMAX_C");
+        syms.ident("__UINTMAX_C", "__UINTMAX_C");
+
+        syms.ident("__SCHAR_WIDTH__", "8");
+        syms.ident("__SHRT_WIDTH__", "16");
+        syms.ident("__INT_WIDTH__", "32");
+        syms.ident("__LONG_WIDTH__", "64");
+        syms.ident("__LONG_LONG_WIDTH__", "64");
+        syms.ident("__PTRDIFF_WIDTH__", "64");
+        syms.ident("__SIG_ATOMIC_WIDTH__", "32");
+        syms.ident("__SIZE_WIDTH__", "64");
+        syms.ident("__WCHAR_WIDTH__", "32");
+        syms.ident("__WINT_WIDTH__", "32");
+        syms.ident("__INT_LEAST8_WIDTH__", "8");
+        syms.ident("__INT_LEAST16_WIDTH__", "16");
+        syms.ident("__INT_LEAST32_WIDTH__", "32");
+        syms.ident("__INT_LEAST64_WIDTH__", "64");
+        syms.ident("__INT_FAST8_WIDTH__", "8");
+        syms.ident("__INT_FAST16_WIDTH__", "64");
+        syms.ident("__INT_FAST32_WIDTH__", "64");
+        syms.ident("__INT_FAST64_WIDTH__", "64");
+        syms.ident("__INTPTR_WIDTH__", "64");
+        syms.ident("__INTMAX_WIDTH__", "64");
+
+        syms.ident("__SIZEOF_INT__", "4");
+        syms.ident("__SIZEOF_LONG__", "8");
+        syms.ident("__SIZEOF_LONG_LONG__", "8");
+        syms.ident("__SIZEOF_SHORT__", "2");
+        syms.ident("__SIZEOF_POINTER__", "8");
+        syms.ident("__SIZEOF_FLOAT__", "4");
+        syms.ident("__SIZEOF_DOUBLE__", "8");
+        syms.ident("__SIZEOF_LONG_DOUBLE__", "16");
+        syms.ident("__SIZEOF_SIZE_T__", "8");
+        syms.ident("__SIZEOF_WCHAR_T__", "4");
+        syms.ident("__SIZEOF_WINT_T__", "4");
+        syms.ident("__SIZEOF_PTRDIFF_T__", "8");
+
+        syms.ident("__BYTE_ORDER__", "1234");
+        syms.ident("__ORDER_LITTLE_ENDIAN__", "1234");
+        syms.ident("__ORDER_BIG_ENDIAN__", "4321");
+        syms.ident("__ORDER_PDP_ENDIAN__", "3412");
+
+        syms.ident("__FLOAT_WORD_ORDER__", "1234");
+
+        syms.ident("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1", "1");
+        syms.ident("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2", "1");
+        syms.ident("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_4", "1");
+        syms.ident("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8", "1");
+
+        syms.ident("__GCC_IEC_559", "2");
+
+        syms.ident("__GCC_IEC_559_COMPLEX", "2");
+
         MacroContext {
-            symbols,
+            intern: syms.0,
+            symbols: syms.1,
             if_stack: Vec::new(),
             get_file,
             iter: None,
-            intern,
         }
     }
 
@@ -670,7 +781,7 @@ where
                     self.symbols.insert(left, Macro::Text(total_span, right));
                 }
             }
-            MacroType::Include => {
+            MacroType::Include(next) => {
                 loop {
                     match sub_iter.peek() {
                         Some(' ') | Some('\t') => sub_iter.next(),
@@ -702,11 +813,12 @@ where
                     panic!("Unexpected character: {}", end.display(&sub_iter));
                 };
 
-                let content = (self.get_file)(FileQuery::new(
+                let content = (self.get_file)(FileQuery::new_next(
                     &iter.current_filename(),
                     &filename,
                     is_quote,
                     true,
+                    next
                 ));
                 iter.split_and_push_file(
                     &content.full_path,
@@ -756,7 +868,8 @@ where
             "elif" => MacroType::Elif,
             "else" => MacroType::Else,
             "endif" => MacroType::Endif,
-            "include" => MacroType::Include,
+            "include" => MacroType::Include(false),
+            "include_next" => MacroType::Include(true),
             "define" => MacroType::Define,
             "undef" => MacroType::Undef,
             "line" => MacroType::Line,
@@ -1652,5 +1765,45 @@ impl ExpansionHistory {
 
     fn insert(&mut self, other: Rc<str>) {
         self.history.push(other);
+    }
+}
+
+trait CommonMacros {
+    fn empty(&mut self, ty: &str);
+    fn num(&mut self, ty: &str, res: &str);
+    fn ident(&mut self, ty: &str, res: &str);
+}
+
+impl CommonMacros for (StringInterner, HashMap<Rc<str>, Macro>) {
+    fn empty(&mut self, ty: &str) {
+        self.1.insert(
+            self.0.get_ref(ty),
+            Macro::Text(
+                Source::dummy(),
+                Vec::new()
+            ),
+        );
+    }
+    fn num(&mut self, ty: &str, res: &str) {
+        self.1.insert(
+            self.0.get_ref(ty),
+            Macro::Text(
+                Source::dummy(),
+                vec![MacroToken {
+                    ty: MacroTokenType::Number(self.0.get_ref(res)),
+                    source: Source::dummy(),
+                }],
+            ),
+        );
+    }
+    fn ident(&mut self, ty: &str, res: &str) {
+        let syms = res.split(" ")
+            .map(|ident|
+                 MacroToken {
+                     ty: MacroTokenType::Identifier(self.0.get_ref(ident)),
+                     source: Source::dummy(),
+                 })
+            .collect();
+        self.1.insert(self.0.get_ref(ty), Macro::Text(Source::dummy(), syms));
     }
 }

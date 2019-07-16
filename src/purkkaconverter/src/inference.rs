@@ -17,6 +17,7 @@ pub struct TypeInferrer<'a> {
     context: &'a Context,
 }
 
+#[allow(unused_must_use)]
 impl<'a> TreeTransformer<'a> for TypeInferrer<'a> {
     fn new(context: &'a mut Context) -> TypeInferrer {
         TypeInferrer {
@@ -37,7 +38,10 @@ impl<'a> TreeTransformer<'a> for TypeInferrer<'a> {
 }
 
 impl ASTVisitor for TypeInferrer<'_> {
-    fn visit_declaration(&mut self, tree: &mut Declaration) {
+    unit_result!();
+    type Err = ();
+
+    fn visit_declaration(&mut self, tree: &mut Declaration) -> Result<(), ()> {
         match tree {
             Declaration::Declaration(_, _, _, name, exact_ty, Some(e)) => {
                 let ty = self.get_type(e);
@@ -60,20 +64,20 @@ impl ASTVisitor for TypeInferrer<'_> {
                 self.push_symbol(name.clone(), From::from(*ty.clone()));
             }
         }
-        walk_declaration(self, tree);
+        walk_declaration(self, tree)
     }
 
-    fn visit_operator_overload(&mut self, s: &mut OperatorOverload) {
+    fn visit_operator_overload(&mut self, s: &mut OperatorOverload) -> Result<(), ()> {
         match s {
             OperatorOverload::OperatorOverload(_ident, ty, expr) => {
                 let expr_ty = self.get_type(expr);
                 self.make_equal(&From::from(*ty.clone()), &expr_ty.0);
             }
         }
-        walk_operator_overload(self, s);
+        walk_operator_overload(self, s)
     }
 
-    fn visit_lambda(&mut self, tree: &mut Lambda) {
+    fn visit_lambda(&mut self, tree: &mut Lambda) -> Result<(), ()> {
         self.push_block();
         let Lambda::Lambda(params, _, e) = tree;
         for param in params {
@@ -84,17 +88,19 @@ impl ASTVisitor for TypeInferrer<'_> {
                 LambdaParam::Variadic => {}
             }
         }
-        walk_block(self, e);
+        let res = walk_block(self, e);
         self.pop_block();
+        res
     }
 
-    fn visit_block(&mut self, e: &mut Block) {
+    fn visit_block(&mut self, e: &mut Block) -> Result<(), ()> {
         self.push_block();
-        walk_block(self, e);
+        let res = walk_block(self, e);
         self.pop_block();
+        res
     }
 
-    fn visit_primary_expression(&mut self, e: &mut PrimaryExpression) {
+    fn visit_primary_expression(&mut self, e: &mut PrimaryExpression) -> Result<(), ()> {
         self.push_block();
         if let PrimaryExpression::Lambda(Lambda::Lambda(params, _, _)) = e {
             for param in params {
@@ -106,8 +112,9 @@ impl ASTVisitor for TypeInferrer<'_> {
                 }
             }
         }
-        walk_primary_expression(self, e);
+        let res = walk_primary_expression(self, e);
         self.pop_block();
+        res
     }
 }
 
@@ -273,6 +280,7 @@ impl TypeInferrer<'_> {
     }
 
     fn get_type(&mut self, expression: &Expression) -> (IntermediateType, Vec<IntermediateType>) {
+        dbg!(&expression);
         let mut ty = match expression {
             Expression::PrimaryExpression(expr) => self.get_primary_expr_type(expr),
             Expression::Op(op, ExprList::List(list)) => {
@@ -422,6 +430,7 @@ impl TypeInferrer<'_> {
             Expression::ArrayAccess(expr, index) => self.get_array_access_type(expr, index),
             Expression::Call(expr, ArgList::Args(args)) => {
                 let (ty, mut ret_tys) = self.get_type(&*expr);
+                dbg!(&expr, &ty);
                 for arg in args {
                     let (_, mut more_ret_tys) = self.get_type(arg);
                     ret_tys.append(&mut more_ret_tys);
@@ -482,7 +491,9 @@ impl TypeInferrer<'_> {
     ) -> (IntermediateType, Vec<IntermediateType>) {
         match expr {
             PrimaryExpression::Identifier(t) => {
-                (self.get_symbol_ty(t.as_ref()).unwrap(), Vec::new())
+                let sym_ty = self.get_symbol_ty(t.as_ref())
+                    .unwrap_or_else(|| panic!("Unknown identifier: {}", t));
+                (sym_ty, Vec::new())
             }
             PrimaryExpression::Literal(lit) => match lit {
                 Literal::Integer(..) => (self.get_number_ty(), Vec::new()),
@@ -784,14 +795,15 @@ impl TypeInferrer<'_> {
         &mut self,
         stmt: &Statement,
     ) -> (Option<IntermediateType>, Vec<IntermediateType>) {
+        dbg!(&stmt);
         match stmt {
             Statement::Declaration(decl) => {
-                self.visit_declaration(&mut decl.clone());
+                self.visit_declaration(&mut decl.clone()).unwrap();
                 (None, Vec::new())
             }
             Statement::BlockExpression(block) => self.get_block_expr_type(&**block),
             Statement::Expression(expr) => {
-                self.visit_expression(&mut expr.clone());
+                self.visit_expression(&mut expr.clone()).unwrap();
                 (None, self.get_type(expr).1)
             }
             Statement::Return(expr) => expr
@@ -1013,6 +1025,7 @@ impl TypeInferrer<'_> {
     }
 
     fn unify_types(&mut self, lvalue: &TypeSignature, rvalue: &TypeSignature) {
+        dbg!(&lvalue, &rvalue);
         if lvalue == rvalue {
             return;
         }
@@ -1023,7 +1036,9 @@ impl TypeInferrer<'_> {
 
         if let TypeSignature::Plain(name) = rvalue {
             if let Some(ty) = self.get_ident_ty(name) {
-                return self.unify_types(&lvalue, &ty);
+                if &ty != rvalue {
+                    return self.unify_types(&lvalue, &ty);
+                }
             }
         }
 
@@ -1058,13 +1073,10 @@ impl TypeInferrer<'_> {
                     assert!(!*right_nullable || *left_nullable);
                     self.unify_types(left_ty, right_ty);
                 }
-                TypeSignature::Struct(..) => {
-                    panic!("Cannot use struct {:?} as a pointer", rvalue);
-                }
                 TypeSignature::Array(right_ty, _) | TypeSignature::DynamicArray(right_ty, _) => {
                     self.unify_types(left_ty, right_ty);
                 }
-                otherwise => panic!("Not implemented: {:?}", otherwise),
+                _ => panic!("Cannot assign {:?} to {:?}", rvalue, lvalue),
             },
             TypeSignature::Struct(left_name, left_fields) => match rvalue {
                 TypeSignature::Struct(right_name, right_fields) => {
@@ -1120,12 +1132,14 @@ struct TypeInserter<'a> {
 }
 
 impl ASTVisitor for TypeInserter<'_> {
-    fn visit_ty(&mut self, s: &mut TypeSignature) {
+    unit_result!();
+    type Err = ();
+    fn visit_ty(&mut self, s: &mut TypeSignature) -> Result<(), ()> {
         match s.clone() {
             TypeSignature::Infer(IntermediateType::Any(id)) => {
                 if let Some(ty) = self.infer_map.get(&id).cloned() {
                     *s = From::from(ty);
-                    self.visit_ty(s);
+                    self.visit_ty(s).unwrap();
                 } else {
                     panic!("Did not find type for id {}", id);
                 }
@@ -1133,7 +1147,7 @@ impl ASTVisitor for TypeInserter<'_> {
             TypeSignature::Infer(IntermediateType::Number(id, more)) => {
                 if let Some(ty) = self.infer_map.get(&id).cloned() {
                     *s = From::from(ty);
-                    self.visit_ty(s);
+                    self.visit_ty(s).unwrap();
                 } else {
                     match more {
                         _ => *s = TypeSignature::Primitive(Primitive::Int(32)),
@@ -1142,6 +1156,6 @@ impl ASTVisitor for TypeInserter<'_> {
             }
             _ => {}
         }
-        walk_ty(self, s);
+        walk_ty(self, s)
     }
 }

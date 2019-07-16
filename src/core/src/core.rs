@@ -11,8 +11,10 @@ use preprocessor::PreprocessorOptions;
 use resolve::{FileQuery, ResolveResult};
 
 pub static DEFAULT_INCLUDE_PATH: &[&str] = &[
-    "/usr/local/include",
     "/usr/lib/gcc/x86_64-linux-gnu/7/include",
+    "/usr/local/include",
+    "/usr/lib/gcc/x86_64-linux-gnu/7/include-fixed",
+    "/usr/include/x86_64-linux-gnu",
     "/usr/include",
 ];
 
@@ -74,25 +76,43 @@ pub fn get_file_content_cb<'a>(
                 req.requested_file, req.current_file, req.local_file
             )
         });
+
+        let mut next = req.include_next;
+
         if req.local_file {
             let mut path = path::PathBuf::from(req.current_file.clone());
             path.pop();
             path.push(req.requested_file.clone());
             let full_path = path.clone();
-            if let Ok(mut f) = File::open(path) {
-                f.read_to_string(&mut contents)
-                    .expect("something went wrong reading the file");
-                return (contents, full_path.to_str().unwrap().to_string());
+            let path_str = full_path.to_str().unwrap().to_string();
+            if !next {
+                if let Ok(mut f) = File::open(path) {
+                    f.read_to_string(&mut contents)
+                        .expect("something went wrong reading the file");
+                    return (contents, path_str);
+                }
+            }
+            if path_str == req.current_file {
+                next = false;
             }
         }
+        let mut cur_path = path::PathBuf::from(req.current_file.clone());
+        cur_path.pop();
+        let cur_path_str = cur_path.to_str().unwrap();
         for std_path in &options.include_path {
             let mut path = path::PathBuf::from(std_path);
             path.push(req.requested_file.clone());
             let full_path = path.clone();
-            if let Ok(mut f) = File::open(path) {
-                f.read_to_string(&mut contents)
-                    .expect("something went wrong reading the file");
-                return (contents, full_path.to_str().unwrap().to_string());
+            let path_str = full_path.to_str().unwrap().to_string();
+            if !next {
+                if let Ok(mut f) = File::open(path) {
+                    f.read_to_string(&mut contents)
+                        .expect("something went wrong reading the file");
+                    return (contents, path_str);
+                }
+            }
+            if &cur_path_str == std_path {
+                next = false;
             }
         }
 

@@ -13,6 +13,7 @@ pub struct InlineTypedef<'a> {
     typedefs: HashMap<Rc<str>, TypeSignature>,
 }
 
+#[allow(unused_must_use)]
 impl<'a> TreeTransformer<'a> for InlineTypedef<'a> {
     fn new(context: &'a mut Context) -> InlineTypedef<'a> {
         InlineTypedef {
@@ -26,7 +27,9 @@ impl<'a> TreeTransformer<'a> for InlineTypedef<'a> {
 }
 
 impl ASTVisitor for InlineTypedef<'_> {
-    fn visit_translation_unit(&mut self, e: &mut TranslationUnit) {
+    unit_result!();
+    type Err = ();
+    fn visit_translation_unit(&mut self, e: &mut TranslationUnit) -> Result<(), ()> {
         match e {
             TranslationUnit::Units(ref mut units) => {
                 units
@@ -46,16 +49,16 @@ impl ASTVisitor for InlineTypedef<'_> {
                     });
             }
         }
-        walk_translation_unit(self, e);
+        walk_translation_unit(self, e)
     }
 
-    fn visit_ty(&mut self, e: &mut TypeSignature) {
+    fn visit_ty(&mut self, e: &mut TypeSignature) -> Result<(), ()> {
         match e {
             TypeSignature::Plain(ident) if self.typedefs.contains_key(ident) => {
                 *e = self.typedefs[ident].clone();
             }
             _ => {}
         }
-        walk_ty(self, e);
+        walk_ty(self, e)
     }
 }

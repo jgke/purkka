@@ -9,6 +9,7 @@ pub struct InlineOperators<'a> {
     context: &'a mut Context,
 }
 
+#[allow(unused_must_use)]
 impl<'a> TreeTransformer<'a> for InlineOperators<'a> {
     fn new(context: &'a mut Context) -> InlineOperators<'a> {
         InlineOperators { context }
@@ -19,7 +20,9 @@ impl<'a> TreeTransformer<'a> for InlineOperators<'a> {
 }
 
 impl ASTVisitor for InlineOperators<'_> {
-    fn visit_translation_unit(&mut self, e: &mut TranslationUnit) {
+    unit_result!();
+    type Err = ();
+    fn visit_translation_unit(&mut self, e: &mut TranslationUnit) -> Result<(), ()> {
         match e {
             TranslationUnit::Units(ref mut units) => {
                 units
@@ -33,10 +36,10 @@ impl ASTVisitor for InlineOperators<'_> {
                     .last();
             }
         }
-        walk_translation_unit(self, e);
+        walk_translation_unit(self, e)
     }
 
-    fn visit_expression(&mut self, e: &mut Expression) {
+    fn visit_expression(&mut self, e: &mut Expression) -> Result<(), ()> {
         if let Expression::Op(op, list) = e {
             let ExprList::List(list) = list;
             let operator = &self.context.operators.infix[op];
@@ -44,6 +47,6 @@ impl ASTVisitor for InlineOperators<'_> {
                 *e = Expression::Call(Box::new(expr.clone()), ArgList::Args(list.clone()))
             }
         }
-        walk_expression(self, e);
+        walk_expression(self, e)
     }
 }

@@ -20,6 +20,7 @@ pub struct FileQuery {
     pub requested_file: String,
     pub local_file: bool,
     pub need_raw: bool,
+    pub include_next: bool,
 }
 
 impl FileQuery {
@@ -29,6 +30,16 @@ impl FileQuery {
             requested_file: requested.to_string(),
             local_file: local,
             need_raw: raw,
+            include_next: false
+        }
+    }
+    pub fn new_next(current: &str, requested: &str, local: bool, raw: bool, include_next: bool) -> FileQuery {
+        FileQuery {
+            current_file: current.to_string(),
+            requested_file: requested.to_string(),
+            local_file: local,
+            need_raw: raw,
+            include_next
         }
     }
 }

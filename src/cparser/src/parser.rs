@@ -752,6 +752,7 @@ where
                 Box::new(DirectDeclarator::Parens(Box::new(d)))
             }
         };
+        dbg!(&decl);
         loop {
             match self.peek() {
                 Some(Token::OpenBracket(..)) => {
@@ -790,6 +791,9 @@ where
                             break;
                         }
                         Some(Token::Comma(..)) | Some(Token::CloseParen(..)) => {
+                            if spec == Box::new(DeclarationSpecifiers::DeclarationSpecifiers(None, Some(CType::Void))) {
+                                continue;
+                            }
                             params.push(FunctionParam::Parameter(
                                 ParameterDeclaration::DeclarationSpecifiers(spec),
                             ))
@@ -806,6 +810,16 @@ where
                                     ParameterDeclaration::Declarator(spec, Box::new(declarator))
                                 }
                             };
+                            dbg!(&decl);
+                            if decl == ParameterDeclaration::AbstractDeclarator(
+                                Box::new(DeclarationSpecifiers::DeclarationSpecifiers(None, Some(CType::Void))),
+                                Box::new(
+                                    AbstractDeclarator::AbstractDeclarator(
+                                    None,
+                                    Box::new(DirectAbstractDeclarator::Epsilon()))))
+                            {
+                                continue;
+                            }
                             params.push(FunctionParam::Parameter(decl));
                         }
                     };
