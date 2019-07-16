@@ -41,7 +41,6 @@ pub struct Context {
 }
 
 pub fn transform(purkka_tree: &mut pp::S, operators: Operators, symbols: Symbols) -> Context {
-    dbg!(&purkka_tree);
     let mut context = Context::new(operators, symbols);
     InlineTypedef::new(&mut context).transform(purkka_tree);
     InlineOperators::new(&mut context).transform(purkka_tree);

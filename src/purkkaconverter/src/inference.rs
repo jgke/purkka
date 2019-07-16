@@ -17,6 +17,7 @@ pub struct TypeInferrer<'a> {
     context: &'a Context,
     current_statement: String,
     current_expression: String,
+    current_function: String,
 }
 
 impl<'a> TreeTransformer<'a> for TypeInferrer<'a> {
@@ -27,6 +28,7 @@ impl<'a> TreeTransformer<'a> for TypeInferrer<'a> {
             context,
             current_statement: "".to_string(),
             current_expression: "".to_string(),
+            current_function: "".to_string(),
         }
     }
     fn transform(&mut self, s: &mut S) {
@@ -34,6 +36,7 @@ impl<'a> TreeTransformer<'a> for TypeInferrer<'a> {
             println!("{}", res);
             println!("Current statement: {}", self.current_statement);
             println!("Current expression: {}", self.current_expression);
+            println!("Current declaration: {}", self.current_function);
             panic!();
         }
 
@@ -57,6 +60,7 @@ impl ASTVisitor for TypeInferrer<'_> {
     fn visit_declaration(&mut self, tree: &mut Declaration) -> Result<(), String> {
         match tree {
             Declaration::Declaration(_, _, _, name, exact_ty, Some(e)) => {
+                self.current_function = name.to_string();
                 let ty = self.get_type(e)?;
                 self.push_symbol(name.clone(), ty.0.clone());
                 let intermediate: IntermediateType = From::from(*exact_ty.clone());
