@@ -275,6 +275,7 @@ impl Context {
         match tree {
             Pragma::Pragma(s) => {
                 self.push("#pragma");
+                self.whitespace = true;
                 self.push(s);
                 self.newline = true;
             }

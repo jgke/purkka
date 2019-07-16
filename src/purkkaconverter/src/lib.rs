@@ -41,6 +41,7 @@ pub struct Context {
 }
 
 pub fn transform(purkka_tree: &mut pp::S, operators: Operators, symbols: Symbols) -> Context {
+    dbg!(&purkka_tree);
     let mut context = Context::new(operators, symbols);
     InlineTypedef::new(&mut context).transform(purkka_tree);
     InlineOperators::new(&mut context).transform(purkka_tree);
@@ -136,7 +137,7 @@ impl Context {
         inline: bool,
     ) -> cp::ExternalDeclaration {
         use cp::DeclarationSpecifiers::DeclarationSpecifiers as DSpec;
-        let DSpec(mut specs, ty) = self.type_to_declaration_specifiers(ty.clone());
+        let DSpec(mut specs, c_ty) = self.type_to_declaration_specifiers(ty.clone());
         if let Some(ref mut specs) = specs {
             specs.0.inline = inline;
         } else if inline {
@@ -148,8 +149,8 @@ impl Context {
         let statements = self.block_to_statement_list(block);
         cp::ExternalDeclaration::FunctionDefinition(Box::new(
             cp::FunctionDefinition::FunctionDefinition(
-                Some(Box::new(DSpec(specs, ty))),
-                Box::new(cp::Declarator::Declarator(None, Box::new(params))),
+                Some(Box::new(DSpec(specs, c_ty))),
+                Box::new(cp::Declarator::Declarator(self.ty_to_pointer(ty), Box::new(params))),
                 Box::new(cp::CompoundStatement::Statements(statements)),
             ),
         ))

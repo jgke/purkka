@@ -382,7 +382,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     false,
                     inline,
                     ident,
-                    Box::new(self.get_inferred_type()),
+                    Box::new(TypeSignature::Function(
+                        params.iter().cloned().map(From::from).collect(),
+                        Box::new(return_type.clone()),
+                    )),
                     Some(Box::new(self.lambda_to_expr(params, return_type, block))),
                 );
             }
@@ -1540,5 +1543,25 @@ mod tests {
                 ])
             )
         );
+    }
+
+    #[test]
+    fn parse_ty() {
+        let s = test_parse(vec![
+            Token::Let(0),
+            Token::Identifier(1, From::from("bar")),
+            Token::Colon(2),
+            Token::Operator(3, From::from("&")),
+            Token::Identifier(4, From::from("i32")),
+            Token::SemiColon(9),
+        ]);
+        assert_eq!(s, S::TranslationUnit( TranslationUnit::Units(
+                    vec![Unit::Declaration(
+                        Box::new(Declaration::Declaration(
+                            false, true, false, From::from("bar"),
+                            Box::new(TypeSignature::Pointer {
+                                nullable: false,
+                                ty: Box::new(TypeSignature::Primitive(Primitive::Int(32)))},
+                            ), None)))])));
     }
 }

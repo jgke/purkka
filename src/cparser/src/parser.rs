@@ -752,7 +752,6 @@ where
                 Box::new(DirectDeclarator::Parens(Box::new(d)))
             }
         };
-        dbg!(&decl);
         loop {
             match self.peek() {
                 Some(Token::OpenBracket(..)) => {
@@ -810,7 +809,6 @@ where
                                     ParameterDeclaration::Declarator(spec, Box::new(declarator))
                                 }
                             };
-                            dbg!(&decl);
                             if decl == ParameterDeclaration::AbstractDeclarator(
                                 Box::new(DeclarationSpecifiers::DeclarationSpecifiers(None, Some(CType::Void))),
                                 Box::new(
