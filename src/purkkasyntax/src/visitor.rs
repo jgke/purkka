@@ -258,6 +258,8 @@ pub fn walk_expression<T: ASTVisitor + ?Sized>(
             visitor.visit_expression(index_expr.deref_mut())?,
         ].flatten(visitor),
         Expression::StructAccess(expr, _ident) => visitor.visit_expression(expr.deref_mut()),
+        Expression::Sizeof(Sizeof::Expression(e)) => visitor.visit_expression(e),
+        Expression::Sizeof(Sizeof::Type(t)) => visitor.visit_ty(t),
     }
 }
 

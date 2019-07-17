@@ -778,20 +778,27 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     #[allow(clippy::cognitive_complexity)]
     fn parse_expression_(&mut self, precedence: usize) -> Expression {
-        let mut expr = if let Some(Token::Operator(_, op)) = self.peek() {
-            match self.operators.unary.get(op).cloned() {
-                Some(ref n) if n.left_associative => {
-                    assert_eq!(n.left_associative, true);
-                    read_token!(self, Token::Operator);
-                    let exprs = (0..n.param_count)
-                        .map(|_| self.parse_expression_(n.precedence))
-                        .collect();
-                    Expression::Unary(op.clone(), ExprList::List(exprs))
+        let mut expr = match self.peek() {
+            Some(Token::Operator(_, op)) =>
+                match self.operators.unary.get(op).cloned() {
+                    Some(ref n) if n.left_associative => {
+                        assert_eq!(n.left_associative, true);
+                        read_token!(self, Token::Operator);
+                        let exprs = (0..n.param_count)
+                            .map(|_| self.parse_expression_(n.precedence))
+                            .collect();
+                        Expression::Unary(op.clone(), ExprList::List(exprs))
+                    }
+                    _ => panic!("Unknown prefix operator: {:?}", op),
                 }
-                _ => panic!("Unknown prefix operator: {:?}", op),
+            Some(Token::Sizeof(..)) => {
+                read_token!(self, Token::Sizeof);
+                read_token!(self, Token::OpenParen);
+                let ty = self.parse_type();
+                read_token!(self, Token::CloseParen);
+                Expression::Sizeof(Sizeof::Type(Box::new(ty)))
             }
-        } else {
-            Expression::PrimaryExpression(self.parse_primary_expression())
+            _ => Expression::PrimaryExpression(self.parse_primary_expression())
         };
         loop {
             match self.peek() {
@@ -1313,6 +1320,7 @@ mod tests {
             Expression::Call(..) => unreachable!(),
             Expression::ArrayAccess(..) => unreachable!(),
             Expression::StructAccess(..) => unreachable!(),
+            Expression::Sizeof(..) => unreachable!(),
         }
     }
 

@@ -465,6 +465,16 @@ impl TypeInferrer<'_> {
             }
             Expression::Cast(expr, ty) => (From::from(ty.clone()), self.get_type(expr)?.1),
             Expression::StructAccess(expr, ident) => self.struct_access(expr, ident)?,
+            Expression::Sizeof(size) => {
+                match size {
+                    Sizeof::Expression(expr) => {
+                        self.get_type(expr)?;
+                    }
+                    Sizeof::Type(_) => {}
+                }
+
+                (From::from(TypeSignature::size_t()), Vec::new())
+            }
         };
 
         loop {

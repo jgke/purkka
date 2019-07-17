@@ -774,6 +774,12 @@ impl Context {
                     }
                 }
             }
+            pp::Expression::Sizeof(pp::Sizeof::Expression(e)) => {
+                cp::UnaryExpression::SizeofExpr(Box::new(self.unary_expression(*e)))
+            }
+            pp::Expression::Sizeof(pp::Sizeof::Type(t)) => {
+                cp::UnaryExpression::SizeofTy(Box::new(self.type_to_type_name(*t)))
+            }
             _ => cp::UnaryExpression::PostfixExpression(Box::new(self.postfix_expression(k))),
         }
     }

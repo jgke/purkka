@@ -284,6 +284,8 @@ grammar! {
         | Call. &PrimaryExpression ArgList
         | ArrayAccess. &PrimaryExpression #Token::OpenBracket &Expression #Token::CloseBracket
         | StructAccess. PrimaryExpression #Token::Dot #Token::Identifier
+        | SizeofExpression. #Token::Sizeof #Token::OpenParen &Expression #Token::CloseParen
+        | SizeofType. #Token::Sizeof #Token::OpenParen &TypeSignature #Token::CloseParen
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Expression {
             PrimaryExpression(PrimaryExpression),
@@ -294,6 +296,7 @@ grammar! {
             Call(Box<Expression>, ArgList),
             ArrayAccess(Box<Expression>, Box<Expression>),
             StructAccess(Box<Expression>, Rc<str>),
+            Sizeof(Sizeof),
         }
         ;
 
@@ -447,6 +450,10 @@ impl TypeSignature {
 
     pub fn int() -> TypeSignature {
         TypeSignature::Primitive(Primitive::Int(32))
+    }
+
+    pub fn size_t() -> TypeSignature {
+        TypeSignature::Primitive(Primitive::UInt(64))
     }
 }
 
@@ -626,6 +633,12 @@ pub enum EnumField {
         value: i128,
         ty: Option<TypeSignature>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Sizeof {
+    Expression(Box<Expression>),
+    Type(Box<TypeSignature>),
 }
 
 impl Param {
