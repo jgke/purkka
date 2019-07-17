@@ -11,13 +11,21 @@ use debug::debug::{if_debug, DebugVal::IncludeName};
 use preprocessor::{PreprocessorOptions, tokenizer::MacroContext};
 use resolve::{FileQuery, ResolveResult};
 
-pub static DEFAULT_INCLUDE_PATH: &[&str] = &[
-    "/usr/lib/gcc/x86_64-linux-gnu/7/include",
-    "/usr/local/include",
-    "/usr/lib/gcc/x86_64-linux-gnu/7/include-fixed",
-    "/usr/include/x86_64-linux-gnu",
-    "/usr/include",
-];
+pub fn get_default_include_path() -> Vec<String> {
+    use std::process::Command;
+
+    let cmd = Command::new("sh")
+        .arg("-c")
+        .arg(r#"cpp -v /dev/null 2>&1 | sed -n '/^#include <...> search starts here:$/,/^End of search list.$/p' |head -n -1 |tail -n +2"#)
+        .output()
+        .expect("ls command failed to start");
+
+    assert!(cmd.status.success());
+
+    let stdout = String::from_utf8_lossy(&cmd.stdout);
+
+    stdout.lines().map(|t| t.trim().to_string()).collect()
+}
 
 pub fn get_file_cb<'a>(
     options: &'a PreprocessorOptions,
@@ -193,7 +201,7 @@ pub fn real_main() {
         .unwrap_or_default()
         .into_iter()
         .map(ToString::to_string)
-        .chain(DEFAULT_INCLUDE_PATH.iter().map(ToString::to_string))
+        .chain(get_default_include_path().into_iter())
         .collect();
 
     let include_files: Vec<String> = matches

@@ -6,13 +6,14 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Command;
 
-use core::core::{get_file_cb, get_file_content_cb, DEFAULT_INCLUDE_PATH};
+use core::core::{get_file_cb, get_file_content_cb, get_default_include_path};
 use preprocessor::PreprocessorOptions;
 use resolve::*;
 
 fn parse(content: &str, filename: &str) -> ResolveResult {
+    let path = get_default_include_path();
     let options = PreprocessorOptions {
-        include_path: DEFAULT_INCLUDE_PATH.to_vec(),
+        include_path: path.iter().map(|x| x.as_ref()).collect(),
         include_files: Vec::new(),
         definitions: Vec::new(),
     };
