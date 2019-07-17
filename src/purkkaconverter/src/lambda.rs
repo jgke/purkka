@@ -1,17 +1,17 @@
 use crate::traits::TreeTransformer;
-use crate::Context;
+use crate::PurkkaToC;
 use purkkasyntax::visitor::*;
 /// Convert lambdas to global functions, replacing them in expressions with identifiers
 use purkkasyntax::*;
 
 #[derive(Debug)]
 pub struct StripLambda<'a> {
-    context: &'a mut Context,
+    context: &'a mut PurkkaToC,
 }
 
 #[allow(unused_must_use)]
 impl<'a> TreeTransformer<'a> for StripLambda<'a> {
-    fn new(context: &'a mut Context) -> StripLambda<'a> {
+    fn new(context: &'a mut PurkkaToC) -> StripLambda<'a> {
         StripLambda { context }
     }
     fn transform(&mut self, s: &mut S) {

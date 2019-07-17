@@ -4,6 +4,9 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
+use std::collections::HashSet;
+use std::rc::Rc;
+
 pub mod parser;
 #[macro_use]
 pub mod grammar;
@@ -108,6 +111,7 @@ fn get_source_index(token: &Token) -> usize {
 pub fn parse(
     input: Vec<MacroToken>,
     context: &FragmentIterator,
+    types: HashSet<Rc<str>>,
 ) -> Result<grammar::S, Option<Token>> {
     let tokens: Vec<Token> = input
         .iter()
@@ -127,6 +131,45 @@ pub fn parse(
         &mut tokens.iter().peekable(),
         &input.iter().map(|t| t.source.clone()).collect::<Vec<_>>(),
         context,
+        types,
+    ) {
+        Err(Some(token)) => {
+            let index = get_source_index(&token);
+            println!(
+                "\nCaused by:\n{}",
+                context.source_to_str(&input[index].source)
+            );
+            Err(Some(token))
+        }
+        Ok(t) => Ok(t),
+        Err(None) => Err(None),
+    }
+}
+
+pub fn parse_macro_expansion(
+    input: Vec<MacroToken>,
+    context: &FragmentIterator,
+    types: HashSet<Rc<str>>,
+) -> Result<Vec<grammar::MacroExpansion>, Option<Token>> {
+    let tokens: Vec<Token> = input
+        .iter()
+        .enumerate()
+        .map(|(i, t)| preprocessor_to_parser(context, &t, i))
+        .fold(Vec::new(), |mut list, t| {
+            if let Some(Token::StringLiteral(_, ref mut s)) = list.last_mut() {
+                if let Token::StringLiteral(_, ss) = t {
+                    *s = From::from(format!("{}{}", s, ss));
+                    return list;
+                }
+            }
+            list.push(t);
+            list
+        });
+    match parser::parse_macro_expansion(
+        &mut tokens.iter().peekable(),
+        &input.iter().map(|t| t.source.clone()).collect::<Vec<_>>(),
+        context,
+        types,
     ) {
         Err(Some(token)) => {
             let index = get_source_index(&token);

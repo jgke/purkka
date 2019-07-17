@@ -5,7 +5,7 @@ use std::ops::Deref;
 use std::rc::Rc;
 
 use crate::traits::TreeTransformer;
-use crate::Context;
+use crate::PurkkaToC;
 use purkkasyntax::visitor::*;
 use purkkasyntax::*;
 use purkkatoken::token::Token;
@@ -14,14 +14,14 @@ use purkkatoken::token::Token;
 pub struct TypeInferrer<'a> {
     scope: Vec<HashMap<Rc<str>, IntermediateType>>,
     infer_map: HashMap<i128, IntermediateType>,
-    context: &'a Context,
+    context: &'a PurkkaToC,
     current_statement: String,
     current_expression: String,
     current_function: String,
 }
 
 impl<'a> TreeTransformer<'a> for TypeInferrer<'a> {
-    fn new(context: &'a mut Context) -> TypeInferrer {
+    fn new(context: &'a mut PurkkaToC) -> TypeInferrer {
         TypeInferrer {
             scope: vec![HashMap::new()],
             infer_map: HashMap::new(),
@@ -1104,7 +1104,12 @@ impl TypeInferrer<'_> {
                     nullable: right_nullable,
                 } => {
                     assert!(!*right_nullable || *left_nullable);
-                    self.unify_types(left_ty, right_ty)
+                    // void* is compatible with anything
+                    if **left_ty != TypeSignature::Primitive(Primitive::Void) && **right_ty != TypeSignature::Primitive(Primitive::Void) {
+                        self.unify_types(left_ty, right_ty)
+                    } else {
+                        Ok(())
+                    }
                 }
                 TypeSignature::Array(right_ty, _) | TypeSignature::DynamicArray(right_ty, _) => {
                     self.unify_types(left_ty, right_ty)

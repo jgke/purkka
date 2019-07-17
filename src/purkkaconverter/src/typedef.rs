@@ -3,19 +3,19 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::traits::TreeTransformer;
-use crate::Context;
+use crate::PurkkaToC;
 use purkkasyntax::visitor::*;
 use purkkasyntax::*;
 
 #[derive(Debug)]
 pub struct InlineTypedef<'a> {
-    context: &'a mut Context,
+    context: &'a mut PurkkaToC,
     typedefs: HashMap<Rc<str>, TypeSignature>,
 }
 
 #[allow(unused_must_use)]
 impl<'a> TreeTransformer<'a> for InlineTypedef<'a> {
-    fn new(context: &'a mut Context) -> InlineTypedef<'a> {
+    fn new(context: &'a mut PurkkaToC) -> InlineTypedef<'a> {
         InlineTypedef {
             context,
             typedefs: HashMap::new(),

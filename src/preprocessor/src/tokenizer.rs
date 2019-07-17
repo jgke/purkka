@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use debug::debug::*;
@@ -18,13 +18,13 @@ pub struct Output {
 }
 
 #[derive(Clone, Debug)]
-enum Macro {
+pub enum Macro {
     Text(Source, Vec<MacroToken>),
     Function(Source, Vec<Rc<str>>, Vec<MacroToken>, Option<Rc<str>>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum MacroType {
+pub enum MacroType {
     //Conditional macros
     If,
     Ifdef,
@@ -52,28 +52,25 @@ enum MacroType {
 }
 
 /// Macro context.
-///
-/// CB has the following signature:
-/// FnMut(is_local: bool, current_file: String, opened_file: String)
-///     -> (full_path: String, file_content: String)
-pub(crate) struct MacroContext<CB>
+pub struct MacroContext {
+    pub symbols: HashMap<Rc<str>, Macro>,
+    pub iter: Option<FragmentIterator>,
+    intern: StringInterner,
+}
+
+struct InternalMacroContext<'a, CB>
 where
     CB: FnMut(FileQuery) -> ResolveResult,
 {
-    symbols: HashMap<Rc<str>, Macro>,
-    if_stack: Vec<Option<bool>>,
+    ctx: &'a mut MacroContext,
     get_file: CB,
-    iter: Option<FragmentIterator>,
-    intern: StringInterner,
+    if_stack: Vec<Option<bool>>,
 }
 
 pub type ParseResult<T> = Result<T, &'static str>;
 
-impl<CB> MacroContext<CB>
-where
-    CB: FnMut(FileQuery) -> ResolveResult,
-{
-    pub(crate) fn new(get_file: CB) -> MacroContext<CB> {
+impl MacroContext {
+    pub(crate) fn new() -> MacroContext {
         let mut syms = (StringInterner::new(), HashMap::new());
         syms.empty("__extension__");
         syms.num("__STDC__", "1");
@@ -235,34 +232,41 @@ where
         MacroContext {
             intern: syms.0,
             symbols: syms.1,
-            if_stack: Vec::new(),
-            get_file,
             iter: None,
         }
     }
 
-    fn get_iterator(&mut self, filename: &str) -> FragmentIterator {
-        let content = (self.get_file)(FileQuery::new(".", filename, true, true));
-        let full_path = &content.full_path;
-        let file_content = &content.h_content.unwrap_or(content.c_content);
-        let mut iter = None;
-        std::mem::swap(&mut iter, &mut self.iter);
-        iter.map(|mut t| {
-            // Reset the iterator by consuming all of the possibly remaining junk, then add the
-            // file to the end
-            while t.advance_and_reset_span() {}
-            while t.next().is_some() {}
-            t.split_and_push_file(full_path, file_content);
-            t
-        })
-        .unwrap_or_else(|| FragmentIterator::new(full_path, file_content))
+    pub(crate) fn add_definitions<CB: FnMut(FileQuery) -> ResolveResult>(&mut self, definitions: &[(&str, &str)], get_file: CB) {
+        InternalMacroContext {
+            ctx: self,
+            get_file,
+            if_stack: Vec::new(),
+        }.add_definitions(definitions)
     }
 
-    fn save_iterator(&mut self, mut iter: Option<FragmentIterator>) {
-        assert!(self.iter.is_none());
-        std::mem::swap(&mut iter, &mut self.iter);
+    /// Divide src into MacroTokens.
+    pub(crate) fn preprocess_file<CB: FnMut(FileQuery) -> ResolveResult>(&mut self, filename: &str, get_file: CB) -> Vec<MacroToken> {
+        InternalMacroContext {
+            ctx: self,
+            get_file,
+            if_stack: Vec::new(),
+        }.preprocess_file(filename)
     }
 
+    /// Divide src into MacroTokens.
+    pub(crate) fn preprocess_str<CB: FnMut(FileQuery) -> ResolveResult>(&mut self, content: &str, get_file: CB) -> Vec<MacroToken> {
+        InternalMacroContext {
+            ctx: self,
+            get_file,
+            if_stack: Vec::new(),
+        }.preprocess_str(content)
+    }
+}
+
+impl<CB> InternalMacroContext<'_, CB>
+where
+    CB: FnMut(FileQuery) -> ResolveResult,
+{
     pub(crate) fn add_definitions(&mut self, definitions: &[(&str, &str)]) {
         for (key, value) in definitions {
             let mut iter = FragmentIterator::new(key, value);
@@ -273,37 +277,57 @@ where
                     vals.push(MacroToken::dummy(t.ty));
                 }
             }
-            self.symbols
-                .insert(self.intern.get_ref(key), Macro::Text(Source::dummy(), vals));
+            self.ctx.symbols
+                .insert(self.ctx.intern.get_ref(key), Macro::Text(Source::dummy(), vals));
             assert!(iter.peek().is_none());
         }
     }
 
     /// Divide src into MacroTokens.
-    pub(crate) fn preprocess(&mut self, filename: &str) -> (Vec<MacroToken>, FragmentIterator) {
+    pub(crate) fn preprocess_str(&mut self, content: &str) -> Vec<MacroToken> {
+        let mut iter = self.get_iterator_from_str(content);
+        let res = self.preprocess(&mut iter);
+        self.save_iterator(Some(iter));
+        res
+    }
+
+    /// Divide src into MacroTokens.
+    pub(crate) fn preprocess_file(&mut self, filename: &str) -> Vec<MacroToken> {
+        let mut iter = self.get_iterator_from_file(filename);
+        let res = self.preprocess(&mut iter);
+        self.save_iterator(Some(iter));
+        res
+    }
+
+    fn preprocess(&mut self, iter: &mut FragmentIterator) -> Vec<MacroToken> {
         let mut out: Vec<MacroToken> = Vec::new();
         {
-            let mut iter = self.get_iterator(filename);
             let mut can_parse_macro = true;
             loop {
                 match iter.peek() {
                     Some('#') => {
                         if can_parse_macro {
-                            self.read_macro(&mut iter);
+                            self.read_macro(iter);
                         } else {
                             panic!("Spurious #");
                         }
                     }
                     Some(_) => {
-                        let ty = self.get_token(&mut iter, can_parse_macro);
+                        let ty = self.get_token(iter, can_parse_macro);
                         can_parse_macro = ty.1;
                         if let Some(token) = ty.0 {
                             if let Some(ident) = token.get_identifier_str() {
                                 if self.is_macro(&ident) {
+                                    if_debug(DebugVal::MacroExpand, || {
+                                        println!("Starting expansion process for '{}'", ident);
+                                    });
                                     out.extend(
-                                        self.maybe_expand_identifier(token, &mut iter).into_iter(),
+                                        self.maybe_expand_identifier(token, iter).into_iter(),
                                     );
                                 } else {
+                                    if_debug(DebugVal::MacroExpand, || {
+                                        println!("Not expanding '{}', not a macro", ident);
+                                    });
                                     out.push(token);
                                 }
                             } else {
@@ -318,11 +342,47 @@ where
                     }
                 }
             }
-            self.save_iterator(Some(iter));
         }
 
-        (out, self.iter.as_ref().unwrap().clone())
+        out
     }
+
+    fn get_iterator_from_file(&mut self, filename: &str) -> FragmentIterator {
+        let content = (self.get_file)(FileQuery::new(".", filename, true, true, HashSet::new()));
+        let full_path = &content.full_path;
+        let file_content = &content.h_content.unwrap_or(content.c_content);
+        let mut iter = None;
+        std::mem::swap(&mut iter, &mut self.ctx.iter);
+        iter.map(|mut t| {
+            // Reset the iterator by consuming all of the possibly remaining junk, then add the
+            // file to the end
+            while t.advance_and_reset_span() {}
+            while t.next().is_some() {}
+            t.split_and_push_file(full_path, file_content);
+            t
+        })
+        .unwrap_or_else(|| FragmentIterator::new(full_path, file_content))
+    }
+
+    fn get_iterator_from_str(&mut self, content: &str) -> FragmentIterator {
+        let mut iter = None;
+        std::mem::swap(&mut iter, &mut self.ctx.iter);
+        iter.map(|mut t| {
+            // Reset the iterator by consuming all of the possibly remaining junk, then add the
+            // file to the end
+            while t.advance_and_reset_span() {}
+            while t.next().is_some() {}
+            t.split_and_push_file("<macro expansion>", content);
+            t
+        })
+        .unwrap_or_else(|| FragmentIterator::new("<macro expansion>", content))
+    }
+
+    fn save_iterator(&mut self, mut iter: Option<FragmentIterator>) {
+        assert!(self.ctx.iter.is_none());
+        std::mem::swap(&mut iter, &mut self.ctx.iter);
+    }
+
 
     fn get_some_token(
         &mut self,
@@ -493,7 +553,7 @@ where
             '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' => true,
             _ => false,
         });
-        (self.intern.get_ref(&ident), src)
+        (self.ctx.intern.get_ref(&ident), src)
     }
 
     fn read_number(&mut self, iter: &mut FragmentIterator) -> MacroToken {
@@ -518,7 +578,7 @@ where
         MacroToken {
             source,
             ty: MacroTokenType::Number(
-                self.intern
+                self.ctx.intern
                     .get_ref(&number.iter().map(|t| t.1).collect::<String>()),
             ),
         }
@@ -553,7 +613,7 @@ where
 
         MacroToken {
             source: iter.current_source(),
-            ty: MacroTokenType::StringLiteral(self.intern.get_ref(&content)),
+            ty: MacroTokenType::StringLiteral(self.ctx.intern.get_ref(&content)),
         }
     }
 
@@ -747,7 +807,7 @@ where
                                 }
                                 (false, _, MacroTokenType::Punctuation(Punctuation::Varargs)) => {
                                     varargs = true;
-                                    varargs_str = Some(self.intern.get_ref("__VA_ARGS__"));
+                                    varargs_str = Some(self.ctx.intern.get_ref("__VA_ARGS__"));
                                     had_comma = Some(false);
                                 }
                                 _ => panic!(
@@ -767,7 +827,7 @@ where
                         }
                     }
 
-                    self.symbols
+                    self.ctx.symbols
                         .insert(left, Macro::Function(total_span, args, right, varargs_str));
                 } else {
                     let mut right = Vec::new();
@@ -778,7 +838,7 @@ where
                         }
                     }
 
-                    self.symbols.insert(left, Macro::Text(total_span, right));
+                    self.ctx.symbols.insert(left, Macro::Text(total_span, right));
                 }
             }
             MacroType::Include(next) => {
@@ -818,7 +878,8 @@ where
                     &filename,
                     is_quote,
                     true,
-                    next
+                    next,
+                    HashSet::new(),
                 ));
                 iter.split_and_push_file(
                     &content.full_path,
@@ -827,7 +888,7 @@ where
             }
             MacroType::Undef => {
                 let (left, _) = self.read_identifier_raw(&mut sub_iter);
-                self.symbols.remove(&left);
+                self.ctx.symbols.remove(&left);
             }
             MacroType::If => self.handle_if(iter, &mut sub_iter),
             MacroType::Elif => self.handle_elif(iter, &mut sub_iter),
@@ -927,15 +988,15 @@ where
                             let tmp_ident = next.get_identifier_str().unwrap();
                             (tmp_ident, next.source)
                         };
-                    let tok = if self.symbols.contains_key(&ident) {
+                    let tok = if self.ctx.symbols.contains_key(&ident) {
                         MacroToken {
                             source,
-                            ty: MacroTokenType::Number(self.intern.get_ref("1")),
+                            ty: MacroTokenType::Number(self.ctx.intern.get_ref("1")),
                         }
                     } else {
                         MacroToken {
                             source,
-                            ty: MacroTokenType::Number(self.intern.get_ref("0")),
+                            ty: MacroTokenType::Number(self.ctx.intern.get_ref("0")),
                         }
                     };
                     tokens.push(tok);
@@ -950,7 +1011,7 @@ where
         }
         for token in &mut tokens {
             if token.get_identifier_str().is_some() {
-                token.ty = MacroTokenType::Number(self.intern.get_ref("0"));
+                token.ty = MacroTokenType::Number(self.ctx.intern.get_ref("0"));
             }
         }
 
@@ -1004,7 +1065,7 @@ where
         let token = self.read_identifier(sub_iter);
         let ident = token.get_identifier_str().unwrap();
 
-        let truth_value = is_ifndef ^ (self.symbols.get(&ident).is_some());
+        let truth_value = is_ifndef ^ (self.ctx.symbols.get(&ident).is_some());
 
         self.if_stack.push(Some(truth_value));
 
@@ -1115,7 +1176,7 @@ where
     }
 
     fn is_macro(&self, s: &str) -> bool {
-        self.symbols.contains_key(s)
+        self.ctx.symbols.contains_key(s)
     }
 
     /// Expand all macros from the argument list. Consumes tokens from `iter` in case of function
@@ -1278,7 +1339,7 @@ where
                 .0
                 .get_identifier_str()
                 .as_ref()
-                .and_then(|s| self.symbols.get(s).cloned().map(|t| (s, t)))
+                .and_then(|s| self.ctx.symbols.get(s).cloned().map(|t| (s, t)))
             {
                 // else if TS is T:TS' and T is an object macro, then
                 //    let substituted = substitute(ts(T), [], [])
@@ -1543,12 +1604,16 @@ where
                 &iter.as_mut().map(|i| i.current_filename()).unwrap_or(""),
                 &combined,
             );
-            let parsed_token = MacroContext {
-                get_file: unreachable_file_open,
-                if_stack: Vec::new(),
+            let mut tmp_ctx = MacroContext {
                 symbols: HashMap::new(),
                 iter: None,
                 intern: StringInterner::new(),
+            };
+
+            let parsed_token = InternalMacroContext {
+                get_file: unreachable_file_open,
+                if_stack: Vec::new(),
+                ctx: &mut tmp_ctx
             }
             .get_token(&mut tmp_iter, false);
             if tmp_iter.peek().is_some() {

@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::prelude::*;
@@ -7,7 +8,7 @@ use clap::{App, Arg};
 use tool::fix;
 
 use debug::debug::{if_debug, DebugVal::IncludeName};
-use preprocessor::PreprocessorOptions;
+use preprocessor::{PreprocessorOptions, tokenizer::MacroContext};
 use resolve::{FileQuery, ResolveResult};
 
 pub static DEFAULT_INCLUDE_PATH: &[&str] = &[
@@ -21,6 +22,7 @@ pub static DEFAULT_INCLUDE_PATH: &[&str] = &[
 pub fn get_file_cb<'a>(
     options: &'a PreprocessorOptions,
     get_file_content: &'a dyn Fn(&FileQuery) -> (String, String),
+    ctx: RefCell<Option<MacroContext>>,
 ) -> impl Fn(FileQuery) -> ResolveResult + 'a {
     fix(move |get_file: &dyn Fn(FileQuery) -> ResolveResult, req| {
         let (content, full_path) = get_file_content(&req);
@@ -31,7 +33,18 @@ pub fn get_file_cb<'a>(
 
         if full_path.to_lowercase().ends_with(".prk") {
             let (prk_tree, operators, symbols) =
-                purkkaparser::parse_file(&full_path, &content, get_file);
+                purkkaparser::parse_file(&full_path, &content, get_file, &|expansion, types| {
+                    let result = preprocessor::preprocess_str(&expansion, get_file, &options, &mut ctx.borrow_mut());
+                    match result {
+                        Ok(output) => {
+                            let iter_ref = ctx.borrow();
+                            let iter = iter_ref.as_ref().and_then(|c| c.iter.as_ref()).unwrap();
+                            let parsed = cparser::parse_macro_expansion(output, iter, types).unwrap();
+                            purkkaconverter::to_purkka(parsed)
+                        }
+                        Err(e) => panic!(e),
+                    }
+                });
             let declarations = purkkaparser::get_declarations(&prk_tree, false);
             let (parsed, context) = purkkaconverter::convert(prk_tree, operators, symbols);
             let formatted = cformat::format_c(&parsed, context.local_includes);
@@ -44,10 +57,13 @@ pub fn get_file_cb<'a>(
                 types: Some(Vec::new()),
             }
         } else {
-            let result = preprocessor::preprocess_file(&full_path, get_file, &options);
+            let result = preprocessor::preprocess_file(&full_path, get_file, &options, &mut ctx.borrow_mut());
+
             match result {
-                Ok((output, context)) => {
-                    let parsed = cparser::parse(output, &context).unwrap();
+                Ok(output) => {
+                    let iter_ref = ctx.borrow();
+                    let iter = iter_ref.as_ref().and_then(|c| c.iter.as_ref()).unwrap();
+                    let parsed = cparser::parse(output, iter, req.types).unwrap();
                     let formatted = cformat::format_c(&parsed, HashSet::new());
                     let (declarations, types) = cparser::get_declarations(&parsed);
                     ResolveResult {
@@ -213,10 +229,11 @@ pub fn real_main() {
     };
 
     let get_file_content = get_file_content_cb(&options);
-    let get_file = get_file_cb(&options, &get_file_content);
+    let ctx = RefCell::new(None);
+    let get_file = get_file_cb(&options, &get_file_content, ctx);
 
     for file in &input {
-        let result = get_file(FileQuery::new(".", file, true, false));
+        let result = get_file(FileQuery::new(".", file, true, false, HashSet::new()));
         println!("{:?}", result);
         if let Some(file) = &output {
             let path = path::PathBuf::from(file);

@@ -10,3 +10,4 @@ ctoken = { path="../ctoken" }
 purkkaparser = { path="../purkkaparser" }
 purkkasyntax = { path="../purkkasyntax" }
 purkkatoken = { path="../purkkatoken" }
+resolve = { path="../resolve" }

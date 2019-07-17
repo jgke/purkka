@@ -1,0 +1,5 @@
+import "dependencies/macro.h"
+
+fun main() {
+    return @"FOO(1)";
+}

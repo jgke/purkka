@@ -1,5 +1,6 @@
 pub mod parser;
 
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use purkkasyntax::*;
@@ -12,6 +13,7 @@ pub fn parse_file(
     filename: &str,
     content: &str,
     get_file: &dyn Fn(FileQuery) -> ResolveResult,
+    expand: &dyn Fn(String, HashSet<Rc<str>>) -> Vec<MacroExpansion>,
 ) -> (S, Operators, Symbols) {
     let (tokens, _interner, fragment, sources) = tokenize(content, filename);
     parse(
@@ -20,6 +22,7 @@ pub fn parse_file(
         &fragment,
         filename,
         get_file,
+        expand
     )
 }
 

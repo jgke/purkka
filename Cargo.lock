@@ -236,6 +236,7 @@ dependencies = [
  "purkkaparser 0.1.0",
  "purkkasyntax 0.1.0",
  "purkkatoken 0.1.0",
+ "resolve 0.1.0",
 ]
 
 [[package]]

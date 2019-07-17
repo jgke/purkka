@@ -234,6 +234,7 @@ pub fn parse(
     fragment_iter: &FragmentIterator,
     current_file: &str,
     get_file: &dyn Fn(FileQuery) -> ResolveResult,
+    expand: &dyn Fn(String, HashSet<Rc<str>>) -> Vec<MacroExpansion>,
 ) -> (S, Operators, Symbols) {
     let mut context = ParseContext {
         operators: Operators {
@@ -247,6 +248,7 @@ pub fn parse(
         symbols: Symbols::default(),
         current_file,
         get_file,
+        expand
     };
     let tu = S::TranslationUnit(context.parse_translation_unit());
     (tu, context.operators, context.symbols)
@@ -303,6 +305,7 @@ struct ParseContext<'a, 'b> {
 
     current_file: &'a str,
     get_file: &'a dyn Fn(FileQuery) -> ResolveResult,
+    expand: &'a dyn Fn(String, HashSet<Rc<str>>) -> Vec<MacroExpansion>,
 }
 
 impl<'a, 'b> ParseContext<'a, 'b> {
@@ -731,7 +734,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         } else {
             unreachable!();
         };
-        let content = (self.get_file)(FileQuery::new(self.current_file, &file, true, false));
+        let content = (self.get_file)(FileQuery::new(self.current_file, &file, true, false,
+                                                     self.symbols.types.keys().chain(self.symbols.imported_types.keys()).cloned().collect()
+                                                     ));
         content
             .declarations
             .unwrap()
@@ -779,6 +784,21 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     #[allow(clippy::cognitive_complexity)]
     fn parse_expression_(&mut self, precedence: usize) -> Expression {
         let mut expr = match self.peek() {
+            Some(Token::Operator(_, op)) if op.as_ref() == "@" => {
+                read_token!(self, Token::Operator);
+                if let Token::StringLiteral(_, s) = read_token!(self, Token::StringLiteral) {
+                    let mut result = (self.expand)(
+                        s.to_string(),
+                        self.symbols.types.keys().chain(self.symbols.imported_types.keys()).cloned().collect());
+                    assert_eq!(result.len(), 1);
+                    match result.remove(0) {
+                        MacroExpansion::Expression(e) => e,
+                        _ => panic!()
+                    }
+                } else {
+                    unreachable!();
+                }
+            }
             Some(Token::Operator(_, op)) =>
                 match self.operators.unary.get(op).cloned() {
                     Some(ref n) if n.left_associative => {
@@ -862,10 +882,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 match self.peek() {
                     Some(Token::OpenBrace(..))
                         if ty.as_ref().map(|t| t.is_compound(&HashMap::new())) == Some(true) =>
-                    {
-                        let fields = self.parse_initialization_fields(&t);
-                        PrimaryExpression::StructInitialization(t, fields)
-                    }
+                        {
+                            let fields = self.parse_initialization_fields(&t);
+                            PrimaryExpression::StructInitialization(t, fields)
+                        }
                     Some(Token::OpenBrace(..)) if ty.is_some() => {
                         let fields = self.parse_vector_initialization_fields();
                         PrimaryExpression::VectorInitialization(t, fields)
@@ -1348,6 +1368,7 @@ mod tests {
 
             current_file: "",
             get_file: &|_| panic!(),
+            expand: &|_, _| panic!(),
         };
         let result = eval_tree(&context.parse_expression());
         println!("{} = {} (expected: {})", expr, result, expected);
@@ -1385,6 +1406,7 @@ mod tests {
             &FragmentIterator::new("", ""),
             "",
             &|_| panic!(),
+            &|_, _| panic!(),
         )
         .0
     }

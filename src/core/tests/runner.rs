@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fs::{read_dir, File};
 use std::io::prelude::*;
 use std::io::{self, Write};
@@ -25,8 +27,8 @@ fn parse(content: &str, filename: &str) -> ResolveResult {
         include_files: vec![],
         definitions: vec![],
     };
-
-    let res = get_file_cb(&options, &get_file_content)(FileQuery::new(".", filename, true, false));
+    let ctx = RefCell::new(None);
+    let res = get_file_cb(&options, &get_file_content, ctx)(FileQuery::new(".", filename, true, false, HashSet::new()));
     res
 }
 

@@ -1,17 +1,17 @@
 use crate::traits::TreeTransformer;
-use crate::Context;
+use crate::PurkkaToC;
 use purkkasyntax::visitor::*;
 /// Strip imports
 use purkkasyntax::*;
 
 #[derive(Debug)]
 pub struct StripImports<'a> {
-    context: &'a mut Context,
+    context: &'a mut PurkkaToC,
 }
 
 #[allow(unused_must_use)]
 impl<'a> TreeTransformer<'a> for StripImports<'a> {
-    fn new(context: &'a mut Context) -> StripImports<'a> {
+    fn new(context: &'a mut PurkkaToC) -> StripImports<'a> {
         StripImports { context }
     }
     fn transform(&mut self, s: &mut S) {

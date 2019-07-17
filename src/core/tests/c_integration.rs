@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::collections::HashSet;
+
 use preprocessor::PreprocessorOptions;
 
 use core::core::get_file_cb;
@@ -21,7 +24,8 @@ fn parse(content: &str) -> ResolveResult {
         definitions: vec![],
     };
 
-    let res = get_file_cb(&options, &get_file_content)(FileQuery::new(".", input, true, false));
+    let ctx = RefCell::new(None);
+    let res = get_file_cb(&options, &get_file_content, ctx)(FileQuery::new(".", input, true, false, HashSet::new()));
     println!("{:?}", res.c_content);
     res
 }

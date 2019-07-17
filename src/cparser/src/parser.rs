@@ -182,9 +182,7 @@ where
     pub sources: &'a [Source],
 }
 
-fn default_types() -> ScopedState {
-    let mut types = HashSet::new();
-
+fn default_types(mut types: HashSet<Rc<str>>) -> ScopedState {
     types.insert(From::from("__builtin_va_list"));
     types.insert(From::from("_Bool"));
     types.insert(From::from("_Complex"));
@@ -198,12 +196,13 @@ pub fn parse<'a, I>(
     iter: I,
     sources: &'a [Source],
     fragment_iter: &'a FragmentIterator,
+    types: HashSet<Rc<str>>,
 ) -> Result<S, Option<Token>>
 where
     I: IntoIterator<Item = &'a Token>,
 {
     let context = ParseContext {
-        scope: vec![default_types()],
+        scope: vec![default_types(types)],
         vals: HashMap::new(),
         iter: multipeek(iter),
         fragment: fragment_iter,
@@ -213,6 +212,33 @@ where
 
     std::panic::catch_unwind(|| {
         S::TranslationUnit(context_mut.lock().unwrap().parse_translation_unit())
+    })
+    .map_err(|_| match context_mut.lock() {
+        Ok(mut context) => context.iter.peek().cloned().cloned(),
+        Err(context) => context.into_inner().iter.peek().cloned().cloned(),
+    })
+}
+
+pub fn parse_macro_expansion<'a, I>(
+    iter: I,
+    sources: &'a [Source],
+    fragment_iter: &'a FragmentIterator,
+    types: HashSet<Rc<str>>,
+) -> Result<Vec<MacroExpansion>, Option<Token>>
+where
+    I: IntoIterator<Item = &'a Token>,
+{
+    let context = ParseContext {
+        scope: vec![default_types(types)],
+        vals: HashMap::new(),
+        iter: multipeek(iter),
+        fragment: fragment_iter,
+        sources,
+    };
+    let context_mut = std::sync::Mutex::new(context);
+
+    std::panic::catch_unwind(|| {
+        context_mut.lock().unwrap().parse_type_statement_or_expression()
     })
     .map_err(|_| match context_mut.lock() {
         Ok(mut context) => context.iter.peek().cloned().cloned(),
@@ -1864,6 +1890,12 @@ where
                 }
             }
         }
+    }
+
+    fn parse_type_statement_or_expression(&mut self) -> Vec<MacroExpansion> {
+        let e = self.parse_expression();
+        assert!(self.peek().is_none());
+        vec![MacroExpansion::Expression(e.0)]
     }
 }
 

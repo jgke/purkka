@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use purkkasyntax::TypeSignature;
@@ -21,25 +22,28 @@ pub struct FileQuery {
     pub local_file: bool,
     pub need_raw: bool,
     pub include_next: bool,
+    pub types: HashSet<Rc<str>>,
 }
 
 impl FileQuery {
-    pub fn new(current: &str, requested: &str, local: bool, raw: bool) -> FileQuery {
+    pub fn new(current: &str, requested: &str, local: bool, raw: bool, types: HashSet<Rc<str>>) -> FileQuery {
         FileQuery {
             current_file: current.to_string(),
             requested_file: requested.to_string(),
             local_file: local,
             need_raw: raw,
-            include_next: false
+            include_next: false,
+            types,
         }
     }
-    pub fn new_next(current: &str, requested: &str, local: bool, raw: bool, include_next: bool) -> FileQuery {
+    pub fn new_next(current: &str, requested: &str, local: bool, raw: bool, include_next: bool, types: HashSet<Rc<str>>) -> FileQuery {
         FileQuery {
             current_file: current.to_string(),
             requested_file: requested.to_string(),
             local_file: local,
             need_raw: raw,
-            include_next
+            include_next,
+            types,
         }
     }
 }

@@ -769,3 +769,9 @@ impl From<&str> for Box<PrimaryExpression> {
         Box::new(PrimaryExpression::Identifier(From::from(ty)))
     }
 }
+
+pub enum MacroExpansion {
+    Expression(Expression),
+    Statement(Statement),
+    Type(TypeSignature),
+}

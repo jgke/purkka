@@ -1,17 +1,17 @@
 /// Inline overrided operators
 use crate::traits::TreeTransformer;
-use crate::Context;
+use crate::PurkkaToC;
 use purkkasyntax::visitor::*;
 use purkkasyntax::*;
 
 #[derive(Debug)]
 pub struct InlineOperators<'a> {
-    context: &'a mut Context,
+    context: &'a mut PurkkaToC,
 }
 
 #[allow(unused_must_use)]
 impl<'a> TreeTransformer<'a> for InlineOperators<'a> {
-    fn new(context: &'a mut Context) -> InlineOperators<'a> {
+    fn new(context: &'a mut PurkkaToC) -> InlineOperators<'a> {
         InlineOperators { context }
     }
     fn transform(&mut self, s: &mut S) {

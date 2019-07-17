@@ -20,8 +20,8 @@ pub fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<Macro
             ResolveResult::new_raw(filename, content)
         },
         filename,
+        &mut None
     )
-    .map(|t| t.0)
 }
 
 pub fn process_files(files: Vec<(&str, &str)>, start: &str, expected: Vec<MacroToken>) {
@@ -45,18 +45,19 @@ pub fn process_files(files: Vec<(&str, &str)>, start: &str, expected: Vec<MacroT
             panic!()
         },
         start,
+        &mut None
     );
 
     if let Ok(p) = &processed {
         println!("---- Test result ----");
         println!("Result:");
-        p.0.iter().for_each(|t| println!("{}", t.display(&iter)));
+        p.iter().for_each(|t| println!("{}", t.display(&iter)));
         println!("Expected:");
         expected
             .iter()
             .for_each(|t| println!("{}", t.display(&iter)));
     }
-    assert_eq!(processed.map(|t| t.0), Ok(expected));
+    assert_eq!(processed.map(|t| t), Ok(expected));
 }
 
 pub fn process(original: &str, expected: Vec<MacroToken>) {

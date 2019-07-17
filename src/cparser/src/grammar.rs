@@ -766,3 +766,10 @@ pub enum Attribute {
 pub enum Pragma {
     Pragma(Rc<str>),
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum MacroExpansion {
+    Expression(Expression),
+    Statement(Statement),
+    Type(TypeName),
+}

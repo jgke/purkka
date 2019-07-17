@@ -1,17 +1,17 @@
 use crate::traits::TreeTransformer;
-use crate::Context;
+use crate::PurkkaToC;
 use purkkasyntax::visitor::*;
 /// Convert [T] to *T
 use purkkasyntax::*;
 
 #[derive(Debug)]
 pub struct ArrayToPointer<'a> {
-    context: &'a mut Context,
+    context: &'a mut PurkkaToC,
 }
 
 #[allow(unused_must_use)]
 impl<'a> TreeTransformer<'a> for ArrayToPointer<'a> {
-    fn new(context: &'a mut Context) -> ArrayToPointer<'a> {
+    fn new(context: &'a mut PurkkaToC) -> ArrayToPointer<'a> {
         ArrayToPointer { context }
     }
     fn transform(&mut self, s: &mut S) {
