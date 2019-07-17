@@ -2,6 +2,7 @@ language: rust
 rust:
 - nightly
 before_install:
+  - cpp -v /dev/null
   - sudo apt-get install -y libc6-dev-i386 libc6-dev libgcc-5-dev
 script:
   - cargo build --verbose --release --all
