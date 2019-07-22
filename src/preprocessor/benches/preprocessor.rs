@@ -4,7 +4,6 @@ extern crate test;
 
 use test::Bencher;
 
-use fragment::fragment::FragmentIterator;
 use resolve::*;
 
 use preprocessor::macrotoken::MacroToken;
@@ -12,7 +11,7 @@ use preprocessor::macrotoken::MacroToken;
 pub fn process_files(
     files: Vec<(&str, &str)>,
     start: &str,
-) -> Result<(Vec<MacroToken>, FragmentIterator), &'static str> {
+) -> Result<Vec<MacroToken>, &'static str> {
     let processed = preprocessor::preprocess(
         |req| {
             assert_eq!(req.need_raw, true);
@@ -24,6 +23,7 @@ pub fn process_files(
             panic!("Tried to open file {}", req.requested_file)
         },
         start,
+        &mut None
     );
 
     assert!(processed.is_ok());
