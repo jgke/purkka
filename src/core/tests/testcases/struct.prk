@@ -5,6 +5,8 @@ struct Foo {
 
 fun main() {
     let a = Foo { bar: 0, baz: 1 };
+    let b = &a;
+    let c = &b;
 
-    return a.bar + a.baz;
+    return a.bar + b.baz + c.baz;
 }

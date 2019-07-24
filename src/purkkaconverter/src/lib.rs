@@ -959,7 +959,6 @@ impl CToPurkka {
                 Box::new(self.general_expression(*e)),
                 self.type_name(*ty)
             ), 
-            other => panic!("Not implemented: {:?}", other),
         }
     }
 

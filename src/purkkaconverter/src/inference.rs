@@ -297,7 +297,7 @@ impl TypeInferrer<'_> {
         }
     }
 
-    fn get_type(&mut self, expression: &Expression) -> Result<(IntermediateType, Vec<IntermediateType>), String> {
+    fn get_type(&mut self, expression: &mut Expression) -> Result<(IntermediateType, Vec<IntermediateType>), String> {
         self.current_expression = format!("{:?}", expression);
         let mut ty = match expression {
             Expression::PrimaryExpression(expr) => self.get_primary_expr_type(expr)?,
@@ -315,10 +315,10 @@ impl TypeInferrer<'_> {
                  * num - num -> num
                  */
                 if op.as_ref() == "+" {
-                    let left = &list[0];
-                    let right = &list[1];
-
+                    let left = &mut list[0];
                     let left_ty = self.get_type(left)?;
+
+                    let right = &mut list[1];
                     let right_ty = self.get_type(right)?;
 
                     let left_ptr = left_ty.0.is_ptr(&self.infer_map);
@@ -345,10 +345,10 @@ impl TypeInferrer<'_> {
                         (left_ty.0, ret_tys)
                     }
                 } else if op.as_ref() == "-" {
-                    let left = &list[0];
-                    let right = &list[1];
-
+                    let left = &mut list[0];
                     let left_ty = self.get_type(left)?;
+
+                    let right = &mut list[1];
                     let right_ty = self.get_type(right)?;
 
                     let left_ptr = left_ty.0.is_ptr(&self.infer_map);
@@ -369,12 +369,13 @@ impl TypeInferrer<'_> {
                         (left_ty.0, ret_tys)
                     }
                 } else if op.as_ref() == "?" {
-                    let cond = &list[0];
-                    let if_t = &list[1];
-                    let if_f = &list[1];
-
+                    let cond = &mut list[0];
                     let cond_ty = self.get_type(cond)?;
+
+                    let if_t = &mut list[1];
                     let if_t_ty = self.get_type(if_t)?;
+
+                    let if_f = &mut list[1];
                     let if_f_ty = self.get_type(if_f)?;
 
                     self.make_equal_to_num(&cond_ty.0)?;
@@ -390,14 +391,14 @@ impl TypeInferrer<'_> {
 
                     (if_t_ty.0, ret_tys)
                 } else {
-                    let (params, ret) = self.get_operator_instance(op);
+                    let (mut params, ret) = self.get_operator_instance(op);
 
                     assert_eq!(params.len(), list.len());
                     let ret_tys = params
-                        .iter()
-                        .zip(list.iter())
+                        .iter_mut()
+                        .zip(list.iter_mut())
                         .map(|(param, arg)| {
-                            let arg_ty = self.get_type(&arg)?;
+                            let arg_ty = self.get_type(arg)?;
                             self.make_equal(&arg_ty.0, param)?;
                             Ok(arg_ty.1)
                         })
@@ -410,7 +411,7 @@ impl TypeInferrer<'_> {
             Expression::Unary(op, ExprList::List(list)) => {
                 if op.as_ref() == "*" {
                     assert_eq!(list.len(), 1);
-                    let arg_ty = self.get_type(&list[0])?;
+                    let arg_ty = self.get_type(&mut list[0])?;
                     if arg_ty.0.is_ptr(&self.infer_map) {
                         (
                             IntermediateType::Exact(Box::new(
@@ -421,15 +422,19 @@ impl TypeInferrer<'_> {
                     } else {
                         panic!("Cannot dereference non-pointer");
                     }
+                } else if op.as_ref() == "&" {
+                    assert_eq!(list.len(), 1);
+                    let arg_ty = self.get_type(&mut list[0])?;
+                    (arg_ty.0.address_of(), arg_ty.1)
                 } else {
-                    let (params, ret) = self.get_unary_operator_instance(op);
+                    let (mut params, ret) = self.get_unary_operator_instance(op);
 
                     assert_eq!(params.len(), list.len());
                     let ret_tys = params
-                        .iter()
-                        .zip(list.iter())
+                        .iter_mut()
+                        .zip(list.iter_mut())
                         .map(|(param, arg)| {
-                            let arg_ty = self.get_type(&arg)?;
+                            let arg_ty = self.get_type(arg)?;
                             self.make_equal(&arg_ty.0, param)?;
                             Ok(arg_ty.1)
                         })
@@ -449,8 +454,8 @@ impl TypeInferrer<'_> {
             }
             Expression::ArrayAccess(expr, index) => self.get_array_access_type(expr, index)?,
             Expression::Call(expr, ArgList::Args(args)) => {
-                let (ty, mut ret_tys) = self.get_type(&*expr)?;
-                for arg in args {
+                let (ty, mut ret_tys) = self.get_type(&mut *expr)?;
+                for arg in args.iter_mut() {
                     let (_, mut more_ret_tys) = self.get_type(arg)?;
                     ret_tys.append(&mut more_ret_tys);
                 }
@@ -464,7 +469,7 @@ impl TypeInferrer<'_> {
                 }
             }
             Expression::Cast(expr, ty) => (From::from(ty.clone()), self.get_type(expr)?.1),
-            Expression::StructAccess(expr, ident) => self.struct_access(expr, ident)?,
+            Expression::StructAccess(ref mut expr, ident) => self.struct_access(expr, ident)?,
             Expression::Sizeof(size) => {
                 match size {
                     Sizeof::Expression(expr) => {
@@ -491,10 +496,19 @@ impl TypeInferrer<'_> {
 
     fn struct_access(
         &mut self,
-        expr: &Expression,
+        expr: &mut Expression,
         ident: &Rc<str>,
     ) -> Result<(IntermediateType, Vec<IntermediateType>), String> {
-        let (mut struct_ty, ret_ty) = self.get_type(expr)?;
+        let (struct_ty, ret_ty) = self.get_type(expr)?;
+        Ok((self.struct_ty_access(expr, struct_ty, ident)?, ret_ty))
+    }
+
+    fn struct_ty_access(
+        &mut self,
+        e: &mut Expression,
+        mut struct_ty: IntermediateType,
+        ident: &Rc<str>,
+        ) -> Result<IntermediateType, String> {
         while let IntermediateType::Exact(box TypeSignature::Plain(name)) = &struct_ty {
             if let Some(ty) = self.get_ident_ty(name) {
                 struct_ty = From::from(ty);
@@ -502,21 +516,40 @@ impl TypeInferrer<'_> {
                 panic!("Cannot get field {} from type {}", ident, name)
             }
         }
-        if let IntermediateType::Exact(box TypeSignature::Struct(_, fields)) = &struct_ty {
-            for StructField::Field { name, ty, .. } in fields {
-                if name.as_ref() == ident.as_ref() {
-                    return Ok((From::from(*ty.clone()), ret_ty));
+        match struct_ty {
+            IntermediateType::Exact(box TypeSignature::Struct(s, fields)) => {
+                for StructField::Field { name, ty, .. } in &fields {
+                    if name.as_ref() == ident.as_ref() {
+                        return Ok(From::from(*ty.clone()));
+                    }
+                }
+                if let Some(s) = s {
+                    panic!("Field {} not found in struct {}", ident, s);
+                } else {
+                    panic!("Field {} not found in anonymous struct {:?}", ident, TypeSignature::Struct(s, fields));
+                }
+            } 
+            IntermediateType::Exact(box TypeSignature::Pointer { ty, .. }) => {
+                let ret_val = self.struct_ty_access(e, From::from(*ty.clone()), ident)?;
+                let mut new_e = Expression::PrimaryExpression(PrimaryExpression::Literal(Literal::Integer(Token::Integer(0, 0))));
+                std::mem::swap(&mut new_e, e);
+                *e = Expression::Unary(From::from("*"), ExprList::List(vec![new_e]));
+                Ok(ret_val)
+            }
+            IntermediateType::Any(id) => {
+                if let Some(ty) = self.infer_map.get(&id).cloned() {
+                    self.struct_ty_access(e, ty, ident)
+                } else {
+                    panic!("Cannot access field {} in {:?}", ident, struct_ty);
                 }
             }
-            panic!("Field {} not found in {:?}", ident, struct_ty);
-        } else {
-            panic!("Cannot access field {} in {:?}", ident, struct_ty);
+            _ => panic!("Cannot access field {} in {:?}", ident, struct_ty),
         }
     }
 
     fn get_primary_expr_type(
         &mut self,
-        expr: &PrimaryExpression,
+        expr: &mut PrimaryExpression,
     ) -> Result<(IntermediateType, Vec<IntermediateType>), String> {
         match expr {
             PrimaryExpression::Identifier(t) => {
@@ -541,7 +574,7 @@ impl TypeInferrer<'_> {
             PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block)) => {
                 if let TypeSignature::Infer(_id) = return_type {
                     self.push_block();
-                    for param in params {
+                    for param in params.iter() {
                         match param {
                             LambdaParam::LambdaParam(name, ty) => {
                                 self.push_symbol(name.clone(), From::from(*ty.clone()))
@@ -549,7 +582,7 @@ impl TypeInferrer<'_> {
                             LambdaParam::Variadic => {}
                         }
                     }
-                    let block_ty = self.get_block_type(&*block)?;
+                    let block_ty = self.get_block_type(&mut *block)?;
                     let ret_tys = block_ty.1;
                     if let Some((last, rest)) = ret_tys.split_last() {
                         for ty in rest {
@@ -599,13 +632,13 @@ impl TypeInferrer<'_> {
                     struct_field_tys.sort_by(|(l_name, _), (r_name, _)| l_name.cmp(&r_name));
 
                     let mut arg_field_tys = fields
-                        .iter()
+                        .iter_mut()
                         .map(
                             |StructInitializationField::StructInitializationField(name, e)| {
-                                Ok((name, self.get_type(e)?))
+                                Ok((name, self.get_type(&mut **e)?))
                             },
                         )
-                        .collect::<Result<Vec<(&Rc<str>, (IntermediateType, Vec<IntermediateType>))>, String>>()?;
+                        .collect::<Result<Vec<(&mut Rc<str>, (IntermediateType, Vec<IntermediateType>))>, String>>()?;
                     arg_field_tys.sort_by(|(l_name, _), (r_name, _)| l_name.cmp(&r_name));
 
                     let mut ret_tys = Vec::new();
@@ -655,8 +688,8 @@ impl TypeInferrer<'_> {
 
     fn get_array_access_type(
         &mut self,
-        array_expr: &Expression,
-        index_expr: &Expression,
+        array_expr: &mut Expression,
+        index_expr: &mut Expression,
     ) -> Result<(IntermediateType, Vec<IntermediateType>), String> {
         let (ty, mut ret_tys) = self.get_type(array_expr)?;
         let (index_ty, index_ret_tys) = self.get_type(index_expr)?;
@@ -726,10 +759,10 @@ impl TypeInferrer<'_> {
 
     fn get_block_expr_type(
         &mut self,
-        expr: &BlockExpression,
+        expr: &mut BlockExpression,
     ) -> Result<(Option<IntermediateType>, Vec<IntermediateType>), String> {
         match expr {
-            BlockExpression::Block(block) => self.get_block_type(&*block),
+            BlockExpression::Block(block) => self.get_block_type(&mut *block),
             BlockExpression::If(arms, otherwise) => {
                 if let Some(otherwise) = otherwise {
                     let mut res_vec = Vec::new();
@@ -755,13 +788,13 @@ impl TypeInferrer<'_> {
                 }
             }
             BlockExpression::While(e, block, else_block) => {
-                let (ty, mut ret_tys) = self.get_type(&*e)?;
+                let (ty, mut ret_tys) = self.get_type(&mut *e)?;
                 let num = self.get_number_ty();
                 self.make_equal(&ty, &num)?;
 
                 let (_, more_ret_tys) = self.get_block_type(block)?;
                 let even_more_ret_tys: Vec<IntermediateType> = else_block
-                    .as_ref()
+                    .as_mut()
                     .map::<Result<Vec<IntermediateType>, String>, _>(|b| Ok(self.get_block_type(b)?.1))
                     .transpose()?
                     .unwrap_or_else(Vec::new);
@@ -774,25 +807,25 @@ impl TypeInferrer<'_> {
                 let num = self.get_number_ty();
 
                 let mut ret_tys = s1
-                    .as_ref()
-                    .map::<Result<Vec<IntermediateType>, String>, _>(|s| Ok(self.get_statement_type(&*s)?.1))
+                    .as_mut()
+                    .map::<Result<Vec<IntermediateType>, String>, _>(|s| Ok(self.get_statement_type(&mut *s)?.1))
                     .transpose()?
                     .unwrap_or_else(Vec::new);
                 let (ty, ret_tys_2) = s2
-                    .as_ref()
-                    .map::<Result<(IntermediateType, Vec<IntermediateType>), String>, _>(|s| Ok(self.get_type(&*s)?))
+                    .as_mut()
+                    .map::<Result<(IntermediateType, Vec<IntermediateType>), String>, _>(|s| Ok(self.get_type(&mut *s)?))
                     .transpose()?
                     .unwrap_or_else(|| (num.clone(), Vec::new()));
                 self.make_equal(&ty, &num)?;
                 let ret_tys_3 = s3
-                    .as_ref()
-                    .map::<Result<Vec<IntermediateType>, String>, _>(|s| Ok(self.get_type(&*s)?.1))
+                    .as_mut()
+                    .map::<Result<Vec<IntermediateType>, String>, _>(|s| Ok(self.get_type(&mut *s)?.1))
                     .transpose()?
                     .unwrap_or_else(Vec::new);
 
                 let (_, ret_tys_4) = self.get_block_type(block)?;
                 let ret_tys_5 = else_block
-                    .as_ref()
+                    .as_mut()
                     .map::<Result<Vec<IntermediateType>, String>, _>(|b| Ok(self.get_block_type(b)?.1))
                     .transpose()?
                     .unwrap_or_else(Vec::new);
@@ -811,7 +844,7 @@ impl TypeInferrer<'_> {
 
     fn get_block_type(
         &mut self,
-        expr: &Block,
+        expr: &mut Block,
     ) -> Result<(Option<IntermediateType>, Vec<IntermediateType>), String> {
         match expr {
             Block::Statements(stmts) => {
@@ -829,7 +862,7 @@ impl TypeInferrer<'_> {
 
     fn get_statement_type(
         &mut self,
-        stmt: &Statement,
+        stmt: &mut Statement,
     ) -> Result<(Option<IntermediateType>, Vec<IntermediateType>), String> {
         self.current_statement = format!("{:?}", stmt);
         match stmt {
@@ -837,13 +870,13 @@ impl TypeInferrer<'_> {
                 self.visit_declaration(&mut decl.clone()).unwrap();
                 Ok((None, Vec::new()))
             }
-            Statement::BlockExpression(block) => self.get_block_expr_type(&**block),
+            Statement::BlockExpression(block) => self.get_block_expr_type(&mut **block),
             Statement::Expression(expr) => {
                 self.visit_expression(&mut expr.clone()).unwrap();
                 Ok((None, self.get_type(expr)?.1))
             }
             Statement::Return(expr) => expr
-                .as_ref()
+                .as_mut()
                 .map(|e| {
                     let (ty, mut ret_tys) = self.get_type(e)?;
                     ret_tys.push(ty);
@@ -857,7 +890,7 @@ impl TypeInferrer<'_> {
     fn call_inferred(
         &mut self,
         inferred: &IntermediateType,
-        args: &[Expression],
+        args: &mut [Expression],
     ) -> Result<IntermediateType, String> {
         match inferred {
             IntermediateType::Exact(left) => self.call_exact(left, args),
@@ -867,7 +900,7 @@ impl TypeInferrer<'_> {
                 } else {
                     let any = self.get_any_ty();
                     let mut fn_args = Vec::new();
-                    for arg in args {
+                    for arg in args.iter_mut() {
                         fn_args.push(Param::TypeOnly(Box::new(From::from(self.get_type(arg)?.0))));
                     }
                     let ty = TypeSignature::Function(
@@ -883,7 +916,7 @@ impl TypeInferrer<'_> {
         }
     }
 
-    fn call_exact(&mut self, ty: &TypeSignature, args: &[Expression]) -> Result<IntermediateType, String> {
+    fn call_exact(&mut self, ty: &TypeSignature, args: &mut [Expression]) -> Result<IntermediateType, String> {
         match ty {
             TypeSignature::Plain(name) => {
                 if let Some(ty) = self.get_ident_ty(name) {
@@ -908,7 +941,7 @@ impl TypeInferrer<'_> {
                 } else {
                     assert!(args.len() >= params.len() - 1);
                 }
-                for (arg, param) in args.iter().zip(params.iter()) {
+                for (arg, param) in args.iter_mut().zip(params.iter()) {
                     if param != &Param::Variadic {
                         let arg_ty = self.get_type(arg)?.0;
                         let param_ty: TypeSignature = From::from(param.clone());

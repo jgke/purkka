@@ -8,5 +8,7 @@ int main() {
         .bar = 0,
         .baz = 1
     };
-    return a.bar + a.baz;
+    struct Foo *b = &a;
+    struct Foo **c = &b;
+    return a.bar +(*b).baz +(**c).baz;
 }

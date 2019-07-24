@@ -600,6 +600,11 @@ impl IntermediateType {
             IntermediateType::Exact(t) => t.access(ident, context),
         }
     }
+
+    pub fn address_of(self) -> IntermediateType {
+        IntermediateType::Exact(Box::new(
+                TypeSignature::Pointer { ty: Box::new(From::from(self)), nullable: false }))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
