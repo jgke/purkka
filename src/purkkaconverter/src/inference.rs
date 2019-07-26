@@ -453,7 +453,7 @@ impl TypeInferrer<'_> {
                 (ret, arg_ty.1)
             }
             Expression::ArrayAccess(expr, index) => self.get_array_access_type(expr, index)?,
-            Expression::Call(expr, ArgList::Args(args)) => {
+            Expression::Call(expr, args) => {
                 let (ty, mut ret_tys) = self.get_type(&mut *expr)?;
                 for arg in args.iter_mut() {
                     let (_, mut more_ret_tys) = self.get_type(arg)?;

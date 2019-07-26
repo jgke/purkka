@@ -175,10 +175,6 @@ grammar! {
     ArgList
        -> Empty. #Token::OpenParen #Token::CloseParen
         | Args. #Token::OpenParen Arg MoreArgs #Token::CloseParen
-        @ #[derive(Clone, Debug, PartialEq)]
-        pub enum ArgList {
-            Args(Vec<Expression>)
-        }
         ;
 
     MoreArgs
@@ -293,7 +289,7 @@ grammar! {
             Unary(Rc<str>, ExprList),
             PostFix(Box<Expression>, Rc<str>),
             Cast(Box<Expression>, TypeSignature),
-            Call(Box<Expression>, ArgList),
+            Call(Box<Expression>, Vec<Expression>),
             ArrayAccess(Box<Expression>, Box<Expression>),
             StructAccess(Box<Expression>, Rc<str>),
             Sizeof(Sizeof),

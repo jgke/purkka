@@ -58,6 +58,11 @@ pub fn convert(mut purkka_tree: pp::S, operators: Operators, symbols: Symbols) -
     (context.s(purkka_tree), context)
 }
 
+pub fn expression_to_c(mut purkka_tree: pp::Expression) -> cp::Expression {
+    let mut context = PurkkaToC::new(Operators::default(), Symbols::default());
+    context.expression(purkka_tree)
+}
+
 pub fn fetch_identifiers_from_prk(tree: &mut pp::S) -> HashMap<Rc<str>, pp::Declaration> {
     let mut decls = FetchDeclarations::new();
     decls.fetch_declarations(tree);
@@ -805,7 +810,7 @@ impl PurkkaToC {
                 Box::new(self.expression(*index_expr)),
                 ct::Token::CloseBracket(0),
             ),
-            pp::Expression::Call(expr, pp::ArgList::Args(args)) => cp::PostfixExpression::Call(
+            pp::Expression::Call(expr, args) => cp::PostfixExpression::Call(
                 Box::new(self.postfix_expression(*expr)),
                 ct::Token::OpenParen(0),
                 cp::ArgumentExpressionList::List(
@@ -978,7 +983,7 @@ impl CToPurkka {
             cp::PostfixExpression::PrimaryExpression(e) => pp::Expression::PrimaryExpression(self.primary_expression(e)),
             cp::PostfixExpression::Call(e, _, cp::ArgumentExpressionList::List(arglist), _) => pp::Expression::Call(
                 Box::new(self.postfix_expression(*e)),
-                pp::ArgList::Args(arglist.into_iter().map(|e| self.assignment_expression(e)).collect())
+                arglist.into_iter().map(|e| self.assignment_expression(e)).collect()
             ),
             other => panic!("Not implemented: {:?}", other),
         }

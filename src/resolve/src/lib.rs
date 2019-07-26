@@ -13,6 +13,7 @@ pub struct ResolveResult {
     pub dependencies: Option<Vec<String>>,
     pub declarations: Option<Declarations>,
     pub types: Option<Declarations>,
+    pub c_macros: (HashSet<Rc<str>>, HashSet<Rc<str>>),
 }
 
 #[derive(Clone, Debug)]
@@ -57,6 +58,7 @@ impl ResolveResult {
             dependencies: None,
             declarations: None,
             types: None,
+            c_macros: (HashSet::new(), HashSet::new()),
         }
     }
 

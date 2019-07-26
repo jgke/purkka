@@ -8,7 +8,7 @@ use clap::{App, Arg};
 use tool::fix;
 
 use debug::debug::{if_debug, DebugVal::IncludeName};
-use preprocessor::{PreprocessorOptions, tokenizer::MacroContext};
+use preprocessor::{PreprocessorOptions, tokenizer::{MacroContext, Macro}};
 use resolve::{FileQuery, ResolveResult};
 
 pub fn get_default_include_path() -> Vec<String> {
@@ -41,18 +41,40 @@ pub fn get_file_cb<'a>(
 
         if full_path.to_lowercase().ends_with(".prk") {
             let (prk_tree, operators, symbols) =
-                purkkaparser::parse_file(&full_path, &content, get_file, &|expansion, types| {
-                    let result = preprocessor::preprocess_str(&expansion, get_file, &options, &mut ctx.borrow_mut());
-                    match result {
-                        Ok(output) => {
-                            let iter_ref = ctx.borrow();
-                            let iter = iter_ref.as_ref().and_then(|c| c.iter.as_ref()).unwrap();
-                            let parsed = cparser::parse_macro_expansion(output, iter, types).unwrap();
-                            purkkaconverter::to_purkka(parsed)
+                purkkaparser::parse_file(
+                    &full_path, &content, get_file,
+                    &|expansion, types| {
+                        let result = preprocessor::preprocess_str(&expansion, get_file, &options, &mut ctx.borrow_mut());
+                        match result {
+                            Ok(output) => {
+                                let iter_ref = ctx.borrow();
+                                let iter = iter_ref.as_ref().and_then(|c| c.iter.as_ref()).unwrap();
+                                let parsed = cparser::parse_macro_expansion(output, iter, types).unwrap();
+                                purkkaconverter::to_purkka(parsed)
+                            }
+                            Err(e) => panic!(e),
                         }
-                        Err(e) => panic!(e),
+                    },
+                    &|macro_name, args, types| {
+                        let c_args: Vec<String> = args.into_iter()
+                            .map(purkkaconverter::expression_to_c)
+                            .map(|t| cformat::expression(&t))
+                            .collect();
+
+                        let expansion = format!("{}({})", macro_name, c_args.join(", "));
+
+                        let result = preprocessor::preprocess_str(&expansion, get_file, &options, &mut ctx.borrow_mut());
+                        match result {
+                            Ok(output) => {
+                                let iter_ref = ctx.borrow();
+                                let iter = iter_ref.as_ref().and_then(|c| c.iter.as_ref()).unwrap();
+                                let parsed = cparser::parse_macro_expansion(output, iter, types).unwrap();
+                                purkkaconverter::to_purkka(parsed)
+                            }
+                            Err(e) => panic!(e),
+                        }
                     }
-                });
+            );
             let declarations = purkkaparser::get_declarations(&prk_tree, false);
             let (parsed, context) = purkkaconverter::convert(prk_tree, operators, symbols);
             let formatted = cformat::format_c(&parsed, context.local_includes);
@@ -63,6 +85,7 @@ pub fn get_file_cb<'a>(
                 dependencies: None,
                 declarations: Some(declarations),
                 types: Some(Vec::new()),
+                c_macros: (HashSet::new(), HashSet::new()),
             }
         } else {
             let result = preprocessor::preprocess_file(&full_path, get_file, &options, &mut ctx.borrow_mut());
@@ -74,6 +97,13 @@ pub fn get_file_cb<'a>(
                     let parsed = cparser::parse(output, iter, req.types).unwrap();
                     let formatted = cformat::format_c(&parsed, HashSet::new());
                     let (declarations, types) = cparser::get_declarations(&parsed);
+                    let mut c_macros = (HashSet::new(), HashSet::new());
+                    for (k, v) in &iter_ref.as_ref().unwrap().symbols {
+                        match v {
+                            Macro::Text(..) => c_macros.0.insert(k.clone()),
+                            Macro::Function(..) => c_macros.1.insert(k.clone()),
+                        };
+                    }
                     ResolveResult {
                         full_path,
                         c_content: formatted,
@@ -81,6 +111,7 @@ pub fn get_file_cb<'a>(
                         dependencies: None,
                         declarations: Some(declarations),
                         types: Some(types),
+                        c_macros,
                     }
                 }
                 Err(e) => panic!(e),

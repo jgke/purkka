@@ -9,12 +9,12 @@ use purkkatoken::token::Token;
 
 fn test_parse_file(s: &str) -> S {
     println!("Testing following file:\n------\n{}\n------", s);
-    parse_file("file.prk", s, &|_| panic!(), &|_, _| panic!()).0
+    parse_file("file.prk", s, &|_| panic!(), &|_, _| panic!(), &|_, _, _| panic!()).0
 }
 
 fn test_convert_parse_file(s: &str) -> S {
     println!("Testing following file:\n------\n{}\n------", s);
-    let (mut tree, op, syms) = parse_file("file.prk", s, &|_| panic!(), &|_, _| panic!());
+    let (mut tree, op, syms) = parse_file("file.prk", s, &|_| panic!(), &|_, _| panic!(), &|_, _, _| panic!());
     transform(&mut tree, op, syms);
     tree
 }
@@ -34,6 +34,7 @@ fn parse_simple() {
         "",
         &|_| panic!(),
         &|_, _| panic!(),
+        &|_, _, _| panic!(),
     );
 }
 

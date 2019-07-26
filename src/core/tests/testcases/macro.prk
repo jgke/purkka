@@ -3,3 +3,7 @@ import "dependencies/macro.h"
 fun main() {
     return @"FOO(1)";
 }
+
+fun bar() {
+    return FOO(1);
+}

@@ -45,6 +45,17 @@ pub fn format_c<H: std::hash::BuildHasher>(tree: &S, includes: HashSet<Rc<str>, 
     context.buf
 }
 
+pub fn expression(expression: &Expression) -> String {
+    let mut context = Context {
+        indent: 0,
+        newline: false,
+        whitespace: false,
+        buf: String::new(),
+    };
+    context.expression(expression);
+    context.buf
+}
+
 macro_rules! op_3 {
     ($this:ident, $left:ident, $op:ident, $right:ident) => {{
         $this.general_expression($left);

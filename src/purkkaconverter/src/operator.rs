@@ -44,7 +44,7 @@ impl ASTVisitor for InlineOperators<'_> {
             let ExprList::List(list) = list;
             let operator = &self.context.operators.infix[op];
             if let Some(expr) = &operator.handler {
-                *e = Expression::Call(Box::new(expr.clone()), ArgList::Args(list.clone()))
+                *e = Expression::Call(Box::new(expr.clone()), list.clone())
             }
         }
         walk_expression(self, e)

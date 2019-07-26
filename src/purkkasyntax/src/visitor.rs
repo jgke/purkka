@@ -249,7 +249,7 @@ pub fn walk_expression<T: ASTVisitor + ?Sized>(
         Expression::Cast(expr, ty) => {
             vec![visitor.visit_expression(expr)?, visitor.visit_ty(ty)?].flatten(visitor)
         }
-        Expression::Call(expr, ArgList::Args(ref mut args)) => vec![
+        Expression::Call(expr, args) => vec![
             visitor.visit_expression(expr.deref_mut())?,
             visitor.fold(args, ASTVisitor::visit_expression)?,
         ].flatten(visitor),

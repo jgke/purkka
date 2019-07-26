@@ -89,7 +89,7 @@ pub struct Operator {
 pub type OperatorMap = HashMap<Rc<str>, Operator>;
 pub type Types = HashMap<Rc<str>, TypeSignature>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Operators {
     pub unary: OperatorMap,
     pub infix: OperatorMap,
@@ -102,6 +102,7 @@ pub struct Symbols {
     pub declarations: Types,
     pub imported_types: Types,
     pub imported_declarations: Types,
+    pub imported_macros: (HashSet<Rc<str>>, HashSet<Rc<str>>),
 }
 
 fn unary_num_to_bool() -> TypeSignature {
@@ -235,6 +236,7 @@ pub fn parse(
     current_file: &str,
     get_file: &dyn Fn(FileQuery) -> ResolveResult,
     expand: &dyn Fn(String, HashSet<Rc<str>>) -> Vec<MacroExpansion>,
+    expand_call: &dyn Fn(String, Vec<Expression>, HashSet<Rc<str>>) -> Vec<MacroExpansion>,
 ) -> (S, Operators, Symbols) {
     let mut context = ParseContext {
         operators: Operators {
@@ -246,9 +248,11 @@ pub fn parse(
         fragment: fragment_iter,
         sources,
         symbols: Symbols::default(),
+        current_identifiers: vec![HashSet::new()],
         current_file,
         get_file,
-        expand
+        expand,
+        expand_call,
     };
     let tu = S::TranslationUnit(context.parse_translation_unit());
     (tu, context.operators, context.symbols)
@@ -298,6 +302,7 @@ pub(crate) type Iter<'a, 'b> = &'a mut Peekable<std::slice::Iter<'b, Token>>;
 struct ParseContext<'a, 'b> {
     operators: Operators,
     symbols: Symbols,
+    current_identifiers: Vec<HashSet<Rc<str>>>,
 
     iter: Iter<'a, 'b>,
     fragment: &'a FragmentIterator,
@@ -306,6 +311,7 @@ struct ParseContext<'a, 'b> {
     current_file: &'a str,
     get_file: &'a dyn Fn(FileQuery) -> ResolveResult,
     expand: &'a dyn Fn(String, HashSet<Rc<str>>) -> Vec<MacroExpansion>,
+    expand_call: &'a dyn Fn(String, Vec<Expression>, HashSet<Rc<str>>) -> Vec<MacroExpansion>,
 }
 
 impl<'a, 'b> ParseContext<'a, 'b> {
@@ -357,6 +363,27 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn get_inferred_type(&mut self) -> TypeSignature {
         TypeSignature::Infer(IntermediateType::new_any())
+    }
+
+    fn push_block(&mut self) {
+        self.current_identifiers.push(HashSet::new());
+    }
+
+    fn push_identifier(&mut self, s: Rc<str>) {
+        if self.current_identifiers.last().unwrap().contains(&s) {
+            panic!("Redeclared identifier {}", s);
+        }
+        self.current_identifiers.last_mut().unwrap().insert(s);
+    }
+
+    fn pop_block(&mut self) {
+        self.current_identifiers.pop().unwrap();
+    }
+
+    fn starts_c_macro(&self, s: &str) -> bool {
+        !self.current_identifiers.iter().any(|t| t.contains(s))
+            && (self.symbols.imported_macros.0.contains(s)
+            || self.symbols.imported_macros.1.contains(s))
     }
 
     fn parse_unit(&mut self) -> Unit {
@@ -747,6 +774,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         for (name, ty) in content.types.unwrap() {
             self.symbols.imported_types.insert(name.clone(), ty.clone());
         }
+        self.symbols.imported_macros = content.c_macros;
         ImportFile::Import(file, ffi)
     }
 
@@ -786,18 +814,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         let mut expr = match self.peek() {
             Some(Token::Operator(_, op)) if op.as_ref() == "@" => {
                 read_token!(self, Token::Operator);
-                if let Token::StringLiteral(_, s) = read_token!(self, Token::StringLiteral) {
-                    let mut result = (self.expand)(
-                        s.to_string(),
-                        self.symbols.types.keys().chain(self.symbols.imported_types.keys()).cloned().collect());
-                    assert_eq!(result.len(), 1);
-                    match result.remove(0) {
-                        MacroExpansion::Expression(e) => e,
-                        _ => panic!()
-                    }
-                } else {
-                    unreachable!();
-                }
+                self.parse_macro()
             }
             Some(Token::Operator(_, op)) =>
                 match self.operators.unary.get(op).cloned() {
@@ -874,23 +891,67 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         expr
     }
 
+    fn parse_macro(&mut self) -> Expression {
+        let tys = self.symbols.types.keys()
+            .chain(self.symbols.imported_types.keys())
+            .cloned()
+            .collect();
+        match self.peek() {
+            Some(Token::StringLiteral(..)) => {
+                if let Token::StringLiteral(_, s) = read_token!(self, Token::StringLiteral) {
+                    let mut result = (self.expand)(s.to_string(), tys);
+                    assert_eq!(result.len(), 1);
+                    match result.remove(0) {
+                        MacroExpansion::Expression(e) => e,
+                        _ => panic!()
+                    }
+                } else {
+                    unreachable!();
+                }
+            }
+            Some(Token::Identifier(_, s)) => {
+                if self.symbols.imported_macros.0.contains(s) {
+                    unimplemented!();
+                } else if self.symbols.imported_macros.1.contains(s) {
+                    let s = read_identifier_str!(self);
+                    let args = self.parse_args();
+
+                    let mut result = (self.expand_call)(s.to_string(), args, tys);
+
+                    assert_eq!(result.len(), 1);
+                    match result.remove(0) {
+                        MacroExpansion::Expression(e) => e,
+                        _ => panic!()
+                    }
+                } else {
+                    unimplemented!();
+                }
+            }
+            t => unexpected_token!(t, self),
+        }
+    }
+
     fn parse_primary_expression(&mut self) -> PrimaryExpression {
         match self.peek() {
-            Some(Token::Identifier(..)) => {
-                let t = self.next().identifier_s().unwrap().clone();
-                let ty = self.get_ty(&t).cloned();
-                match self.peek() {
-                    Some(Token::OpenBrace(..))
-                        if ty.as_ref().map(|t| t.is_compound(&HashMap::new())) == Some(true) =>
-                        {
-                            let fields = self.parse_initialization_fields(&t);
-                            PrimaryExpression::StructInitialization(t, fields)
+            Some(Token::Identifier(_, s)) => {
+                if self.starts_c_macro(s) {
+                    PrimaryExpression::Expression(Box::new(self.parse_macro()))
+                } else {
+                    let t = self.next().identifier_s().unwrap().clone();
+                    let ty = self.get_ty(&t).cloned();
+                    match self.peek() {
+                        Some(Token::OpenBrace(..))
+                            if ty.as_ref().map(|t| t.is_compound(&HashMap::new())) == Some(true) =>
+                            {
+                                let fields = self.parse_initialization_fields(&t);
+                                PrimaryExpression::StructInitialization(t, fields)
+                            }
+                        Some(Token::OpenBrace(..)) if ty.is_some() => {
+                            let fields = self.parse_vector_initialization_fields();
+                            PrimaryExpression::VectorInitialization(t, fields)
                         }
-                    Some(Token::OpenBrace(..)) if ty.is_some() => {
-                        let fields = self.parse_vector_initialization_fields();
-                        PrimaryExpression::VectorInitialization(t, fields)
+                        _ => PrimaryExpression::Identifier(t),
                     }
-                    _ => PrimaryExpression::Identifier(t),
                 }
             }
             Some(Token::Integer(..)) | Some(Token::Float(..)) | Some(Token::StringLiteral(..)) => {
@@ -1133,7 +1194,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         }
     }
 
-    fn parse_args(&mut self) -> ArgList {
+    fn parse_args(&mut self) -> Vec<Expression> {
         let mut args = Vec::new();
 
         read_token!(self, Token::OpenParen);
@@ -1160,7 +1221,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
         }
 
-        ArgList::Args(args)
+        args
     }
 
     #[allow(clippy::cognitive_complexity)]
@@ -1361,6 +1422,7 @@ mod tests {
                 postfix,
             },
             symbols: Symbols::default(),
+            current_identifiers: vec![HashSet::new()],
 
             iter: &mut vec.iter().peekable(),
             fragment: &FragmentIterator::new("", ""),
@@ -1369,6 +1431,7 @@ mod tests {
             current_file: "",
             get_file: &|_| panic!(),
             expand: &|_, _| panic!(),
+            expand_call: &|_, _, _| panic!(),
         };
         let result = eval_tree(&context.parse_expression());
         println!("{} = {} (expected: {})", expr, result, expected);
@@ -1407,6 +1470,7 @@ mod tests {
             "",
             &|_| panic!(),
             &|_, _| panic!(),
+            &|_, _, _| panic!(),
         )
         .0
     }
@@ -1442,7 +1506,7 @@ mod tests {
                 .unwrap(),
             &Expression::Call(
                 Box::new(Expression::PrimaryExpression(From::from("foo"))),
-                ArgList::Args(vec![])
+                vec![]
             )
         );
     }
@@ -1479,9 +1543,9 @@ mod tests {
                 .unwrap(),
             &Expression::Call(
                 Box::new(Expression::PrimaryExpression(From::from("foo"))),
-                ArgList::Args(vec![Expression::PrimaryExpression(
+                vec![Expression::PrimaryExpression(
                     PrimaryExpression::Identifier(From::from("asd"))
-                )])
+                )]
             )
         );
     }
@@ -1520,10 +1584,10 @@ mod tests {
                 .unwrap(),
             &Expression::Call(
                 Box::new(Expression::PrimaryExpression(From::from("foo"))),
-                ArgList::Args(vec![
+                vec![
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("asd"))),
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("qwe")))
-                ])
+                ]
             )
         );
     }
@@ -1564,13 +1628,13 @@ mod tests {
                 .unwrap(),
             &Expression::Call(
                 Box::new(Expression::PrimaryExpression(From::from("foo"))),
-                ArgList::Args(vec![
+                vec![
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("asd"))),
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("qwe"))),
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from(
                         "aoeu"
                     )))
-                ])
+                ]
             )
         );
     }
