@@ -32,7 +32,7 @@ impl<'a> TreeTransformer<'a> for TypeInferrer<'a> {
         }
     }
     fn transform(&mut self, s: &mut S) {
-        if let Err(res) =  self.visit_s(s) {
+        if let Err(res) = self.visit_s(s) {
             println!("{}", res);
             println!("Current statement: {}", self.current_statement);
             println!("Current expression: {}", self.current_expression);
@@ -45,7 +45,7 @@ impl<'a> TreeTransformer<'a> for TypeInferrer<'a> {
             current_statement: "".to_string(),
         };
 
-        if let Err(res) =  ti.visit_s(s) {
+        if let Err(res) = ti.visit_s(s) {
             println!("{}", res);
             println!("Current statement: {}", self.current_statement);
             panic!();
@@ -297,7 +297,10 @@ impl TypeInferrer<'_> {
         }
     }
 
-    fn get_type(&mut self, expression: &mut Expression) -> Result<(IntermediateType, Vec<IntermediateType>), String> {
+    fn get_type(
+        &mut self,
+        expression: &mut Expression,
+    ) -> Result<(IntermediateType, Vec<IntermediateType>), String> {
         self.current_expression = format!("{:?}", expression);
         let mut ty = match expression {
             Expression::PrimaryExpression(expr) => self.get_primary_expr_type(expr)?,
@@ -403,7 +406,9 @@ impl TypeInferrer<'_> {
                             Ok(arg_ty.1)
                         })
                         .collect::<Result<Vec<Vec<IntermediateType>>, String>>()?
-                        .into_iter().flat_map(|x| x).collect();
+                        .into_iter()
+                        .flat_map(|x| x)
+                        .collect();
 
                     (ret, ret_tys)
                 }
@@ -439,7 +444,9 @@ impl TypeInferrer<'_> {
                             Ok(arg_ty.1)
                         })
                         .collect::<Result<Vec<Vec<IntermediateType>>, String>>()?
-                        .into_iter().flat_map(|x| x).collect();
+                        .into_iter()
+                        .flat_map(|x| x)
+                        .collect();
 
                     (ret, ret_tys)
                 }
@@ -508,7 +515,7 @@ impl TypeInferrer<'_> {
         e: &mut Expression,
         mut struct_ty: IntermediateType,
         ident: &Rc<str>,
-        ) -> Result<IntermediateType, String> {
+    ) -> Result<IntermediateType, String> {
         while let IntermediateType::Exact(box TypeSignature::Plain(name)) = &struct_ty {
             if let Some(ty) = self.get_ident_ty(name) {
                 struct_ty = From::from(ty);
@@ -526,12 +533,18 @@ impl TypeInferrer<'_> {
                 if let Some(s) = s {
                     panic!("Field {} not found in struct {}", ident, s);
                 } else {
-                    panic!("Field {} not found in anonymous struct {:?}", ident, TypeSignature::Struct(s, fields));
+                    panic!(
+                        "Field {} not found in anonymous struct {:?}",
+                        ident,
+                        TypeSignature::Struct(s, fields)
+                    );
                 }
-            } 
+            }
             IntermediateType::Exact(box TypeSignature::Pointer { ty, .. }) => {
                 let ret_val = self.struct_ty_access(e, From::from(*ty.clone()), ident)?;
-                let mut new_e = Expression::PrimaryExpression(PrimaryExpression::Literal(Literal::Integer(Token::Integer(0, 0))));
+                let mut new_e = Expression::PrimaryExpression(PrimaryExpression::Literal(
+                    Literal::Integer(Token::Integer(0, 0)),
+                ));
                 std::mem::swap(&mut new_e, e);
                 *e = Expression::Unary(From::from("*"), ExprList::List(vec![new_e]));
                 Ok(ret_val)
@@ -553,7 +566,8 @@ impl TypeInferrer<'_> {
     ) -> Result<(IntermediateType, Vec<IntermediateType>), String> {
         match expr {
             PrimaryExpression::Identifier(t) => {
-                let sym_ty = self.get_symbol_ty(t.as_ref())
+                let sym_ty = self
+                    .get_symbol_ty(t.as_ref())
                     .unwrap_or_else(|| panic!("Unknown identifier: {}", t));
                 Ok((sym_ty, Vec::new()))
             }
@@ -605,7 +619,7 @@ impl TypeInferrer<'_> {
                         Box::new(From::from(ret_ty)),
                     ));
                     self.pop_block();
-                   Ok((ty, Vec::new()))
+                    Ok((ty, Vec::new()))
                 } else {
                     Ok((
                         From::from(TypeSignature::Function(
@@ -638,7 +652,10 @@ impl TypeInferrer<'_> {
                                 Ok((name, self.get_type(&mut **e)?))
                             },
                         )
-                        .collect::<Result<Vec<(&mut Rc<str>, (IntermediateType, Vec<IntermediateType>))>, String>>()?;
+                        .collect::<Result<
+                            Vec<(&mut Rc<str>, (IntermediateType, Vec<IntermediateType>))>,
+                            String,
+                        >>()?;
                     arg_field_tys.sort_by(|(l_name, _), (r_name, _)| l_name.cmp(&r_name));
 
                     let mut ret_tys = Vec::new();
@@ -795,7 +812,9 @@ impl TypeInferrer<'_> {
                 let (_, more_ret_tys) = self.get_block_type(block)?;
                 let even_more_ret_tys: Vec<IntermediateType> = else_block
                     .as_mut()
-                    .map::<Result<Vec<IntermediateType>, String>, _>(|b| Ok(self.get_block_type(b)?.1))
+                    .map::<Result<Vec<IntermediateType>, String>, _>(|b| {
+                        Ok(self.get_block_type(b)?.1)
+                    })
                     .transpose()?
                     .unwrap_or_else(Vec::new);
                 ret_tys.extend(more_ret_tys);
@@ -808,25 +827,33 @@ impl TypeInferrer<'_> {
 
                 let mut ret_tys = s1
                     .as_mut()
-                    .map::<Result<Vec<IntermediateType>, String>, _>(|s| Ok(self.get_statement_type(&mut *s)?.1))
+                    .map::<Result<Vec<IntermediateType>, String>, _>(|s| {
+                        Ok(self.get_statement_type(&mut *s)?.1)
+                    })
                     .transpose()?
                     .unwrap_or_else(Vec::new);
                 let (ty, ret_tys_2) = s2
                     .as_mut()
-                    .map::<Result<(IntermediateType, Vec<IntermediateType>), String>, _>(|s| Ok(self.get_type(&mut *s)?))
+                    .map::<Result<(IntermediateType, Vec<IntermediateType>), String>, _>(|s| {
+                        Ok(self.get_type(&mut *s)?)
+                    })
                     .transpose()?
                     .unwrap_or_else(|| (num.clone(), Vec::new()));
                 self.make_equal(&ty, &num)?;
                 let ret_tys_3 = s3
                     .as_mut()
-                    .map::<Result<Vec<IntermediateType>, String>, _>(|s| Ok(self.get_type(&mut *s)?.1))
+                    .map::<Result<Vec<IntermediateType>, String>, _>(|s| {
+                        Ok(self.get_type(&mut *s)?.1)
+                    })
                     .transpose()?
                     .unwrap_or_else(Vec::new);
 
                 let (_, ret_tys_4) = self.get_block_type(block)?;
                 let ret_tys_5 = else_block
                     .as_mut()
-                    .map::<Result<Vec<IntermediateType>, String>, _>(|b| Ok(self.get_block_type(b)?.1))
+                    .map::<Result<Vec<IntermediateType>, String>, _>(|b| {
+                        Ok(self.get_block_type(b)?.1)
+                    })
                     .transpose()?
                     .unwrap_or_else(Vec::new);
 
@@ -882,7 +909,7 @@ impl TypeInferrer<'_> {
                     ret_tys.push(ty);
                     Ok((None, ret_tys))
                 })
-                .unwrap_or(Ok((None, Vec::new()))),
+                .unwrap_or_else(|| Ok((None, Vec::new()))),
             Statement::Pragma(_pragma) => Ok((None, Vec::new())),
         }
     }
@@ -903,10 +930,7 @@ impl TypeInferrer<'_> {
                     for arg in args.iter_mut() {
                         fn_args.push(Param::TypeOnly(Box::new(From::from(self.get_type(arg)?.0))));
                     }
-                    let ty = TypeSignature::Function(
-                        fn_args,
-                        Box::new(From::from(any.clone())),
-                    );
+                    let ty = TypeSignature::Function(fn_args, Box::new(From::from(any.clone())));
                     self.make_equal(inferred, &From::from(ty))?;
                     Ok(any)
                 }
@@ -916,7 +940,11 @@ impl TypeInferrer<'_> {
         }
     }
 
-    fn call_exact(&mut self, ty: &TypeSignature, args: &mut [Expression]) -> Result<IntermediateType, String> {
+    fn call_exact(
+        &mut self,
+        ty: &TypeSignature,
+        args: &mut [Expression],
+    ) -> Result<IntermediateType, String> {
         match ty {
             TypeSignature::Plain(name) => {
                 if let Some(ty) = self.get_ident_ty(name) {
@@ -954,7 +982,11 @@ impl TypeInferrer<'_> {
         }
     }
 
-    fn make_equal(&mut self, lvalue: &IntermediateType, rvalue: &IntermediateType) -> Result<(), String> {
+    fn make_equal(
+        &mut self,
+        lvalue: &IntermediateType,
+        rvalue: &IntermediateType,
+    ) -> Result<(), String> {
         if lvalue == rvalue {
             return Ok(());
         }
@@ -989,14 +1021,14 @@ impl TypeInferrer<'_> {
         }
     }
 
-    fn unify_with_infer(&mut self, lvalue: &IntermediateType, rvalue: &TypeSignature) -> Result<(), String> {
+    fn unify_with_infer(
+        &mut self,
+        lvalue: &IntermediateType,
+        rvalue: &TypeSignature,
+    ) -> Result<(), String> {
         match (lvalue, rvalue) {
-            (left, TypeSignature::Infer(right)) => {
-                self.make_equal(left, right)
-            }
-            (IntermediateType::Exact(left), right) => {
-                self.unify_types(left, right)
-            }
+            (left, TypeSignature::Infer(right)) => self.make_equal(left, right),
+            (IntermediateType::Exact(left), right) => self.unify_types(left, right),
             (IntermediateType::Any(id), rvalue) => {
                 if let Some(ty) = self.infer_map.get(id).cloned() {
                     self.unify_with_infer(&ty, rvalue)
@@ -1009,7 +1041,12 @@ impl TypeInferrer<'_> {
         }
     }
 
-    fn make_num_exact(&mut self, id: i128, num: &IntermediateNumber, ty: &TypeSignature) -> Result<(), String> {
+    fn make_num_exact(
+        &mut self,
+        id: i128,
+        num: &IntermediateNumber,
+        ty: &TypeSignature,
+    ) -> Result<(), String> {
         if let Some(num_ty) = self.infer_map.get(&id).cloned() {
             return self.unify_with_infer(&num_ty, &ty);
         }
@@ -1072,15 +1109,14 @@ impl TypeInferrer<'_> {
             }
             (IntermediateNumber::Float, IntermediateNumber::Float) => Ok(()),
             (IntermediateNumber::Double, IntermediateNumber::Double) => Ok(()),
-            (IntermediateNumber::Float, IntermediateNumber::Double) => {
-                self.add_type_alias(id_1, IntermediateType::new_number(IntermediateNumber::Double))
-            }
-            (IntermediateNumber::Double, IntermediateNumber::Float) => {
-                self.add_type_alias(
-                    id_2,
-                    IntermediateType::new_number(IntermediateNumber::Double),
-                )
-            }
+            (IntermediateNumber::Float, IntermediateNumber::Double) => self.add_type_alias(
+                id_1,
+                IntermediateType::new_number(IntermediateNumber::Double),
+            ),
+            (IntermediateNumber::Double, IntermediateNumber::Float) => self.add_type_alias(
+                id_2,
+                IntermediateType::new_number(IntermediateNumber::Double),
+            ),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
@@ -1091,7 +1127,11 @@ impl TypeInferrer<'_> {
         Ok(num)
     }
 
-    fn unify_types(&mut self, lvalue: &TypeSignature, rvalue: &TypeSignature) -> Result<(), String> {
+    fn unify_types(
+        &mut self,
+        lvalue: &TypeSignature,
+        rvalue: &TypeSignature,
+    ) -> Result<(), String> {
         if lvalue == rvalue {
             return Ok(());
         }
@@ -1138,7 +1178,9 @@ impl TypeInferrer<'_> {
                 } => {
                     assert!(!*right_nullable || *left_nullable);
                     // void* is compatible with anything
-                    if **left_ty != TypeSignature::Primitive(Primitive::Void) && **right_ty != TypeSignature::Primitive(Primitive::Void) {
+                    if **left_ty != TypeSignature::Primitive(Primitive::Void)
+                        && **right_ty != TypeSignature::Primitive(Primitive::Void)
+                    {
                         self.unify_types(left_ty, right_ty)
                     } else {
                         Ok(())
@@ -1155,13 +1197,11 @@ impl TypeInferrer<'_> {
                     assert_eq!(left_fields, right_fields);
                     Ok(())
                 }
-                TypeSignature::Plain(name) => {
-                    match left_name.as_ref() {
-                        Some(s) if s == name => Ok(()),
-                        Some(s) => Err(format!("Cannot assign {} to {}", name, s)),
-                        None => Err(format!("Cannot assign {} to anonymous struct", name)),
-                    }
-                }
+                TypeSignature::Plain(name) => match left_name.as_ref() {
+                    Some(s) if s == name => Ok(()),
+                    Some(s) => Err(format!("Cannot assign {} to {}", name, s)),
+                    None => Err(format!("Cannot assign {} to anonymous struct", name)),
+                },
                 otherwise => panic!("Not implemented: {:?}", otherwise),
             },
             TypeSignature::Enum(_name, _fields) => unimplemented!(),
@@ -1181,13 +1221,16 @@ impl TypeInferrer<'_> {
                 }
                 otherwise => panic!("Not implemented: {:?}", otherwise),
             },
-            TypeSignature::Infer(infer) => {
-                self.unify_with_infer(infer, rvalue)
-            }
+            TypeSignature::Infer(infer) => self.unify_with_infer(infer, rvalue),
         }
     }
 
-    fn fail_if(&self, cond: bool, left: &TypeSignature, right: &TypeSignature) -> Result<(), String> {
+    fn fail_if(
+        &self,
+        cond: bool,
+        left: &TypeSignature,
+        right: &TypeSignature,
+    ) -> Result<(), String> {
         if cond {
             Err(format!("Cannot assign {:?} to {:?}", right, left))
         } else {
@@ -1219,7 +1262,7 @@ impl ASTVisitor for TypeInserter<'_> {
                     *s = From::from(ty);
                     self.visit_ty(s)?;
                 } else {
-                    Err(format!("Did not find type for id {}", id))?;
+                    return Err(format!("Did not find type for id {}", id));
                 }
             }
             TypeSignature::Infer(IntermediateType::Number(id, more)) => {

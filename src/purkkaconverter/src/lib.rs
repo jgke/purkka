@@ -1,7 +1,7 @@
 #![feature(box_patterns, drain_filter)]
 
-use std::convert::TryFrom;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::rc::Rc;
 
@@ -11,7 +11,6 @@ use purkkaparser::parser::{Operators, Symbols};
 use purkkasyntax as pp;
 use purkkasyntax::{Primitive, TypeSignature};
 use purkkatoken::token as pt;
-use resolve::Declarations;
 
 pub mod traits;
 
@@ -53,12 +52,16 @@ pub fn transform(purkka_tree: &mut pp::S, operators: Operators, symbols: Symbols
     context
 }
 
-pub fn convert(mut purkka_tree: pp::S, operators: Operators, symbols: Symbols) -> (cp::S, PurkkaToC) {
+pub fn convert(
+    mut purkka_tree: pp::S,
+    operators: Operators,
+    symbols: Symbols,
+) -> (cp::S, PurkkaToC) {
     let mut context = transform(&mut purkka_tree, operators, symbols);
     (context.s(purkka_tree), context)
 }
 
-pub fn expression_to_c(mut purkka_tree: pp::Expression) -> cp::Expression {
+pub fn expression_to_c(purkka_tree: pp::Expression) -> cp::Expression {
     let mut context = PurkkaToC::new(Operators::default(), Symbols::default());
     context.expression(purkka_tree)
 }
@@ -147,7 +150,7 @@ impl PurkkaToC {
         if let Some(ref mut specs) = specs {
             specs.0.inline = inline;
         } else if inline {
-            let mut s = cp::Specifiers::default(); 
+            let mut s = cp::Specifiers::default();
             s.0.inline = true;
             specs = Some(s);
         }
@@ -156,7 +159,10 @@ impl PurkkaToC {
         cp::ExternalDeclaration::FunctionDefinition(Box::new(
             cp::FunctionDefinition::FunctionDefinition(
                 Some(Box::new(DSpec(specs, c_ty))),
-                Box::new(cp::Declarator::Declarator(self.ty_to_pointer(ty), Box::new(params))),
+                Box::new(cp::Declarator::Declarator(
+                    self.ty_to_pointer(ty),
+                    Box::new(params),
+                )),
                 Box::new(cp::CompoundStatement::Statements(statements)),
             ),
         ))
@@ -907,8 +913,13 @@ struct CToPurkka {
 }
 
 pub fn to_purkka(c_exps: Vec<cp::MacroExpansion>) -> Vec<pp::MacroExpansion> {
-    let context = CToPurkka {types: HashMap::new()};
-    c_exps.into_iter().map(|exp| context.macro_expansion(exp)).collect()
+    let context = CToPurkka {
+        types: HashMap::new(),
+    };
+    c_exps
+        .into_iter()
+        .map(|exp| context.macro_expansion(exp))
+        .collect()
 }
 
 impl CToPurkka {
@@ -946,9 +957,13 @@ impl CToPurkka {
     fn general_expression(&self, e: cp::GeneralExpression) -> pp::Expression {
         match e {
             cp::GeneralExpression::CastExpression(e) => self.cast_expression(*e),
-            cp::GeneralExpression::Plus(left, _, right) =>
-                pp::Expression::Op(From::from("+"),
-                pp::ExprList::List(vec![self.general_expression(*left), self.general_expression(*right)])),
+            cp::GeneralExpression::Plus(left, _, right) => pp::Expression::Op(
+                From::from("+"),
+                pp::ExprList::List(vec![
+                    self.general_expression(*left),
+                    self.general_expression(*right),
+                ]),
+            ),
             other => panic!("Not implemented: {:?}", other),
         }
     }
@@ -956,39 +971,54 @@ impl CToPurkka {
     fn cast_expression(&self, e: cp::CastExpression) -> pp::Expression {
         match e {
             cp::CastExpression::UnaryExpression(e) => self.unary_expression(e),
-            cp::CastExpression::OpenParen(_, ty, _, e) => pp::Expression::Cast(
-                Box::new(self.general_expression(*e)),
-                self.type_name(*ty)
-            ), 
+            cp::CastExpression::OpenParen(_, ty, _, e) => {
+                pp::Expression::Cast(Box::new(self.general_expression(*e)), self.type_name(*ty))
+            }
         }
     }
 
     fn unary_expression(&self, e: cp::UnaryExpression) -> pp::Expression {
         match e {
             cp::UnaryExpression::PostfixExpression(e) => self.postfix_expression(*e),
-            cp::UnaryExpression::SizeofTy(ty) => pp::Expression::Sizeof(pp::Sizeof::Type(Box::new(self.type_name(*ty)))),
-            cp::UnaryExpression::UnaryOperator(cp::UnaryOperator::BitAnd(_), expr) =>
-                pp::Expression::Unary(From::from("&"),
-                pp::ExprList::List(vec![self.cast_expression(*expr)])),
+            cp::UnaryExpression::SizeofTy(ty) => {
+                pp::Expression::Sizeof(pp::Sizeof::Type(Box::new(self.type_name(*ty))))
+            }
+            cp::UnaryExpression::UnaryOperator(cp::UnaryOperator::BitAnd(_), expr) => {
+                pp::Expression::Unary(
+                    From::from("&"),
+                    pp::ExprList::List(vec![self.cast_expression(*expr)]),
+                )
+            }
             other => panic!("Not implemented: {:?}", other),
         }
     }
 
     fn postfix_expression(&self, e: cp::PostfixExpression) -> pp::Expression {
         match e {
-            cp::PostfixExpression::PrimaryExpression(e) => pp::Expression::PrimaryExpression(self.primary_expression(e)),
-            cp::PostfixExpression::Call(e, _, cp::ArgumentExpressionList::List(arglist), _) => pp::Expression::Call(
-                Box::new(self.postfix_expression(*e)),
-                arglist.into_iter().map(|e| self.assignment_expression(e)).collect()
-            ),
+            cp::PostfixExpression::PrimaryExpression(e) => {
+                pp::Expression::PrimaryExpression(self.primary_expression(e))
+            }
+            cp::PostfixExpression::Call(e, _, cp::ArgumentExpressionList::List(arglist), _) => {
+                pp::Expression::Call(
+                    Box::new(self.postfix_expression(*e)),
+                    arglist
+                        .into_iter()
+                        .map(|e| self.assignment_expression(e))
+                        .collect(),
+                )
+            }
             other => panic!("Not implemented: {:?}", other),
         }
     }
 
     fn primary_expression(&self, e: cp::PrimaryExpression) -> pp::PrimaryExpression {
         match e {
-            cp::PrimaryExpression::Expression(e) => pp::PrimaryExpression::Expression(Box::new(self.expression(*e))),
-            cp::PrimaryExpression::Number(e) => pp::PrimaryExpression::Literal(pp::Literal::Integer(pt::Token::Integer(0, e.parse().unwrap()))),
+            cp::PrimaryExpression::Expression(e) => {
+                pp::PrimaryExpression::Expression(Box::new(self.expression(*e)))
+            }
+            cp::PrimaryExpression::Number(e) => pp::PrimaryExpression::Literal(
+                pp::Literal::Integer(pt::Token::Integer(0, e.parse().unwrap())),
+            ),
             cp::PrimaryExpression::Identifier(ident) => pp::PrimaryExpression::Identifier(ident),
             other => panic!("Not implemented: {:?}", other),
         }
@@ -1003,39 +1033,6 @@ impl CToPurkka {
         self.abstract_declarator_to_type(&*decl, ty)
     }
 
-    fn function_definition_to_type(
-        &self,
-        decl: &cp::FunctionDefinition,
-    ) -> (Declarations, TypeSignature) {
-        let cp::FunctionDefinition::FunctionDefinition(spec, decl, _) = decl;
-        let spec_ty = self.decl_spec_to_type(spec.as_ref().unwrap(), Vec::new());
-        (
-            vec![self.declarator_to_type(decl, spec_ty.clone())],
-            spec_ty,
-        )
-    }
-
-    fn declaration_to_type(&self, decl: &cp::Declaration) -> (Declarations, bool, TypeSignature) {
-        match decl {
-            cp::Declaration::Declaration(spec, init_decls, attrs) => {
-                let spec_ty =
-                    self.decl_spec_to_type(&**spec, attrs.clone().unwrap_or_else(Vec::new));
-                let decl_tys = init_decls
-                    .iter()
-                    .map(|init_decl| match init_decl {
-                        cp::InitDeclarator::Declarator(decl)
-                        | cp::InitDeclarator::Asm(decl, _)
-                        | cp::InitDeclarator::Assign(decl, _, _) => {
-                            self.declarator_to_type(&**decl, spec_ty.clone())
-                        }
-                    })
-                    .collect();
-                (decl_tys, has_typedef(&**spec), spec_ty)
-            }
-            cp::Declaration::Pragma(..) => unreachable!(),
-        }
-    }
-
     fn decl_spec_to_type(
         &self,
         spec: &cp::DeclarationSpecifiers,
@@ -1047,7 +1044,11 @@ impl CToPurkka {
             .unwrap()
     }
 
-    fn declarator_to_type(&self, decl: &cp::Declarator, ty: TypeSignature) -> (Rc<str>, TypeSignature) {
+    fn declarator_to_type(
+        &self,
+        decl: &cp::Declarator,
+        ty: TypeSignature,
+    ) -> (Rc<str>, TypeSignature) {
         let cp::Declarator::Declarator(ptr, decl) = decl;
         let ty = if let Some(p) = ptr {
             self.ptr_to_ty(p, Box::new(ty))
@@ -1108,7 +1109,9 @@ impl CToPurkka {
     ) -> TypeSignature {
         match decl {
             cp::DirectAbstractDeclarator::Epsilon() => ty,
-            cp::DirectAbstractDeclarator::Parens(decl) => self.abstract_declarator_to_type(&**decl, ty),
+            cp::DirectAbstractDeclarator::Parens(decl) => {
+                self.abstract_declarator_to_type(&**decl, ty)
+            }
             cp::DirectAbstractDeclarator::Array(decl, None) => {
                 let ty = self.direct_abstract_decl_to_type(&**decl, ty);
                 TypeSignature::Array(Box::new(ty), None)
@@ -1300,14 +1303,6 @@ impl CToPurkka {
     }
 }
 
-fn has_typedef(spec: &cp::DeclarationSpecifiers) -> bool {
-    if let cp::DeclarationSpecifiers::DeclarationSpecifiers(Some(spec), _) = spec {
-        spec.0.typedef
-    } else {
-        false
-    }
-}
-
 trait ReplaceEmpty<T> {
     fn replace_if_empty(&mut self, t: T, e: &str);
 }
@@ -1329,4 +1324,3 @@ where
         self.replace(t);
     }
 }
-

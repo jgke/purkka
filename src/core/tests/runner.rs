@@ -6,7 +6,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Command;
 
-use core::core::{get_file_cb, get_file_content_cb, get_default_include_path};
+use core::core::{get_default_include_path, get_file_cb, get_file_content_cb};
 use preprocessor::PreprocessorOptions;
 use resolve::*;
 
@@ -29,7 +29,13 @@ fn parse(content: &str, filename: &str) -> ResolveResult {
         definitions: vec![],
     };
     let ctx = RefCell::new(None);
-    let res = get_file_cb(&options, &get_file_content, ctx)(FileQuery::new(".", filename, true, false, HashSet::new()));
+    let res = get_file_cb(&options, &get_file_content, ctx)(FileQuery::new(
+        ".",
+        filename,
+        true,
+        false,
+        HashSet::new(),
+    ));
     res
 }
 

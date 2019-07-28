@@ -9,10 +9,7 @@ pub trait ASTVisitor {
     fn visit_s(&mut self, s: &mut S) -> Result<Self::Succ, Self::Err> {
         walk_s(self, s)
     }
-    fn visit_translation_unit(
-        &mut self,
-        s: &mut TranslationUnit,
-    ) -> Result<Self::Succ, Self::Err> {
+    fn visit_translation_unit(&mut self, s: &mut TranslationUnit) -> Result<Self::Succ, Self::Err> {
         walk_translation_unit(self, s)
     }
     fn visit_unit(&mut self, s: &mut Unit) -> Result<Self::Succ, Self::Err> {
@@ -60,10 +57,7 @@ pub trait ASTVisitor {
     fn visit_literal(&mut self, _s: &mut Literal) -> Result<Self::Succ, Self::Err> {
         Ok(self.ok())
     }
-    fn visit_block_expression(
-        &mut self,
-        s: &mut BlockExpression,
-    ) -> Result<Self::Succ, Self::Err> {
+    fn visit_block_expression(&mut self, s: &mut BlockExpression) -> Result<Self::Succ, Self::Err> {
         walk_block_expression(self, s)
     }
     fn visit_block(&mut self, s: &mut Block) -> Result<Self::Succ, Self::Err> {
@@ -86,37 +80,55 @@ pub trait ASTVisitor {
     fn concat(&self, left: Self::Succ, right: Self::Succ) -> Self::Succ;
 
     fn fold<F, T>(&mut self, list: &mut [T], mut map_fn: F) -> Result<Self::Succ, Self::Err>
-        where
-            F: FnMut(&mut Self, &mut T) -> Result<Self::Succ, Self::Err>,
-        {
-            list.iter_mut()
-                .map(|f| map_fn(self, f))
-                .collect::<Result<Vec<Self::Succ>, Self::Err>>()
-                .map(|succs| succs.into_iter().fold(self.ok(), |left, right| self.concat(left, right)))
-        }
+    where
+        F: FnMut(&mut Self, &mut T) -> Result<Self::Succ, Self::Err>,
+    {
+        list.iter_mut()
+            .map(|f| map_fn(self, f))
+            .collect::<Result<Vec<Self::Succ>, Self::Err>>()
+            .map(|succs| {
+                succs
+                    .into_iter()
+                    .fold(self.ok(), |left, right| self.concat(left, right))
+            })
+    }
 
     fn fold_o<F, T>(&mut self, list: &mut Option<T>, mut map_fn: F) -> Result<Self::Succ, Self::Err>
-        where
-            F: FnMut(&mut Self, &mut T) -> Result<Self::Succ, Self::Err>,
-        {
-            list.iter_mut()
-                .map(|f| map_fn(self, f))
-                .collect::<Result<Vec<Self::Succ>, Self::Err>>()
-                .map(|succs| succs.into_iter().fold(self.ok(), |left, right| self.concat(left, right)))
-        }
+    where
+        F: FnMut(&mut Self, &mut T) -> Result<Self::Succ, Self::Err>,
+    {
+        list.iter_mut()
+            .map(|f| map_fn(self, f))
+            .collect::<Result<Vec<Self::Succ>, Self::Err>>()
+            .map(|succs| {
+                succs
+                    .into_iter()
+                    .fold(self.ok(), |left, right| self.concat(left, right))
+            })
+    }
 
-    fn fold_o_deref<F, T>(&mut self, list: &mut Option<Box<T>>, mut map_fn: F) -> Result<Self::Succ, Self::Err>
-        where
-            F: FnMut(&mut Self, &mut T) -> Result<Self::Succ, Self::Err>,
-        {
-            list.iter_mut()
-                .map(|f| map_fn(self, f.deref_mut()))
-                .collect::<Result<Vec<Self::Succ>, Self::Err>>()
-                .map(|succs| succs.into_iter().fold(self.ok(), |left, right| self.concat(left, right)))
-        }
+    fn fold_o_deref<F, T>(
+        &mut self,
+        list: &mut Option<Box<T>>,
+        mut map_fn: F,
+    ) -> Result<Self::Succ, Self::Err>
+    where
+        F: FnMut(&mut Self, &mut T) -> Result<Self::Succ, Self::Err>,
+    {
+        list.iter_mut()
+            .map(|f| map_fn(self, f.deref_mut()))
+            .collect::<Result<Vec<Self::Succ>, Self::Err>>()
+            .map(|succs| {
+                succs
+                    .into_iter()
+                    .fold(self.ok(), |left, right| self.concat(left, right))
+            })
+    }
 
     fn collect(&self, list: Vec<Self::Succ>) -> Result<Self::Succ, Self::Err> {
-        Ok(list.into_iter().fold(self.ok(), |left, right| self.concat(left, right)))
+        Ok(list
+            .into_iter()
+            .fold(self.ok(), |left, right| self.concat(left, right)))
     }
 }
 
@@ -135,10 +147,7 @@ pub fn walk_translation_unit<T: ASTVisitor + ?Sized>(
     }
 }
 
-pub fn walk_unit<T: ASTVisitor + ?Sized>(
-    visitor: &mut T,
-    s: &mut Unit,
-) -> Result<T::Succ, T::Err> {
+pub fn walk_unit<T: ASTVisitor + ?Sized>(visitor: &mut T, s: &mut Unit) -> Result<T::Succ, T::Err> {
     match s {
         Unit::Declaration(decl) => visitor.visit_declaration(decl),
         Unit::ImportFile(import) => visitor.visit_import(import),
@@ -177,7 +186,8 @@ pub fn walk_declaration<T: ASTVisitor + ?Sized>(
         Declaration::Declaration(_, _, _, _, ty, assignment) => vec![
             visitor.visit_ty(ty)?,
             visitor.fold_o(assignment, |v, a| v.visit_expression(a))?,
-        ].flatten(visitor),
+        ]
+        .flatten(visitor),
     }
 }
 
@@ -191,19 +201,27 @@ pub fn walk_ty<T: ASTVisitor + ?Sized>(
         TypeSignature::Vector(..) => Ok(visitor.ok()),
         TypeSignature::Complex(..) => Ok(visitor.ok()),
         TypeSignature::Pointer { ty, .. } => visitor.visit_ty(ty.deref_mut()),
-        TypeSignature::Struct(_, ref mut fields) => visitor.fold(fields, ASTVisitor::visit_struct_field),
-        TypeSignature::Enum(_, ref mut fields) => visitor.fold(fields, ASTVisitor::visit_enum_field),
-        TypeSignature::Union(_, ref mut fields) => visitor.fold(fields, ASTVisitor::visit_struct_field),
+        TypeSignature::Struct(_, ref mut fields) => {
+            visitor.fold(fields, ASTVisitor::visit_struct_field)
+        }
+        TypeSignature::Enum(_, ref mut fields) => {
+            visitor.fold(fields, ASTVisitor::visit_enum_field)
+        }
+        TypeSignature::Union(_, ref mut fields) => {
+            visitor.fold(fields, ASTVisitor::visit_struct_field)
+        }
         TypeSignature::Tuple(ref mut fields) => visitor.fold(fields, ASTVisitor::visit_ty),
         TypeSignature::Array(ref mut ty, _) => visitor.visit_ty(ty.deref_mut()),
         TypeSignature::DynamicArray(ref mut ty, ref mut expr) => vec![
             visitor.visit_ty(ty.deref_mut())?,
             visitor.visit_expression(expr.deref_mut())?,
-        ].flatten(visitor),
+        ]
+        .flatten(visitor),
         TypeSignature::Function(ref mut params, ref mut return_type) => vec![
             visitor.fold(params, ASTVisitor::visit_param)?,
             visitor.visit_ty(return_type.deref_mut())?,
-        ].flatten(visitor),
+        ]
+        .flatten(visitor),
         TypeSignature::Infer(ref mut intermediate) => visitor.visit_intermediate_type(intermediate),
     }
 }
@@ -243,8 +261,12 @@ pub fn walk_expression<T: ASTVisitor + ?Sized>(
 ) -> Result<T::Succ, T::Err> {
     match s {
         Expression::PrimaryExpression(expr) => visitor.visit_primary_expression(expr),
-        Expression::Op(_op, ExprList::List(exprs)) => visitor.fold(exprs, ASTVisitor::visit_expression),
-        Expression::Unary(_op, ExprList::List(exprs)) => visitor.fold(exprs, ASTVisitor::visit_expression),
+        Expression::Op(_op, ExprList::List(exprs)) => {
+            visitor.fold(exprs, ASTVisitor::visit_expression)
+        }
+        Expression::Unary(_op, ExprList::List(exprs)) => {
+            visitor.fold(exprs, ASTVisitor::visit_expression)
+        }
         Expression::PostFix(expr, _op) => visitor.visit_expression(expr),
         Expression::Cast(expr, ty) => {
             vec![visitor.visit_expression(expr)?, visitor.visit_ty(ty)?].flatten(visitor)
@@ -252,11 +274,13 @@ pub fn walk_expression<T: ASTVisitor + ?Sized>(
         Expression::Call(expr, args) => vec![
             visitor.visit_expression(expr.deref_mut())?,
             visitor.fold(args, ASTVisitor::visit_expression)?,
-        ].flatten(visitor),
+        ]
+        .flatten(visitor),
         Expression::ArrayAccess(array_expr, index_expr) => vec![
             visitor.visit_expression(array_expr.deref_mut())?,
             visitor.visit_expression(index_expr.deref_mut())?,
-        ].flatten(visitor),
+        ]
+        .flatten(visitor),
         Expression::StructAccess(expr, _ident) => visitor.visit_expression(expr.deref_mut()),
         Expression::Sizeof(Sizeof::Expression(e)) => visitor.visit_expression(e),
         Expression::Sizeof(Sizeof::Type(t)) => visitor.visit_ty(t),
@@ -299,19 +323,22 @@ pub fn walk_block_expression<T: ASTVisitor + ?Sized>(
                 v.visit_block(arm.deref_mut())
             })?,
             visitor.fold_o_deref(otherwise, ASTVisitor::visit_block)?,
-        ].flatten(visitor),
+        ]
+        .flatten(visitor),
         BlockExpression::While(expr, block, otherwise) => vec![
             visitor.visit_expression(expr.deref_mut())?,
             visitor.visit_block(block.deref_mut())?,
             visitor.fold_o_deref(otherwise, ASTVisitor::visit_block)?,
-        ].flatten(visitor),
+        ]
+        .flatten(visitor),
         BlockExpression::For(init, cond, postloop, block, otherwise) => vec![
             visitor.fold_o_deref(init, ASTVisitor::visit_statement)?,
             visitor.fold_o_deref(cond, ASTVisitor::visit_expression)?,
             visitor.fold_o_deref(postloop, ASTVisitor::visit_expression)?,
             visitor.visit_block(block.deref_mut())?,
             visitor.fold_o_deref(otherwise, ASTVisitor::visit_block)?,
-        ].flatten(visitor),
+        ]
+        .flatten(visitor),
     }
 }
 
@@ -320,9 +347,7 @@ pub fn walk_block<T: ASTVisitor + ?Sized>(
     s: &mut Block,
 ) -> Result<T::Succ, T::Err> {
     match s {
-        Block::Statements(statements) => {
-            visitor.fold(statements, ASTVisitor::visit_statement)
-        }
+        Block::Statements(statements) => visitor.fold(statements, ASTVisitor::visit_statement),
     }
 }
 
@@ -352,7 +377,8 @@ pub fn walk_lambda<T: ASTVisitor + ?Sized>(
             visitor.fold(params, ASTVisitor::visit_lambda_param)?,
             visitor.visit_ty(ty)?,
             visitor.visit_block(block)?,
-        ].flatten(visitor),
+        ]
+        .flatten(visitor),
     }
 }
 
@@ -382,7 +408,9 @@ trait Flatten<S, E, T: ?Sized> {
 }
 
 impl<S, E, T> Flatten<S, E, T> for Vec<S>
-where T: ASTVisitor<Succ = S, Err = E> + ?Sized {
+where
+    T: ASTVisitor<Succ = S, Err = E> + ?Sized,
+{
     fn flatten(self, visitor: &mut T) -> Result<S, E> {
         visitor.collect(self)
     }

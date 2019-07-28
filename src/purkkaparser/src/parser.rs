@@ -383,7 +383,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn starts_c_macro(&self, s: &str) -> bool {
         !self.current_identifiers.iter().any(|t| t.contains(s))
             && (self.symbols.imported_macros.0.contains(s)
-            || self.symbols.imported_macros.1.contains(s))
+                || self.symbols.imported_macros.1.contains(s))
     }
 
     fn parse_unit(&mut self) -> Unit {
@@ -762,9 +762,18 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         } else {
             unreachable!();
         };
-        let content = (self.get_file)(FileQuery::new(self.current_file, &file, true, false,
-                                                     self.symbols.types.keys().chain(self.symbols.imported_types.keys()).cloned().collect()
-                                                     ));
+        let content = (self.get_file)(FileQuery::new(
+            self.current_file,
+            &file,
+            true,
+            false,
+            self.symbols
+                .types
+                .keys()
+                .chain(self.symbols.imported_types.keys())
+                .cloned()
+                .collect(),
+        ));
         content
             .declarations
             .unwrap()
@@ -817,18 +826,17 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::Operator);
                 self.parse_macro()
             }
-            Some(Token::Operator(_, op)) =>
-                match self.operators.unary.get(op).cloned() {
-                    Some(ref n) if n.left_associative => {
-                        assert_eq!(n.left_associative, true);
-                        read_token!(self, Token::Operator);
-                        let exprs = (0..n.param_count)
-                            .map(|_| self.parse_expression_(n.precedence))
-                            .collect();
-                        Expression::Unary(op.clone(), ExprList::List(exprs))
-                    }
-                    _ => panic!("Unknown prefix operator: {:?}", op),
+            Some(Token::Operator(_, op)) => match self.operators.unary.get(op).cloned() {
+                Some(ref n) if n.left_associative => {
+                    assert_eq!(n.left_associative, true);
+                    read_token!(self, Token::Operator);
+                    let exprs = (0..n.param_count)
+                        .map(|_| self.parse_expression_(n.precedence))
+                        .collect();
+                    Expression::Unary(op.clone(), ExprList::List(exprs))
                 }
+                _ => panic!("Unknown prefix operator: {:?}", op),
+            },
             Some(Token::Sizeof(..)) => {
                 read_token!(self, Token::Sizeof);
                 read_token!(self, Token::OpenParen);
@@ -836,7 +844,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::CloseParen);
                 Expression::Sizeof(Sizeof::Type(Box::new(ty)))
             }
-            _ => Expression::PrimaryExpression(self.parse_primary_expression())
+            _ => Expression::PrimaryExpression(self.parse_primary_expression()),
         };
         loop {
             match self.peek() {
@@ -893,7 +901,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_macro(&mut self) -> Expression {
-        let tys = self.symbols.types.keys()
+        let tys = self
+            .symbols
+            .types
+            .keys()
             .chain(self.symbols.imported_types.keys())
             .cloned()
             .collect();
@@ -904,7 +915,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     assert_eq!(result.len(), 1);
                     match result.remove(0) {
                         MacroExpansion::Expression(e) => e,
-                        _ => panic!()
+                        _ => panic!(),
                     }
                 } else {
                     unreachable!();
@@ -922,7 +933,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     assert_eq!(result.len(), 1);
                     match result.remove(0) {
                         MacroExpansion::Expression(e) => e,
-                        _ => panic!()
+                        _ => panic!(),
                     }
                 } else {
                     unimplemented!();
@@ -942,11 +953,12 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     let ty = self.get_ty(&t).cloned();
                     match self.peek() {
                         Some(Token::OpenBrace(..))
-                            if ty.as_ref().map(|t| t.is_compound(&HashMap::new())) == Some(true) =>
-                            {
-                                let fields = self.parse_initialization_fields(&t);
-                                PrimaryExpression::StructInitialization(t, fields)
-                            }
+                            if ty.as_ref().map(|t| t.is_compound(&HashMap::new()))
+                                == Some(true) =>
+                        {
+                            let fields = self.parse_initialization_fields(&t);
+                            PrimaryExpression::StructInitialization(t, fields)
+                        }
                         Some(Token::OpenBrace(..)) if ty.is_some() => {
                             let fields = self.parse_vector_initialization_fields();
                             PrimaryExpression::VectorInitialization(t, fields)
@@ -1652,13 +1664,21 @@ mod tests {
             Token::Identifier(4, From::from("i32")),
             Token::SemiColon(9),
         ]);
-        assert_eq!(s, S::TranslationUnit( TranslationUnit::Units(
-                    vec![Unit::Declaration(
-                        Box::new(Declaration::Declaration(
-                            false, true, false, From::from("bar"),
-                            Box::new(TypeSignature::Pointer {
-                                nullable: false,
-                                ty: Box::new(TypeSignature::Primitive(Primitive::Int(32)))},
-                            ), None)))])));
+        assert_eq!(
+            s,
+            S::TranslationUnit(TranslationUnit::Units(vec![Unit::Declaration(Box::new(
+                Declaration::Declaration(
+                    false,
+                    true,
+                    false,
+                    From::from("bar"),
+                    Box::new(TypeSignature::Pointer {
+                        nullable: false,
+                        ty: Box::new(TypeSignature::Primitive(Primitive::Int(32)))
+                    },),
+                    None
+                )
+            ))]))
+        );
     }
 }

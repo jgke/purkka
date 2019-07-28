@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 
 use std::rc::Rc;
 
-use std::ops::{Add, Sub, Div};
+use std::ops::{Add, Div, Sub};
 
 use purkkatoken::token::Token;
 
@@ -598,8 +598,10 @@ impl IntermediateType {
     }
 
     pub fn address_of(self) -> IntermediateType {
-        IntermediateType::Exact(Box::new(
-                TypeSignature::Pointer { ty: Box::new(From::from(self)), nullable: false }))
+        IntermediateType::Exact(Box::new(TypeSignature::Pointer {
+            ty: Box::new(From::from(self)),
+            nullable: false,
+        }))
     }
 }
 

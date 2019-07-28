@@ -238,7 +238,10 @@ where
     let context_mut = std::sync::Mutex::new(context);
 
     std::panic::catch_unwind(|| {
-        context_mut.lock().unwrap().parse_type_statement_or_expression()
+        context_mut
+            .lock()
+            .unwrap()
+            .parse_type_statement_or_expression()
     })
     .map_err(|_| match context_mut.lock() {
         Ok(mut context) => context.iter.peek().cloned().cloned(),
@@ -816,7 +819,12 @@ where
                             break;
                         }
                         Some(Token::Comma(..)) | Some(Token::CloseParen(..)) => {
-                            if spec == Box::new(DeclarationSpecifiers::DeclarationSpecifiers(None, Some(CType::Void))) {
+                            if spec
+                                == Box::new(DeclarationSpecifiers::DeclarationSpecifiers(
+                                    None,
+                                    Some(CType::Void),
+                                ))
+                            {
                                 continue;
                             }
                             params.push(FunctionParam::Parameter(
@@ -835,12 +843,17 @@ where
                                     ParameterDeclaration::Declarator(spec, Box::new(declarator))
                                 }
                             };
-                            if decl == ParameterDeclaration::AbstractDeclarator(
-                                Box::new(DeclarationSpecifiers::DeclarationSpecifiers(None, Some(CType::Void))),
-                                Box::new(
-                                    AbstractDeclarator::AbstractDeclarator(
-                                    None,
-                                    Box::new(DirectAbstractDeclarator::Epsilon()))))
+                            if decl
+                                == ParameterDeclaration::AbstractDeclarator(
+                                    Box::new(DeclarationSpecifiers::DeclarationSpecifiers(
+                                        None,
+                                        Some(CType::Void),
+                                    )),
+                                    Box::new(AbstractDeclarator::AbstractDeclarator(
+                                        None,
+                                        Box::new(DirectAbstractDeclarator::Epsilon()),
+                                    )),
+                                )
                             {
                                 continue;
                             }

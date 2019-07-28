@@ -27,7 +27,13 @@ pub struct FileQuery {
 }
 
 impl FileQuery {
-    pub fn new(current: &str, requested: &str, local: bool, raw: bool, types: HashSet<Rc<str>>) -> FileQuery {
+    pub fn new(
+        current: &str,
+        requested: &str,
+        local: bool,
+        raw: bool,
+        types: HashSet<Rc<str>>,
+    ) -> FileQuery {
         FileQuery {
             current_file: current.to_string(),
             requested_file: requested.to_string(),
@@ -37,7 +43,14 @@ impl FileQuery {
             types,
         }
     }
-    pub fn new_next(current: &str, requested: &str, local: bool, raw: bool, include_next: bool, types: HashSet<Rc<str>>) -> FileQuery {
+    pub fn new_next(
+        current: &str,
+        requested: &str,
+        local: bool,
+        raw: bool,
+        include_next: bool,
+        types: HashSet<Rc<str>>,
+    ) -> FileQuery {
         FileQuery {
             current_file: current.to_string(),
             requested_file: requested.to_string(),

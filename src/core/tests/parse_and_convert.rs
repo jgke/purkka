@@ -23,7 +23,13 @@ fn parse(content: &str) -> ResolveResult {
     };
 
     let ctx = RefCell::new(None);
-    let res = get_file_cb(&options, &get_file_content, ctx)(FileQuery::new(".", input, true, false, HashSet::new()));
+    let res = get_file_cb(&options, &get_file_content, ctx)(FileQuery::new(
+        ".",
+        input,
+        true,
+        false,
+        HashSet::new(),
+    ));
     res
 }
 

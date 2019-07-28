@@ -23,7 +23,7 @@ pub fn process_files(
             panic!("Tried to open file {}", req.requested_file)
         },
         start,
-        &mut None
+        &mut None,
     );
 
     assert!(processed.is_ok());

@@ -236,30 +236,45 @@ impl MacroContext {
         }
     }
 
-    pub(crate) fn add_definitions<CB: FnMut(FileQuery) -> ResolveResult>(&mut self, definitions: &[(&str, &str)], get_file: CB) {
+    pub(crate) fn add_definitions<CB: FnMut(FileQuery) -> ResolveResult>(
+        &mut self,
+        definitions: &[(&str, &str)],
+        get_file: CB,
+    ) {
         InternalMacroContext {
             ctx: self,
             get_file,
             if_stack: Vec::new(),
-        }.add_definitions(definitions)
+        }
+        .add_definitions(definitions)
     }
 
     /// Divide src into MacroTokens.
-    pub(crate) fn preprocess_file<CB: FnMut(FileQuery) -> ResolveResult>(&mut self, filename: &str, get_file: CB) -> Vec<MacroToken> {
+    pub(crate) fn preprocess_file<CB: FnMut(FileQuery) -> ResolveResult>(
+        &mut self,
+        filename: &str,
+        get_file: CB,
+    ) -> Vec<MacroToken> {
         InternalMacroContext {
             ctx: self,
             get_file,
             if_stack: Vec::new(),
-        }.preprocess_file(filename)
+        }
+        .preprocess_file(filename)
     }
 
     /// Divide src into MacroTokens.
-    pub(crate) fn preprocess_str<CB: FnMut(FileQuery) -> ResolveResult>(&mut self, content: &str, get_file: CB) -> Vec<MacroToken> {
+    pub(crate) fn preprocess_str<CB: FnMut(FileQuery) -> ResolveResult>(
+        &mut self,
+        content: &str,
+        get_file: CB,
+    ) -> Vec<MacroToken> {
         InternalMacroContext {
             ctx: self,
             get_file,
             if_stack: Vec::new(),
-        }.preprocess_str(content)
+        }
+        .preprocess_str(content)
     }
 }
 
@@ -277,8 +292,10 @@ where
                     vals.push(MacroToken::dummy(t.ty));
                 }
             }
-            self.ctx.symbols
-                .insert(self.ctx.intern.get_ref(key), Macro::Text(Source::dummy(), vals));
+            self.ctx.symbols.insert(
+                self.ctx.intern.get_ref(key),
+                Macro::Text(Source::dummy(), vals),
+            );
             assert!(iter.peek().is_none());
         }
     }
@@ -382,7 +399,6 @@ where
         assert!(self.ctx.iter.is_none());
         std::mem::swap(&mut iter, &mut self.ctx.iter);
     }
-
 
     fn get_some_token(
         &mut self,
@@ -578,7 +594,8 @@ where
         MacroToken {
             source,
             ty: MacroTokenType::Number(
-                self.ctx.intern
+                self.ctx
+                    .intern
                     .get_ref(&number.iter().map(|t| t.1).collect::<String>()),
             ),
         }
@@ -827,7 +844,8 @@ where
                         }
                     }
 
-                    self.ctx.symbols
+                    self.ctx
+                        .symbols
                         .insert(left, Macro::Function(total_span, args, right, varargs_str));
                 } else {
                     let mut right = Vec::new();
@@ -838,7 +856,9 @@ where
                         }
                     }
 
-                    self.ctx.symbols.insert(left, Macro::Text(total_span, right));
+                    self.ctx
+                        .symbols
+                        .insert(left, Macro::Text(total_span, right));
                 }
             }
             MacroType::Include(next) => {
@@ -1613,7 +1633,7 @@ where
             let parsed_token = InternalMacroContext {
                 get_file: unreachable_file_open,
                 if_stack: Vec::new(),
-                ctx: &mut tmp_ctx
+                ctx: &mut tmp_ctx,
             }
             .get_token(&mut tmp_iter, false);
             if tmp_iter.peek().is_some() {
@@ -1841,13 +1861,8 @@ trait CommonMacros {
 
 impl CommonMacros for (StringInterner, HashMap<Rc<str>, Macro>) {
     fn empty(&mut self, ty: &str) {
-        self.1.insert(
-            self.0.get_ref(ty),
-            Macro::Text(
-                Source::dummy(),
-                Vec::new()
-            ),
-        );
+        self.1
+            .insert(self.0.get_ref(ty), Macro::Text(Source::dummy(), Vec::new()));
     }
     fn num(&mut self, ty: &str, res: &str) {
         self.1.insert(
@@ -1862,13 +1877,14 @@ impl CommonMacros for (StringInterner, HashMap<Rc<str>, Macro>) {
         );
     }
     fn ident(&mut self, ty: &str, res: &str) {
-        let syms = res.split(" ")
-            .map(|ident|
-                 MacroToken {
-                     ty: MacroTokenType::Identifier(self.0.get_ref(ident)),
-                     source: Source::dummy(),
-                 })
+        let syms = res
+            .split(' ')
+            .map(|ident| MacroToken {
+                ty: MacroTokenType::Identifier(self.0.get_ref(ident)),
+                source: Source::dummy(),
+            })
             .collect();
-        self.1.insert(self.0.get_ref(ty), Macro::Text(Source::dummy(), syms));
+        self.1
+            .insert(self.0.get_ref(ty), Macro::Text(Source::dummy(), syms));
     }
 }

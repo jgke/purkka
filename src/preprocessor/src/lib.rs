@@ -22,7 +22,7 @@ pub fn preprocess<CB>(
 where
     CB: Fn(FileQuery) -> ResolveResult,
 {
-    let context = ctx.get_or_insert_with(|| MacroContext::new());
+    let context = ctx.get_or_insert_with(MacroContext::new);
     Ok(context.preprocess_file(filename, get_file))
 }
 

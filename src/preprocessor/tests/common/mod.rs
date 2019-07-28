@@ -20,7 +20,7 @@ pub fn preprocess_string(filename: &str, content: &str) -> ParseResult<Vec<Macro
             ResolveResult::new_raw(filename, content)
         },
         filename,
-        &mut None
+        &mut None,
     )
 }
 
@@ -45,7 +45,7 @@ pub fn process_files(files: Vec<(&str, &str)>, start: &str, expected: Vec<MacroT
             panic!()
         },
         start,
-        &mut None
+        &mut None,
     );
 
     if let Ok(p) = &processed {
