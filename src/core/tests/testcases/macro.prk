@@ -7,3 +7,11 @@ fun main() {
 fun bar() {
     return FOO(1);
 }
+
+fun baz() {
+    {
+        let FOO = 1;
+        FOO as void;
+    }
+    return FOO(1);
+}

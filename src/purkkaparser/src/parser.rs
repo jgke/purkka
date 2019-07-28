@@ -425,6 +425,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Identifier(_, s)) => s.clone(),
             t => unexpected_token!(t, self),
         };
+        self.push_identifier(ident.clone());
         let ty = match self.peek() {
             Some(Token::Colon(_)) => {
                 read_token!(self, Token::Colon);
@@ -1137,6 +1138,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         if maybe_read_token!(self, Token::SemiColon).is_some() {
             return Block::Statements(vec![]);
         }
+        self.push_block();
         read_token!(self, Token::OpenBrace);
         let mut stmts = Vec::new();
         loop {
@@ -1154,6 +1156,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
         }
         read_token!(self, Token::CloseBrace);
+        self.pop_block();
         Block::Statements(stmts)
     }
 

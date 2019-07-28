@@ -488,20 +488,16 @@ impl PurkkaToC {
             TypeSignature::Plain(ty) => {
                 let c_ty = match ty.as_ref() {
                     "void" => cp::CType::Void,
+                    "char" => cp::CType::Primitive(None, cp::PrimitiveType::Char),
+                    "short" => cp::CType::Primitive(None, cp::PrimitiveType::Short),
                     "int" => cp::CType::Primitive(None, cp::PrimitiveType::Int),
                     "long" => cp::CType::Primitive(None, cp::PrimitiveType::Long),
-                    "char" => cp::CType::Primitive(None, cp::PrimitiveType::Char),
                     "float" => cp::CType::Primitive(None, cp::PrimitiveType::Float),
                     "double" => cp::CType::Primitive(None, cp::PrimitiveType::Double),
                     t if self.symbols.types.contains_key(t) => {
                         return self.type_to_declaration_specifiers(self.symbols.types[t].clone())
                     }
-                    t if self.symbols.imported_types.contains_key(t) => {
-                        cp::CType::Custom(ty.clone())
-                    }
-                    //t if self.symbols.imported_types.contains_key(t) =>
-                    //    return self.type_to_declaration_specifiers(self.symbols.imported_types[t].clone()),
-                    other => panic!("Not implemented: {:?}", other),
+                    _ => cp::CType::Custom(ty.clone()),
                 };
                 cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))
             }
