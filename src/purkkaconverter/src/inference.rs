@@ -61,8 +61,8 @@ impl ASTVisitor for TypeInferrer<'_> {
         match tree {
             Declaration::Declaration(_, _, _, name, exact_ty, Some(e)) => {
                 self.current_function = name.to_string();
+                self.push_symbol(name.clone(), From::from(*exact_ty.clone()));
                 let ty = self.get_type(e)?;
-                self.push_symbol(name.clone(), ty.0.clone());
                 let intermediate: IntermediateType = From::from(*exact_ty.clone());
                 if !ty.1.is_empty() {
                     match &**exact_ty {
@@ -71,7 +71,7 @@ impl ASTVisitor for TypeInferrer<'_> {
                                 self.make_equal(&ret_ty, &From::from(*ret.clone()))?;
                             }
                         }
-                        otherwise => panic!("Not implemented: {:?}", otherwise),
+                        otherwise => return Err("Not implemented!".to_string())
                     }
                 }
                 self.make_equal(&ty.0, &intermediate)?;
@@ -146,7 +146,7 @@ impl TypeInferrer<'_> {
 
     fn add_type_alias(&mut self, id: i128, ty: IntermediateType) -> Result<(), String> {
         if self.infer_map.contains_key(&id) {
-            panic!();
+            unimplemented!();
         }
         self.infer_map.insert(id, ty);
         Ok(())
@@ -302,6 +302,7 @@ impl TypeInferrer<'_> {
         expression: &mut Expression,
     ) -> Result<(IntermediateType, Vec<IntermediateType>), String> {
         self.current_expression = format!("{:?}", expression);
+        println!("{:?}\n", expression);
         let mut ty = match expression {
             Expression::PrimaryExpression(expr) => self.get_primary_expr_type(expr)?,
             Expression::Op(op, ExprList::List(list)) => {
@@ -340,7 +341,7 @@ impl TypeInferrer<'_> {
                         self.make_equal_to_num(&left_ty.0)?;
                         (right_ty.0, ret_tys)
                     } else if left_ptr && right_ptr {
-                        panic!("Cannot add two pointers together")
+                        return Err("Cannot add two pointers together".to_string());
                     } else {
                         // assume num + num here
                         self.make_equal_to_num(&left_ty.0)?;
@@ -425,7 +426,7 @@ impl TypeInferrer<'_> {
                             arg_ty.1,
                         )
                     } else {
-                        panic!("Cannot dereference non-pointer");
+                        return Err("Cannot dereference non-pointer types".to_string());
                     }
                 } else if op.as_ref() == "&" {
                     assert_eq!(list.len(), 1);
@@ -586,49 +587,39 @@ impl TypeInferrer<'_> {
                 )),
             },
             PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block)) => {
-                if let TypeSignature::Infer(_id) = return_type {
-                    self.push_block();
-                    for param in params.iter() {
-                        match param {
-                            LambdaParam::LambdaParam(name, ty) => {
-                                self.push_symbol(name.clone(), From::from(*ty.clone()))
-                            }
-                            LambdaParam::Variadic => {}
+                self.push_block();
+                for param in params.iter() {
+                    match param {
+                        LambdaParam::LambdaParam(name, ty) => {
+                            self.push_symbol(name.clone(), From::from(*ty.clone()))
                         }
+                        LambdaParam::Variadic => {}
                     }
-                    let block_ty = self.get_block_type(&mut *block)?;
-                    let ret_tys = block_ty.1;
-                    if let Some((last, rest)) = ret_tys.split_last() {
-                        for ty in rest {
-                            self.make_equal(&ty, &last)?;
-                        }
+                }
+                let block_ty = self.get_block_type(&mut *block)?;
+                let ret_tys = block_ty.1;
+                if let Some((last, rest)) = ret_tys.split_last() {
+                    for ty in rest {
+                        self.make_equal(&ty, &last)?;
                     }
-                    let ret_ty = if let Some(ty) = block_ty.0 {
-                        if let Some(ret_ty) = ret_tys.get(0) {
-                            self.make_equal(&ty, &ret_ty)?;
-                        }
-                        ty
-                    } else if let Some(ty) = ret_tys.get(0) {
-                        ty.clone()
-                    } else {
-                        From::from(TypeSignature::Primitive(Primitive::Void))
-                    };
-                    self.make_equal(&From::from(return_type.clone()), &ret_ty)?;
-                    let ty = From::from(TypeSignature::Function(
+                }
+                let ret_ty = if let Some(ty) = block_ty.0 {
+                    if let Some(ret_ty) = ret_tys.get(0) {
+                        self.make_equal(&ty, &ret_ty)?;
+                    }
+                    ty
+                } else if let Some(ty) = ret_tys.get(0) {
+                    ty.clone()
+                } else {
+                    From::from(TypeSignature::Primitive(Primitive::Void))
+                };
+                self.make_equal(&From::from(return_type.clone()), &ret_ty)?;
+                let ty = From::from(TypeSignature::Function(
                         params.iter().cloned().map(From::from).collect(),
                         Box::new(From::from(ret_ty)),
-                    ));
-                    self.pop_block();
-                    Ok((ty, Vec::new()))
-                } else {
-                    Ok((
-                        From::from(TypeSignature::Function(
-                            params.iter().cloned().map(From::from).collect(),
-                            Box::new(return_type.clone()),
-                        )),
-                        Vec::new(),
-                    ))
-                }
+                        ));
+                self.pop_block();
+                Ok((ty, Vec::new()))
             }
             PrimaryExpression::Expression(expr) => self.get_type(expr),
             PrimaryExpression::StructInitialization(ident, fields) => {
@@ -778,18 +769,19 @@ impl TypeInferrer<'_> {
         &mut self,
         expr: &mut BlockExpression,
     ) -> Result<(Option<IntermediateType>, Vec<IntermediateType>), String> {
+        println!("{:?}\n", expr);
         match expr {
             BlockExpression::Block(block) => self.get_block_type(&mut *block),
             BlockExpression::If(arms, otherwise) => {
-                if let Some(otherwise) = otherwise {
-                    let mut res_vec = Vec::new();
-                    for (expr, b) in arms {
-                        let num_ty = self.get_number_ty();
-                        let expr_ty = self.get_type(expr)?;
-                        self.make_equal(&num_ty, &expr_ty.0)?;
-                        res_vec.push(self.get_block_type(b)?)
-                    }
+                let mut res_vec = Vec::new();
 
+                for (expr, b) in arms {
+                    let expr_ty = self.get_type(expr)?;
+                    self.make_equal_to_num(&expr_ty.0)?;
+                    res_vec.push(self.get_block_type(b)?);
+                }
+
+                if let Some(otherwise) = otherwise {
                     let (otherwise_ty, mut ret_vals) = self.get_block_type(otherwise)?;
 
                     for (this, more_ret_vals) in res_vec {
@@ -801,7 +793,7 @@ impl TypeInferrer<'_> {
 
                     Ok((otherwise_ty, ret_vals))
                 } else {
-                    Ok((None, Vec::new()))
+                    Ok((None, res_vec.into_iter().flat_map(|t| t.1.into_iter()).collect()))
                 }
             }
             BlockExpression::While(e, block, else_block) => {
@@ -892,6 +884,7 @@ impl TypeInferrer<'_> {
         stmt: &mut Statement,
     ) -> Result<(Option<IntermediateType>, Vec<IntermediateType>), String> {
         self.current_statement = format!("{:?}", stmt);
+        println!("{:?}\n", &stmt);
         match stmt {
             Statement::Declaration(decl) => {
                 self.visit_declaration(&mut decl.clone()).unwrap();
@@ -957,12 +950,12 @@ impl TypeInferrer<'_> {
             | TypeSignature::Vector(prim)
             | TypeSignature::Complex(prim) => panic!("Cannot call type {}", prim),
             TypeSignature::Pointer { ty, .. } => self.call_exact(ty, args),
-            TypeSignature::Struct(_name, _fields) => unimplemented!(),
-            TypeSignature::Enum(_name, _fields) => unimplemented!(),
-            TypeSignature::Union(_name, _fields) => unimplemented!(),
-            TypeSignature::Tuple(_tys) => unimplemented!(),
-            TypeSignature::Array(_ty, _size) => unimplemented!(),
-            TypeSignature::DynamicArray(_ty, _expr) => unimplemented!(),
+            TypeSignature::Struct(_name, _fields) => Err(format!("Not implemented: {:?}", ty)),
+            TypeSignature::Enum(_name, _fields) => Err(format!("Not implemented: {:?}", ty)),
+            TypeSignature::Union(_name, _fields) => Err(format!("Not implemented: {:?}", ty)),
+            TypeSignature::Tuple(_tys) => Err(format!("Not implemented: {:?}", ty)),
+            TypeSignature::Array(_ty, _size) => Err(format!("Not implemented: {:?}", ty)),
+            TypeSignature::DynamicArray(_ty, _expr) => Err(format!("Not implemented: {:?}", ty)),
             TypeSignature::Function(params, return_type) => {
                 if params.last() != Some(&Param::Variadic) {
                     assert_eq!(args.len(), params.len());
@@ -978,7 +971,7 @@ impl TypeInferrer<'_> {
                 }
                 Ok(From::from(*return_type.clone()))
             }
-            TypeSignature::Infer(_infer) => unimplemented!(),
+            TypeSignature::Infer(_infer) => Err(format!("Not implemented: {:?}", ty)),
         }
     }
 
@@ -1060,14 +1053,16 @@ impl TypeInferrer<'_> {
             (_, TypeSignature::Infer(i)) => {
                 return self.make_equal(&IntermediateType::Number(id, *num), i)
             }
-            (IntermediateNumber::Indeterminate, TypeSignature::Plain(_)) => unimplemented!(),
-            (IntermediateNumber::Float, TypeSignature::Plain(_)) => unimplemented!(),
+            (IntermediateNumber::Indeterminate, TypeSignature::Plain(p)) =>
+                return Err(format!("Not implemented: {{IndeterminateNumber := Plain{}}}", p)),
+            (IntermediateNumber::Float, TypeSignature::Plain(p)) =>
+                return Err(format!("Not implemented: {{IndeterminateFloat := Plain{}}}", p)),
             (_, t @ TypeSignature::Struct(..))
             | (_, t @ TypeSignature::Enum(..))
             | (_, t @ TypeSignature::Tuple(..))
             | (_, t @ TypeSignature::Array(..))
             | (_, t @ TypeSignature::DynamicArray(..))
-            | (_, t @ TypeSignature::Function(..)) => panic!("Cannot use {:?} like a number", t),
+            | (_, t @ TypeSignature::Function(..)) => return Err(format!("Cannot use {:?} like a number", t)),
             (IntermediateNumber::Indeterminate, TypeSignature::Primitive(t))
             | (IntermediateNumber::Float, TypeSignature::Primitive(t @ Primitive::Float))
             | (IntermediateNumber::Float, TypeSignature::Primitive(t @ Primitive::Double))
@@ -1080,7 +1075,10 @@ impl TypeInferrer<'_> {
             | (IntermediateNumber::Double, TypeSignature::Vector(t @ Primitive::Double)) => {
                 TypeSignature::Vector(*t)
             }
-            otherwise => panic!("Not implemented: {:?}", otherwise),
+            (IntermediateNumber::Indeterminate, TypeSignature::Pointer {..})
+                // Cast pointer to int, eg. if ptr { ptr is not null } else { ptr is null }
+                => return Ok(()),
+            otherwise => return Err(format!("Not implemented: {:?}", otherwise)),
         };
 
         self.infer_map
@@ -1148,6 +1146,12 @@ impl TypeInferrer<'_> {
             }
         }
 
+        if let TypeSignature::Pointer { ty: box TypeSignature::Primitive(Primitive::Void), .. } = lvalue {
+            return Ok(())
+        } else if let TypeSignature::Pointer { ty: box TypeSignature::Primitive(Primitive::Void), .. } = rvalue {
+            return Ok(())
+        }
+
         match lvalue {
             TypeSignature::Plain(name) => {
                 if let Some(ty) = self.get_ident_ty(name) {
@@ -1176,15 +1180,10 @@ impl TypeInferrer<'_> {
                     ty: right_ty,
                     nullable: right_nullable,
                 } => {
-                    assert!(!*right_nullable || *left_nullable);
-                    // void* is compatible with anything
-                    if **left_ty != TypeSignature::Primitive(Primitive::Void)
-                        && **right_ty != TypeSignature::Primitive(Primitive::Void)
-                    {
-                        self.unify_types(left_ty, right_ty)
-                    } else {
-                        Ok(())
+                    if *right_nullable && !*left_nullable {
+                        return Err(format!("Cannot assign nullable pointer to a non-nullable pointer"));
                     }
+                    self.unify_types(left_ty, right_ty)
                 }
                 TypeSignature::Array(right_ty, _) | TypeSignature::DynamicArray(right_ty, _) => {
                     self.unify_types(left_ty, right_ty)
@@ -1204,10 +1203,10 @@ impl TypeInferrer<'_> {
                 },
                 otherwise => panic!("Not implemented: {:?}", otherwise),
             },
-            TypeSignature::Enum(_name, _fields) => unimplemented!(),
-            TypeSignature::Union(_name, _fields) => unimplemented!(),
-            TypeSignature::Tuple(_tys) => unimplemented!(),
-            TypeSignature::Array(_ty, _size) => unimplemented!(),
+            TypeSignature::Enum(_name, _fields) => Err(format!("Not implemented: {:?} {:?}", lvalue, rvalue)),
+            TypeSignature::Union(_name, _fields) => Err(format!("Not implemented: {:?} {:?}", lvalue, rvalue)),
+            TypeSignature::Tuple(_tys) => Err(format!("Not implemented: {:?} {:?}", lvalue, rvalue)),
+            TypeSignature::Array(_ty, _size) => Err(format!("Not implemented: {:?} {:?}", lvalue, rvalue)),
             TypeSignature::DynamicArray(ty, _expr) => {
                 let right = rvalue.dereference(&self.infer_map).unwrap();
                 self.unify_types(&ty, &right)
@@ -1219,7 +1218,7 @@ impl TypeInferrer<'_> {
                     }
                     self.unify_types(left_return_value, right_return_value)
                 }
-                otherwise => panic!("Not implemented: {:?}", otherwise),
+                otherwise => Err(format!("Not implemented: {:?} {:?}", lvalue, rvalue)),
             },
             TypeSignature::Infer(infer) => self.unify_with_infer(infer, rvalue),
         }

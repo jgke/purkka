@@ -3,6 +3,23 @@ fun for_loop() {
     }
 }
 
+fun if_stmts() {
+    let foo;
+    if 1 {
+        foo = "bar";
+    }
+
+    let bar;
+    if 1 {
+        bar = 1;
+    } else {
+        bar = 2;
+    }
+
+    foo as void;
+    bar as void;
+}
+
 fun blocks_0() {
     let a = 1;
     a as void;

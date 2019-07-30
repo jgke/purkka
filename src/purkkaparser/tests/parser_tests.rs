@@ -137,10 +137,12 @@ fn parse_nested_if_else() {
 fn parse_main() {
     let fun = test_convert_parse_file(
         "fun main(argc: i32, argv: [[char]]) -> i32 {
+        return 0;
 };",
     );
     let lambda = test_convert_parse_file(
         "const main = fun (argc: i32, argv: [[char]]) -> i32 {
+        return 0;
 };",
     );
     assert_eq!(fun, lambda);

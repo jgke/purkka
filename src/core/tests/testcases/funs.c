@@ -1,0 +1,3 @@
+void recursive() {
+    recursive();
+}
