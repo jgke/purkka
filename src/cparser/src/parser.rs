@@ -612,6 +612,7 @@ where
                             Some(Token::CloseBrace(..)) => break,
                             _ => {
                                 fields.push(self.parse_struct_field());
+                                self.maybe_parse_attributes();
                                 read_token!(self, Token::Semicolon);
                             }
                         }
@@ -2112,7 +2113,8 @@ impl DeclarationContext {
 
         let ty = match ty {
             CType::Void => P(Primitive::Void),
-            CP(None, Char) | CP(Some(true), Char) => P(Primitive::Int(8)),
+            CP(None, Char) => P(Primitive::Char),
+            CP(Some(true), Char) => P(Primitive::Int(8)),
             CP(Some(false), Char) => P(Primitive::UInt(8)),
 
             CP(None, Short) | CP(Some(true), Short) => P(Primitive::Int(16)),

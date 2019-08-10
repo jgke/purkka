@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 
 use std::rc::Rc;
 
-use std::ops::{Add, Div, Sub};
+use std::ops::{Add, Div, Sub, Mul};
 
 use purkkatoken::token::Token;
 
@@ -177,6 +177,11 @@ grammar! {
         | Args. #Token::OpenParen Arg MoreArgs #Token::CloseParen
         ;
 
+    ArrayLiteral
+       -> Empty. #Token::OpenBracket #Token::CloseBracket
+        | Args. #Token::OpenBracket Arg MoreArgs #Token::CloseBracket
+        ;
+
     MoreArgs
        -> Epsilon
         | #Token::Comma Arg
@@ -190,6 +195,7 @@ grammar! {
        -> #Token::Integer
         | #Token::Float
         | #Token::StringLiteral
+        | #Token::Char
         ;
 
     PrimaryExpression
@@ -197,6 +203,7 @@ grammar! {
         | Literal
         | StructInitialization. #Token::Identifier /* ident:typename & struct */ #Token::OpenBrace InitializationFields #Token::CloseBrace
         | VectorInitialization. #Token::Identifier /* ident:typename & vector */ #Token::OpenBrace InitializationFields #Token::CloseBrace
+        | ArrayLiteral
         | BlockExpression
         | Expression. #Token::OpenParen Expression #Token::CloseParen
         | Lambda
@@ -205,6 +212,7 @@ grammar! {
             Identifier(Rc<str>),
             StructInitialization(Rc<str>, Vec<StructInitializationField>),
             VectorInitialization(Rc<str>, Vec<Expression>),
+            ArrayLiteral(Vec<Expression>),
             Literal(Literal),
             BlockExpression(Box<BlockExpression>),
             Expression(Box<Expression>),
@@ -239,18 +247,23 @@ grammar! {
        -> Block
         | ConditionalExpression
         | WhileExpression
+        | DoWhileExpression
         | ForExpression
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum BlockExpression {
             Block(Block),
             If(Vec<(Box<Expression>, Box<Block>)>, Option<Box<Block>>),
-            While(Box<Expression>, Box<Block>, Option<Box<Block>>),
+            While(Box<Expression>, Box<Block>, Option<Box<Block>>, bool),
             For(Option<Box<Statement>>, Option<Box<Expression>>, Option<Box<Expression>>, Box<Block>, Option<Box<Block>>),
         }
         ;
 
     ConditionalExpression
        -> #Token::If &Expression Block IfTail
+        ;
+
+    DoWhileExpression
+       -> #Token::Do Block #Token::While &Expression
         ;
 
     WhileExpression
@@ -312,6 +325,7 @@ grammar! {
         | BlockExpression
         | Expression #Token::SemiColon
         | ReturnStatement #Token::SemiColon
+        | JumpStatement #Token::SemiColon
         | PragmaStatement
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Statement {
@@ -319,6 +333,7 @@ grammar! {
             BlockExpression(Box<BlockExpression>),
             Expression(Box<Expression>),
             Return(Option<Box<Expression>>),
+            Jump(JumpStatement),
             Pragma(Rc<str>),
         }
         ;
@@ -329,6 +344,14 @@ grammar! {
 
     ReturnStatement
        -> #Token::Return MaybeExpression
+        ;
+
+    JumpStatement
+       -> #Token::Break
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum JumpStatement {
+            Break,
+        }
         ;
 
     Path -> #Token::Identifier;
@@ -440,12 +463,20 @@ impl TypeSignature {
         }
     }
 
+    pub fn void() -> TypeSignature {
+        TypeSignature::Primitive(Primitive::Void)
+    }
+
     pub fn char() -> TypeSignature {
-        TypeSignature::Primitive(Primitive::UInt(8))
+        TypeSignature::Primitive(Primitive::Char)
     }
 
     pub fn int() -> TypeSignature {
         TypeSignature::Primitive(Primitive::Int(32))
+    }
+
+    pub fn long() -> TypeSignature {
+        TypeSignature::Primitive(Primitive::Int(64))
     }
 
     pub fn size_t() -> TypeSignature {
@@ -456,6 +487,7 @@ impl TypeSignature {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Primitive {
     Void,
+    Char,
     Int(usize),
     UInt(usize),
     Float,
@@ -466,6 +498,7 @@ impl std::fmt::Display for Primitive {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Primitive::Void => write!(f, "void"),
+            Primitive::Char => write!(f, "char"),
             Primitive::Int(size) => write!(f, "i{}", size),
             Primitive::UInt(size) => write!(f, "u{}", size),
             Primitive::Float => write!(f, "float"),
@@ -689,6 +722,17 @@ impl Declaration {
             false
         }
     }
+
+    pub fn is_fn_ty(&self) -> bool {
+        if let Declaration::Declaration(
+            _, _, _, _, box TypeSignature::Function(..),
+            Some(_)
+        ) = self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl Add for Literal {
@@ -700,6 +744,20 @@ impl Add for Literal {
                 Literal::Integer(Token::Integer(i, left)),
                 Literal::Integer(Token::Integer(_, right)),
             ) => Literal::Integer(Token::Integer(i, left + right)),
+            otherwise => panic!("Not implemented: {:?}", otherwise),
+        }
+    }
+}
+
+impl Mul for Literal {
+    type Output = Literal;
+
+    fn mul(self, other: Literal) -> Literal {
+        match (self, other) {
+            (
+                Literal::Integer(Token::Integer(i, left)),
+                Literal::Integer(Token::Integer(_, right)),
+            ) => Literal::Integer(Token::Integer(i, left * right)),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }

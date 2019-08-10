@@ -1,3 +1,7 @@
+let A: i32 = 1;
+let B: i32 = 2;
+let C: i32 = A + B;
+
 fun main() {
     let a: i32;
     a = 1 + 2;
@@ -8,5 +12,12 @@ fun main() {
     let c = b + 1 - 1;
     let d = b - 1 + 1;
     let e = *b;
+
+    let f = [1, 2, 3];
+    f as void;
+
+    let g: [i32] = [1, 2, 3];
+    g as void;
+
     return a + *b + *c + *d + e;
 }

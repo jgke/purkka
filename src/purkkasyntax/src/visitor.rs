@@ -308,6 +308,9 @@ pub fn walk_primary_expression<T: ASTVisitor + ?Sized>(
         PrimaryExpression::VectorInitialization(_ident, list) => {
             visitor.fold(list, ASTVisitor::visit_expression)
         }
+        PrimaryExpression::ArrayLiteral(list) => {
+            visitor.fold(list, ASTVisitor::visit_expression)
+        }
     }
 }
 
@@ -325,7 +328,7 @@ pub fn walk_block_expression<T: ASTVisitor + ?Sized>(
             visitor.fold_o_deref(otherwise, ASTVisitor::visit_block)?,
         ]
         .flatten(visitor),
-        BlockExpression::While(expr, block, otherwise) => vec![
+        BlockExpression::While(expr, block, otherwise, _) => vec![
             visitor.visit_expression(expr.deref_mut())?,
             visitor.visit_block(block.deref_mut())?,
             visitor.fold_o_deref(otherwise, ASTVisitor::visit_block)?,
@@ -365,6 +368,7 @@ pub fn walk_statement<T: ASTVisitor + ?Sized>(
             visitor.fold_o_deref(maybe_expression, ASTVisitor::visit_expression)
         }
         Statement::Pragma(_pragma) => Ok(visitor.ok()),
+        Statement::Jump(_jump) => Ok(visitor.ok()),
     }
 }
 
@@ -403,7 +407,7 @@ pub fn walk_lambda_param<T: ASTVisitor + ?Sized>(
     }
 }
 
-trait Flatten<S, E, T: ?Sized> {
+pub trait Flatten<S, E, T: ?Sized> {
     fn flatten(self, visitor: &mut T) -> Result<S, E>;
 }
 

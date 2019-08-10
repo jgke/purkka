@@ -25,7 +25,9 @@ pub enum Token {
 
     // Keywords
     As(usize),
+    Break(usize),
     Const(usize),
+    Do(usize),
     Elif(usize),
     Else(usize),
     Enum(usize),
@@ -66,7 +68,9 @@ pub static TOKEN_TYPES: &[(&str, TokenConstructor)] = &[
 
 pub static KEYWORDS: &[(&str, TokenConstructor)] = &[
     ("as", As),
+    ("break", Break),
     ("const", Const),
+    ("do", Do),
     ("elif", Elif),
     ("else", Else),
     ("enum", Enum),
@@ -91,6 +95,7 @@ impl Token {
     pub fn get_num(&self) -> usize {
         *match self {
             As(i, ..) => i,
+            Break(i, ..) => i,
             Char(i, ..) => i,
             CloseBrace(i, ..) => i,
             CloseBracket(i, ..) => i,
@@ -98,6 +103,7 @@ impl Token {
             Colon(i, ..) => i,
             Comma(i, ..) => i,
             Const(i, ..) => i,
+            Do(i, ..) => i,
             Dot(i, ..) => i,
             Elif(i, ..) => i,
             Else(i, ..) => i,

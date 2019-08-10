@@ -216,7 +216,11 @@ impl Context {
                                 Token::CharLiteral(_, s) => {
                                     self.push("'");
                                     self.whitespace = false;
-                                    self.push(&s.to_string());
+                                    match s {
+                                        '\n' => self.push("\\n"),
+                                        '\t' => self.push("\\t"),
+                                        _ => self.push(&s.to_string()),
+                                    }
                                     self.push("'");
                                     return;
                                 }
@@ -768,7 +772,11 @@ impl Context {
             PrimaryExpression::CharLiteral(s) => {
                 self.push("'");
                 self.whitespace = false;
-                self.push(&s.to_string());
+                match s {
+                    '\n' => self.push("\\n"),
+                    '\t' => self.push("\\t"),
+                    _ => self.push(&s.to_string()),
+                }
                 self.push("'");
             }
             PrimaryExpression::Builtin(extension) => {
@@ -847,7 +855,7 @@ impl Context {
         match tree {
             AssignmentOrInitializerList::AssignmentExpression(e) => self.assignment_expression(e),
             AssignmentOrInitializerList::Initializers(list) => {
-                self.push_token(&Token::OpenBrace(0));
+                self.push("{");
                 self.newline = false;
                 self.whitespace = true;
                 self.initializer_list(list);

@@ -1,6 +1,8 @@
 fun for_loop() {
     for(let i = 0; i < 5; i++) {
     }
+    for(let i = 0; i < 5; {i++; i++;}) {
+    }
 }
 
 fun if_stmts() {

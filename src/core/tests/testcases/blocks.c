@@ -1,6 +1,8 @@
 void for_loop() {
     for(int i = 0; i < 5; i++) {
     }
+    for(int i = 0; i < 5; i++, i++) {
+    }
 }
 void if_stmts() {
     char *foo;

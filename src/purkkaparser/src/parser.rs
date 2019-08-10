@@ -167,6 +167,7 @@ fn default_bin_ops() -> OperatorMap {
     infix_operators.insert(From::from("="), Operator::binop_right(1, bin_any_to_any(), None));
     infix_operators.insert(From::from("&="), Operator::binop_right(1, bin_num_to_num(), None));
     infix_operators.insert(From::from("+="), Operator::binop_right(1, bin_num_to_num(), None));
+    infix_operators.insert(From::from("-="), Operator::binop_right(1, bin_num_to_num(), None));
 
     // Ternary
     infix_operators.insert(From::from("?"), Operator::binop_right(2, bin_num_to_num(), None));
@@ -462,7 +463,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let t = read_identifier_str!(self);
                 match t.as_ref() {
                     "void" => TypeSignature::Primitive(Primitive::Void),
-                    "char" => TypeSignature::Primitive(Primitive::Int(8)),
+                    "char" => TypeSignature::Primitive(Primitive::Char),
                     "float" => TypeSignature::Primitive(Primitive::Float),
                     "double" => TypeSignature::Primitive(Primitive::Double),
                     "int" | "long" => panic!("Use i32 and i64 instead of int/long"),
@@ -923,7 +924,14 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
             Some(Token::Identifier(_, s)) => {
                 if self.symbols.imported_macros.0.contains(s) {
-                    unimplemented!();
+                    let s = read_identifier_str!(self); 
+                    let mut result = (self.expand)(s.to_string(), tys);
+
+                    assert_eq!(result.len(), 1);
+                    match result.remove(0) {
+                        MacroExpansion::Expression(e) => e,
+                        _ => panic!(),
+                    }
                 } else if self.symbols.imported_macros.1.contains(s) {
                     let s = read_identifier_str!(self);
                     let args = self.parse_args();
@@ -967,10 +975,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     }
                 }
             }
-            Some(Token::Integer(..)) | Some(Token::Float(..)) | Some(Token::StringLiteral(..)) => {
+            Some(Token::Integer(..)) | Some(Token::Float(..)) | Some(Token::StringLiteral(..)) | Some(Token::Char(..)) => {
                 PrimaryExpression::Literal(self.parse_literal())
             }
-            Some(Token::If(..)) | Some(Token::While(..)) => {
+            Some(Token::If(..)) | Some(Token::While(..)) | Some(Token::Do(..)) => {
                 PrimaryExpression::BlockExpression(Box::new(self.parse_block_expression()))
             }
             Some(Token::OpenParen(..)) => {
@@ -978,6 +986,12 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let expr = PrimaryExpression::Expression(Box::new(self.parse_expression()));
                 read_token!(self, Token::CloseParen);
                 expr
+            }
+            Some(Token::OpenBrace(..)) => {
+                PrimaryExpression::BlockExpression(Box::new(self.parse_block_expression()))
+            }
+            Some(Token::OpenBracket(..)) => {
+                PrimaryExpression::ArrayLiteral(self.parse_array_literal())
             }
             Some(Token::Fun(..)) => {
                 read_token!(self, Token::Fun);
@@ -1052,10 +1066,36 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         match self.peek() {
             Some(Token::If(..)) => self.parse_if_expr(),
             Some(Token::While(..)) => self.parse_while_expr(),
+            Some(Token::Do(..)) => self.parse_do_while_expr(),
             Some(Token::For(..)) => self.parse_for_expr(),
             Some(Token::OpenBrace(..)) => BlockExpression::Block(self.parse_block()),
             t => unexpected_token!(t, self),
         }
+    }
+
+    fn parse_array_literal(&mut self) -> Vec<Expression> {
+        let mut exprs = Vec::new();
+
+        read_token!(self, Token::OpenBracket);
+
+        loop {
+            match self.peek() {
+                Some(Token::CloseBracket(..)) => break,
+                _ => {
+                    exprs.push(self.parse_expression());
+                    if let Some(Token::Comma(..)) = self.peek() {
+                        read_token!(self, Token::Comma);
+                        continue;
+                    }
+                    else {
+                        break;
+                    }
+                }
+            }
+        }
+
+        read_token!(self, Token::CloseBracket);
+        exprs
     }
 
     fn parse_while_expr(&mut self) -> BlockExpression {
@@ -1070,7 +1110,17 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
             _ => None,
         };
-        BlockExpression::While(Box::new(expr), Box::new(block), else_block)
+        BlockExpression::While(Box::new(expr), Box::new(block), else_block, false)
+    }
+
+    fn parse_do_while_expr(&mut self) -> BlockExpression {
+        // do block while expr
+        read_token!(self, Token::Do);
+        let block = self.parse_block();
+        read_token!(self, Token::While);
+        let expr = self.parse_expression();
+        let else_block = None;
+        BlockExpression::While(Box::new(expr), Box::new(block), else_block, true)
     }
 
     fn parse_for_expr(&mut self) -> BlockExpression {
@@ -1078,6 +1128,8 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         read_token!(self, Token::For);
 
         read_token!(self, Token::OpenParen);
+
+        self.push_block();
 
         let init = match self.peek() {
             Some(Token::SemiColon(..)) => None,
@@ -1106,6 +1158,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
             _ => None,
         };
+        self.pop_block();
         BlockExpression::For(init, cond, post_loop, Box::new(block), else_block)
     }
 
@@ -1114,6 +1167,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Integer(..)) => Literal::Integer(self.next().unwrap().clone()),
             Some(Token::Float(..)) => Literal::Float(self.next().unwrap().clone()),
             Some(Token::StringLiteral(..)) => Literal::StringLiteral(self.next().unwrap().clone()),
+            Some(Token::Char(..)) => Literal::Char(self.next().unwrap().clone()),
             t => unexpected_token!(t, self),
         }
     }
@@ -1185,6 +1239,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             // Expressions can contain BlockExpressions, so this is
             // partially unreachable
             Expression => Statement::Expression(Box::new(self.parse_expression())),
+            JumpStatement => Statement::Jump(self.parse_jump()),
             ReturnStatement => {
                 read_token!(self, Token::Return);
                 let expr = match self.peek() {
@@ -1206,6 +1261,16 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             s
         } else {
             unreachable!();
+        }
+    }
+
+    fn parse_jump(&mut self) -> JumpStatement {
+        match self.peek() {
+            Some(Token::Break(..)) => {
+                read_token!(self, Token::Break);
+                JumpStatement::Break
+            }
+            t => unexpected_token!(t, self),
         }
     }
 
