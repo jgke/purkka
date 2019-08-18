@@ -104,67 +104,66 @@ fn read_string(
     iter: &mut FragmentIterator,
     intern: &mut StringInterner,
     num: usize,
-) -> (Token, Source) {
-    let mut end = false;
-    let (content, source) = iter.collect_while_flatmap(|c, iter| match c {
-        '"' => {
-            if end {
-                iter.next();
-                None
-            } else {
-                end = true;
-                Some(vec![])
+    ) -> (Token, Source) {
+    match iter.next_new_span() {
+        Some('"') => {}
+        Some(t) => panic!("Unexpected character: {}", t),
+        None => panic!("Unexpected end of file"),
+    }
+
+    let mut content = String::new();
+
+    loop {
+        match iter.next() {
+            Some('"') => {
+                break;
             }
-        }
-        '\n' => panic!("Missing terminating \" character"),
-        '\\' => {
-            iter.next();
-            if let Some(c) = iter.peek() {
-                Some(vec![read_string_escape(iter, c)])
-            } else {
-                panic!("Unexpected end of file");
+            Some('\n') => panic!("Missing terminating \" character"),
+            Some('\\') => {
+                if let Some(c) = iter.peek() {
+                    content.push(read_string_escape(iter, c));
+                } else {
+                    panic!("Unexpected end of file");
+                }
             }
+            Some(c) => content.push(c),
+            None => panic!("Unexpected end of file"),
         }
-        c => Some(vec![c]),
-    });
+    }
     (
-        Token::StringLiteral(
-            num,
-            intern.get_ref(&content.into_iter().map(|(_, c)| c).collect::<String>()),
-        ),
-        source,
+        Token::StringLiteral(num, intern.get_ref(&content)),
+        iter.current_source(),
     )
 }
 
 fn read_char(iter: &mut FragmentIterator, num: usize) -> (Token, Source) {
-    let mut end = false;
-    let (content, source) = iter.collect_while_flatmap(|c, iter| match c {
-        '\'' => {
-            if end {
-                iter.next();
-                None
-            } else {
-                end = true;
-                Some(vec![])
-            }
-        }
-        '\n' => panic!("Missing terminating \' character"),
-        '\\' => {
-            iter.next();
+    match iter.next_new_span() {
+        Some('\'') => {}
+        Some(t) => panic!("Unexpected character: {}", t),
+        None => panic!("Unexpected end of file"),
+    }
+    let c = match iter.next() {
+        Some('\\') => {
             if let Some(c) = iter.peek() {
-                Some(vec![read_string_escape(iter, c)])
+                read_string_escape(iter, c)
             } else {
                 panic!("Unexpected end of file");
             }
         }
-        c => Some(vec![c]),
-    });
-    assert!(content.len() == 1);
-    (Token::Char(num, content[0].1), source)
+        Some('\n') => panic!("Unexpected newline"),
+        Some(c) => c,
+        None => panic!("Unexpected end of file"),
+    };
+    match iter.next() {
+        Some('\'') => {}
+        Some(t) => panic!("Unexpected character: {}", t),
+        None => panic!("Unexpected end of file"),
+    }
+    (Token::Char(num, c), iter.current_source())
 }
 
 fn read_string_escape(iter: &mut FragmentIterator, c: char) -> char {
-    match c {
+    let ret = match c {
         '\'' => '\'',
         '"' => '\"',
         '?' => '?',
@@ -176,10 +175,12 @@ fn read_string_escape(iter: &mut FragmentIterator, c: char) -> char {
         't' => '\t',
         'r' => '\r',
         'v' => '\x0B',
-        c @ '0'..='7' => get_octal(iter, c),
-        'x' => get_hex(iter),
+        c @ '0'..='7' => return get_octal(iter, c),
+        'x' => return get_hex(iter),
         c => c,
-    }
+    };
+    iter.next();
+    ret
 }
 
 fn get_octal(iter: &mut FragmentIterator, c: char) -> char {
@@ -202,7 +203,6 @@ fn get_octal(iter: &mut FragmentIterator, c: char) -> char {
 #[allow(clippy::char_lit_as_u8)]
 fn get_hex(iter: &mut FragmentIterator) -> char {
     let mut num: u8 = 0;
-
     while let Some(c) = iter.peek() {
         match c {
             c @ '0'..='9' => {
@@ -224,7 +224,6 @@ fn get_hex(iter: &mut FragmentIterator) -> char {
             _ => break,
         }
     }
-
     num as char
 }
 

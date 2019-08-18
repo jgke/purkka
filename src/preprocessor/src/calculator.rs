@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use crate::macrotoken::{MacroToken, MacroTokenType};
 use crate::tokentype;
 use crate::tokentype::Operator;
@@ -12,7 +10,7 @@ enum Paren {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum ConstExprToken {
-    Number(i64),
+    Number(i128),
     Paren(Paren),
     Op(tokentype::Operator),
 }
@@ -20,21 +18,33 @@ enum ConstExprToken {
 use self::ConstExprToken::*;
 use self::Paren::*;
 
-fn parse_number(num: &str) -> i64 {
+fn parse_number(mut num: &str) -> i128 {
     let mut num_len = 0;
+    let radix = if num.chars().next() == Some('0') {
+        if num.chars().nth(1) == Some('x') || num.chars().nth(1) == Some('X') {
+            num = &num[2..];
+            16
+        } else {
+            8
+        }
+    } else {
+        10
+    };
+
     let mut iter = num.chars().peekable();
     loop {
         let c = iter.next();
         if c.is_some() {
             match c.unwrap() {
-                '0'..='9' => num_len += 1,
+                '0'..='9' | 'x' | 'X' | 'a'..='f' | 'A'..='F' => num_len += 1,
                 _ => break,
             };
         } else {
             break;
         }
     }
-    i64::from_str(&num[0..num_len]).expect("Invalid int")
+
+    i128::from_str_radix(&num[0..num_len], radix).expect("Invalid int")
 }
 
 fn const_expr_token_from_macro(ty: &MacroTokenType) -> ConstExprToken {
@@ -42,7 +52,7 @@ fn const_expr_token_from_macro(ty: &MacroTokenType) -> ConstExprToken {
         MacroTokenType::Identifier(_) => Number(1),
         MacroTokenType::Number(num) => Number(parse_number(num)),
         MacroTokenType::StringLiteral(_) => panic!(),
-        MacroTokenType::Char(c) => Number(*c as i64),
+        MacroTokenType::Char(c) => Number(*c as i128),
         MacroTokenType::Operator(op) => Op(*op),
         MacroTokenType::Punctuation(tokentype::Punctuation::OpenParen) => Paren(OpenParen),
         MacroTokenType::Punctuation(tokentype::Punctuation::CloseParen) => Paren(CloseParen),
@@ -94,8 +104,8 @@ macro_rules! expr2i {
     }};
 }
 
-fn eval_expression_postfix(expr: Vec<ConstExprToken>) -> i64 {
-    let mut stack: Vec<i64> = Vec::new();
+fn eval_expression_postfix(expr: Vec<ConstExprToken>) -> i128 {
+    let mut stack: Vec<i128> = Vec::new();
     let mut iter = expr.into_iter().peekable();
     while iter.peek().is_some() {
         let tok = iter.next().unwrap();
@@ -103,7 +113,7 @@ fn eval_expression_postfix(expr: Vec<ConstExprToken>) -> i64 {
             Number(t) => stack.push(t),
             // unary
             Op(Operator::Not) => expr1b!(stack, |x| x == 0),
-            Op(Operator::BitNot) => expr1i!(stack, |x: i64| !x),
+            Op(Operator::BitNot) => expr1i!(stack, |x: i128| !x),
 
             // bitwise
             Op(Operator::BitShiftLeft) => expr2i!(stack, |l, r| l << r),
@@ -350,7 +360,7 @@ fn to_token(s: &str) -> ConstExprToken {
 }
 
 #[cfg(test)]
-fn check(expr: &str, expected: i64) {
+fn check(expr: &str, expected: i128) {
     let vec: Vec<ConstExprToken> = expr.split(' ').map(to_token).collect();
     assert_eq!(eval_expression_postfix(shunt(&vec)), expected);
 }

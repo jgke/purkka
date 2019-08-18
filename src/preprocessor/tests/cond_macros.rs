@@ -74,6 +74,11 @@ fn if_1_gt_2() {
 }
 
 #[test]
+fn hex_values() {
+    process("#if 0xf == 15\nbar\n#elif 0xff != 255\nfoo\n#endif", vec![mt("foo.c", 15, 17, ident("bar"))]);
+}
+
+#[test]
 fn if_defined() {
     process(
         "#define foo\n#if defined ( foo )\nbar\n#endif",
