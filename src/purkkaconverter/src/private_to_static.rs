@@ -1,7 +1,4 @@
 /// Make all private global declarations static
-use std::collections::HashMap;
-use std::rc::Rc;
-
 use crate::traits::TreeTransformer;
 use crate::PurkkaToC;
 use purkkasyntax::visitor::*;

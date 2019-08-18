@@ -55,13 +55,13 @@ impl EvalConstExprs<'_> {
                 "*" => Ok(self.eval_expression(&mut args[0])? * self.eval_expression(&mut args[1])?),
                 _ => unimplemented!("{}", op)
             }
-            Expression::Unary(op, args) => unimplemented!(),
-            Expression::PostFix(arg, op) => unimplemented!(),
-            Expression::Cast(expr, ty) => unimplemented!(),
-            Expression::Call(expr, args) => unimplemented!(),
-            Expression::ArrayAccess(arr_expr, index_expr) => unimplemented!(),
-            Expression::StructAccess(struct_expr, index) => unimplemented!(),
-            Expression::Sizeof(sizeof_expr) => unimplemented!(),
+            Expression::Unary(_op, _args) => unimplemented!(),
+            Expression::PostFix(_arg, _op) => unimplemented!(),
+            Expression::Cast(_expr, _ty) => unimplemented!(),
+            Expression::Call(_expr, _args) => unimplemented!(),
+            Expression::ArrayAccess(_arr_expr, _index_expr) => unimplemented!(),
+            Expression::StructAccess(_struct_expr, _index) => unimplemented!(),
+            Expression::Sizeof(_sizeof_expr) => unimplemented!(),
         }?;
         *e = Expression::PrimaryExpression(PrimaryExpression::Literal(lit.clone()));
         Ok(lit)
@@ -70,13 +70,13 @@ impl EvalConstExprs<'_> {
     fn eval_primary_expression(&self, e: &mut PrimaryExpression) -> Result<Literal, String> {
         match e {
             PrimaryExpression::Identifier(ident) => Ok(self.exprs[ident].clone()),
-            PrimaryExpression::StructInitialization(struct_name, fields) => unimplemented!(),
-            PrimaryExpression::VectorInitialization(vector_name, fields) => unimplemented!(),
-            PrimaryExpression::ArrayLiteral(cells) => unimplemented!(),
+            PrimaryExpression::StructInitialization(_struct_name, _fields) => unimplemented!(),
+            PrimaryExpression::VectorInitialization(_vector_name, _fields) => unimplemented!(),
+            PrimaryExpression::ArrayLiteral(_cells) => unimplemented!(),
             PrimaryExpression::Literal(lit) => Ok(lit.clone()),
-            PrimaryExpression::BlockExpression(block) => unimplemented!(),
+            PrimaryExpression::BlockExpression(_block) => unimplemented!(),
             PrimaryExpression::Expression(expr) => self.eval_expression(expr),
-            PrimaryExpression::Lambda(lambda) => Err("Cannot evaluate lambdas without calling them".to_string()),
+            PrimaryExpression::Lambda(_lambda) => Err("Cannot evaluate lambdas without calling them".to_string()),
         }
     }
 }
