@@ -1,4 +1,4 @@
-fun floats() {
+pub fun floats() {
     let a = 1.0;
     let b: float = 1.0;
     let c = a + b;

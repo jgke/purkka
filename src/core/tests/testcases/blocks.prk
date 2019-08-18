@@ -1,11 +1,11 @@
-fun for_loop() {
+pub fun for_loop() {
     for(let i = 0; i < 5; i++) {
     }
     for(let i = 0; i < 5; {i++; i++;}) {
     }
 }
 
-fun if_stmts() {
+pub fun if_stmts() {
     let foo;
     if 1 {
         foo = "bar";
@@ -22,19 +22,19 @@ fun if_stmts() {
     bar as void;
 }
 
-fun blocks_0() {
+pub fun blocks_0() {
     let a = 1;
     a as void;
 }
 
-fun blocks_1() {
+pub fun blocks_1() {
     {
         let a = 1;
         a as void;
     }
 }
 
-fun blocks_2() {
+pub fun blocks_2() {
     {
         {
             let a = 1;

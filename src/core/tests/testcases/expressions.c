@@ -1,6 +1,6 @@
-int A = 1;
-int B = 2;
-int C = 3;
+static int A = 1;
+static int B = 2;
+static int C = 3;
 int main() {
     int a;
     a = 1 + 2;

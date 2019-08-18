@@ -1,5 +1,5 @@
 import "dependencies/dep.prk";
 
-fun main() -> i32 {
+pub fun main() -> i32 {
     return foo;
 }

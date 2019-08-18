@@ -66,7 +66,7 @@ impl ASTVisitor for TypeInferrer<'_> {
 
     fn visit_declaration(&mut self, tree: &mut Declaration) -> Result<(), String> {
         match tree {
-            Declaration::Declaration(_, _, _, name, exact_ty, Some(e)) => {
+            Declaration::Declaration(_flags, name, exact_ty, Some(e)) => {
                 self.current_function = name.to_string();
                 self.push_symbol(name.clone(), From::from(*exact_ty.clone()));
                 let ty = self.get_type(e)?;
@@ -84,7 +84,7 @@ impl ASTVisitor for TypeInferrer<'_> {
                 self.make_equal(&ty.0, &intermediate)?;
                 self.push_symbol(name.clone(), intermediate);
             }
-            Declaration::Declaration(_, _, _, name, ty, None) => {
+            Declaration::Declaration(_flags, name, ty, None) => {
                 self.push_symbol(name.clone(), From::from(*ty.clone()));
             }
         }

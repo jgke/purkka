@@ -21,6 +21,7 @@ mod imports;
 pub mod inference;
 mod lambda;
 mod operator;
+mod private_to_static;
 mod typedef;
 
 use traits::TreeTransformer;
@@ -32,11 +33,12 @@ use imports::StripImports;
 use inference::TypeInferrer;
 use lambda::StripLambda;
 use operator::InlineOperators;
+use private_to_static::PrivateToStatic;
 use typedef::InlineTypedef;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PurkkaToC {
-    pub functions: Vec<(Rc<str>, pp::Lambda, bool)>,
+    pub functions: Vec<(Rc<str>, pp::Lambda, pp::DeclarationFlags)>,
     pub global_includes: HashSet<Rc<str>>,
     pub local_includes: HashSet<Rc<str>>,
     pub operators: Operators,
@@ -47,9 +49,13 @@ pub fn transform(purkka_tree: &mut pp::S, operators: Operators, symbols: Symbols
     let mut context = PurkkaToC::new(operators, symbols);
     InlineTypedef::new(&mut context).transform(purkka_tree);
     InlineOperators::new(&mut context).transform(purkka_tree);
+
+    ArrayToPointer::new(&mut context).transform(purkka_tree);
     TypeInferrer::new(&mut context).transform(purkka_tree);
     ArrayToPointer::new(&mut context).transform(purkka_tree);
+
     EvalConstExprs::new(&mut context).transform(purkka_tree);
+    PrivateToStatic::new(&mut context).transform(purkka_tree);
     StripLambda::new(&mut context).transform(purkka_tree);
     StripImports::new(&mut context).transform(purkka_tree);
     context
@@ -76,7 +82,7 @@ pub fn fetch_identifiers_from_prk(tree: &mut pp::S) -> HashMap<Rc<str>, pp::Decl
         .declarations
         .into_iter()
         .map(|decl| {
-            let pp::Declaration::Declaration(_, _, _, name, _, _) = &decl;
+            let pp::Declaration::Declaration(_flags, name, _, _) = &decl;
             (name.clone(), decl)
         })
         .collect()
@@ -97,13 +103,13 @@ impl PurkkaToC {
         }
     }
 
-    fn push_function(&mut self, name: Rc<str>, lambda: pp::Lambda, inline: bool) {
-        self.functions.push((name, lambda, inline));
+    fn push_function(&mut self, name: Rc<str>, lambda: pp::Lambda, flags: pp::DeclarationFlags) {
+        self.functions.push((name, lambda, flags));
     }
 
     fn push_anonymous_function(&mut self, lambda: pp::Lambda) -> Rc<str> {
         let name: Rc<str> = From::from(format!("_lambda_{}", self.functions.len()));
-        self.functions.push((name.clone(), lambda, true));
+        self.functions.push((name.clone(), lambda, pp::DeclarationFlags { public: false, inline: true, mutable: true, static_: true }));
         name
     }
 
@@ -123,7 +129,7 @@ impl PurkkaToC {
                     .types
                     .clone()
                     .into_iter()
-                    .map(|ty| self.format_type_as_external_decl(ty.1))
+                    .map(|ty| self.format_type_as_external_decl(ty.1, pp::DeclarationFlags::default()))
                     .collect::<Vec<_>>();
                 let vars = u
                     .drain_filter(|t| if let pp::Unit::Declaration(decl) = t {
@@ -138,7 +144,7 @@ impl PurkkaToC {
                     .drain(..)
                     .collect::<Vec<_>>()
                     .into_iter()
-                    .map(|(n, u, i)| self.format_lambda_as_external_decl(n.clone(), u.clone(), i))
+                    .map(|(n, u, f)| self.format_lambda_as_external_decl(n.clone(), u.clone(), f))
                     .collect::<Vec<_>>();
                 cp::TranslationUnit::Units(
                     tys.into_iter()
@@ -155,17 +161,11 @@ impl PurkkaToC {
         &mut self,
         name: Rc<str>,
         pp::Lambda::Lambda(params, ty, block): pp::Lambda,
-        inline: bool,
+        mut flags: pp::DeclarationFlags,
     ) -> cp::ExternalDeclaration {
         use cp::DeclarationSpecifiers::DeclarationSpecifiers as DSpec;
-        let DSpec(mut specs, c_ty) = self.type_to_declaration_specifiers(ty.clone());
-        if let Some(ref mut specs) = specs {
-            specs.0.inline = inline;
-        } else if inline {
-            let mut s = cp::Specifiers::default();
-            s.0.inline = true;
-            specs = Some(s);
-        }
+        flags.mutable = true;
+        let DSpec(specs, c_ty) = self.type_to_declaration_specifiers(ty.clone(), flags);
         let params = self.function_params_from_params(name.clone(), params);
         let statements = self.block_to_statement_list(block);
         cp::ExternalDeclaration::FunctionDefinition(Box::new(
@@ -180,9 +180,9 @@ impl PurkkaToC {
         ))
     }
 
-    fn format_type_as_external_decl(&mut self, ty: pp::TypeSignature) -> cp::ExternalDeclaration {
+    fn format_type_as_external_decl(&mut self, ty: pp::TypeSignature, flags: pp::DeclarationFlags) -> cp::ExternalDeclaration {
         cp::ExternalDeclaration::Declaration(Box::new(cp::Declaration::Declaration(
-            Box::new(self.type_to_declaration_specifiers(ty.clone())),
+            Box::new(self.type_to_declaration_specifiers(ty.clone(), flags)),
             vec![],
             None,
         )))
@@ -434,7 +434,7 @@ impl PurkkaToC {
             .into_iter()
             .map(|t| match t {
                 pp::LambdaParam::LambdaParam(name, ty) => {
-                    let decl_spec = self.type_to_declaration_specifiers(*ty.clone());
+                    let decl_spec = self.type_to_declaration_specifiers(*ty.clone(), pp::DeclarationFlags::default());
                     let decl = self.format_decl(name, *ty);
                     cp::FunctionParam::Parameter(cp::ParameterDeclaration::Declarator(
                         Box::new(decl_spec),
@@ -465,7 +465,7 @@ impl PurkkaToC {
                     ));
                     cp::ExternalDeclaration::Declaration(Box::new(cp::Declaration::Declaration(
                         Box::new(cp::DeclarationSpecifiers::DeclarationSpecifiers(
-                            None,
+                            cp::Specifiers::default(),
                             Some(c_ty),
                         )),
                         Vec::new(),
@@ -482,7 +482,7 @@ impl PurkkaToC {
         &mut self,
         pp::StructField::Field { name, ty, .. }: pp::StructField,
     ) -> cp::StructField {
-        let c_ty = self.type_to_declaration_specifiers(*ty.clone());
+        let c_ty = self.type_to_declaration_specifiers(*ty.clone(), pp::DeclarationFlags::default());
         let decl = self.format_decl(name, *ty);
         (
             Box::new(c_ty),
@@ -506,11 +506,11 @@ impl PurkkaToC {
 
     pub fn convert_declaration(&mut self, k: pp::Declaration) -> cp::Declaration {
         match k {
-            pp::Declaration::Declaration(_, _mutable, _inline, name, ty, Some(
+            pp::Declaration::Declaration(flags, name, ty, Some(
                     box pp::Expression::PrimaryExpression(pp::PrimaryExpression::ArrayLiteral(exprs))
             )) => {
                 cp::Declaration::Declaration(
-                    Box::new(self.type_to_declaration_specifiers(*ty.clone())),
+                    Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags)),
                     vec![cp::InitDeclarator::Assign(
                         Box::new(self.format_decl(name, *ty)),
                         ct::Token::Assign(0),
@@ -521,9 +521,9 @@ impl PurkkaToC {
                     None,
                 )
             }
-            pp::Declaration::Declaration(_, _mutable, _inline, name, ty, Some(expr)) => {
+            pp::Declaration::Declaration(flags, name, ty, Some(expr)) => {
                 cp::Declaration::Declaration(
-                    Box::new(self.type_to_declaration_specifiers(*ty.clone())),
+                    Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags)),
                     vec![cp::InitDeclarator::Assign(
                         Box::new(self.format_decl(name, *ty)),
                         ct::Token::Assign(0),
@@ -534,9 +534,9 @@ impl PurkkaToC {
                     None,
                 )
             }
-            pp::Declaration::Declaration(_, _mutable, _inline, name, ty, None) => {
+            pp::Declaration::Declaration(flags, name, ty, None) => {
                 cp::Declaration::Declaration(
-                    Box::new(self.type_to_declaration_specifiers(*ty.clone())),
+                    Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags)),
                     vec![cp::InitDeclarator::Declarator(Box::new(
                         self.format_decl(name, *ty),
                     ))],
@@ -549,16 +549,18 @@ impl PurkkaToC {
     pub fn type_to_declaration_specifiers(
         &mut self,
         ty: TypeSignature,
+        flags: pp::DeclarationFlags
     ) -> cp::DeclarationSpecifiers {
+        let converted_flags = self.declaration_flags(flags);
         match ty {
             TypeSignature::Plain(ty) => {
                 let c_ty = match ty.as_ref() {
                     t if self.symbols.types.contains_key(t) => {
-                        return self.type_to_declaration_specifiers(self.symbols.types[t].clone())
+                        return self.type_to_declaration_specifiers(self.symbols.types[t].clone(), flags)
                     }
                     _ => cp::CType::Custom(ty.clone()),
                 };
-                cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))
+                cp::DeclarationSpecifiers::DeclarationSpecifiers(converted_flags, Some(c_ty))
             }
             TypeSignature::Primitive(prim) | TypeSignature::Vector(prim) => {
                 let c_ty = match prim {
@@ -584,22 +586,30 @@ impl PurkkaToC {
                     Primitive::Double => cp::CType::Primitive(None, cp::PrimitiveType::Double),
                     other => panic!("Not implemented: {:?}", other),
                 };
-                cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))
+                cp::DeclarationSpecifiers::DeclarationSpecifiers(converted_flags, Some(c_ty))
             }
             TypeSignature::Infer(..) => unreachable!(),
             TypeSignature::Array(ty, _) | TypeSignature::DynamicArray(ty, _) => {
-                self.type_to_declaration_specifiers(*ty)
+                self.type_to_declaration_specifiers(*ty, flags)
             }
-            TypeSignature::Pointer { ty, .. } => self.type_to_declaration_specifiers(*ty),
+            TypeSignature::Pointer { ty, .. } => self.type_to_declaration_specifiers(*ty, flags),
             TypeSignature::Function(_params, ret_ty) => {
-                self.type_to_declaration_specifiers(*ret_ty)
+                self.type_to_declaration_specifiers(*ret_ty, flags)
             }
             TypeSignature::Struct(Some(name), _) => {
                 let c_ty = cp::CType::Compound(cp::CompoundType::Struct(name, None));
-                cp::DeclarationSpecifiers::DeclarationSpecifiers(None, Some(c_ty))
+                cp::DeclarationSpecifiers::DeclarationSpecifiers(converted_flags, Some(c_ty))
             }
             other => panic!("Not implemented: {:?}", other),
         }
+    }
+
+    pub fn declaration_flags(&mut self, flags: pp::DeclarationFlags) -> cp::Specifiers {
+        let mut spec = cp::Specifiers::default();
+        spec.0.inline = flags.inline;
+        spec.0.static_ = flags.static_;
+        spec.1.const_ = !flags.mutable;
+        spec
     }
 
     pub fn ty_to_pointer(&mut self, ty: TypeSignature) -> Option<Box<cp::Pointer>> {
@@ -647,7 +657,7 @@ impl PurkkaToC {
 
     pub fn type_to_type_name(&mut self, ty: TypeSignature) -> cp::TypeName {
         cp::TypeName::TypeName(
-            Box::new(self.type_to_declaration_specifiers(ty.clone())),
+            Box::new(self.type_to_declaration_specifiers(ty.clone(), pp::DeclarationFlags::default())),
             Box::new(self.format_abstract_decl(ty)),
         )
     }

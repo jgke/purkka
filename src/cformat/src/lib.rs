@@ -986,7 +986,7 @@ impl Context {
     fn declaration_specifiers(&mut self, tree: &DeclarationSpecifiers) {
         match tree {
             DeclarationSpecifiers::DeclarationSpecifiers(spec, ty) => {
-                spec.iter().for_each(|s| self.specifiers(s));
+                self.specifiers(spec);
                 ty.iter().for_each(|t| self.type_specifier(t));
             }
         }

@@ -400,7 +400,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_declaration(&mut self, semi: bool) -> Declaration {
-        let visible = maybe_read_token!(self, Token::Pub).is_some();
+        let public = maybe_read_token!(self, Token::Pub).is_some();
         let mutable = match self.next() {
             Some(Token::Let(..)) => true,
             Some(Token::Const(..)) => false,
@@ -409,9 +409,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let ident = read_identifier_str!(self);
                 let (params, return_type, block) = self.parse_lambda();
                 return Declaration::Declaration(
-                    visible,
-                    false,
-                    inline,
+                    DeclarationFlags {  public, inline, mutable: false, static_: false },
                     ident,
                     Box::new(TypeSignature::Function(
                         params.iter().cloned().map(From::from).collect(),
@@ -435,13 +433,15 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             _ => Box::new(self.get_inferred_type()),
         };
 
+        let flags = DeclarationFlags { public, mutable, inline: false, static_: false };
+
         let res = match self.peek() {
             Some(Token::Operator(_, t)) if &**t == "=" => {
                 read_token!(self, Token::Operator);
                 let expr = Box::new(self.parse_expression());
-                Declaration::Declaration(visible, mutable, false, ident, ty, Some(expr))
+                Declaration::Declaration(flags, ident, ty, Some(expr))
             }
-            _ => Declaration::Declaration(visible, mutable, false, ident, ty, None),
+            _ => Declaration::Declaration(flags, ident, ty, None),
         };
 
         if semi {
@@ -1733,9 +1733,7 @@ mod tests {
             s,
             S::TranslationUnit(TranslationUnit::Units(vec![Unit::Declaration(Box::new(
                 Declaration::Declaration(
-                    false,
-                    true,
-                    false,
+                    DeclarationFlags { public: false, inline: false, mutable: true, static_: false },
                     From::from("bar"),
                     Box::new(TypeSignature::Pointer {
                         nullable: false,

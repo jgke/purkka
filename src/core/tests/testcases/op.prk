@@ -5,7 +5,7 @@ operator 11 +=+ (left: Tuple, right: Tuple) => Tuple {
     right: left.right + right.right
 };
 
-fun main() {
+pub fun main() {
     let left = Tuple { left: 0, right: 0 };
     let right = Tuple { left: 1, right: 1 };
     let mid = left +=+ right;

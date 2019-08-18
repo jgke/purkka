@@ -1,15 +1,15 @@
-fun foo() {
+pub fun foo() {
     let a = 1;
     let b = a;
     return b;
 };
 
-const bar = fun (left, right) {
+pub const bar = fun (left, right) {
     let res = left + right;
     return res;
 };
 
-const for_each = fun (f: i32 -> void, list, n) {
+pub const for_each = fun (f: i32 -> void, list, n) {
     for (let i = 0; i < n; i++) {
         f(list[i]);
     }

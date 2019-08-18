@@ -46,7 +46,7 @@ grammar! {
         | Definition. Visibility Mutability #Token::Identifier MaybeType #Token::Operator Expression #Token::SemiColon
         | Function. Visibility Inline_ #Token::Fun #Token::Identifier Function
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum Declaration { Declaration(bool, bool, bool, Rc<str>, Box<TypeSignature>, Option<Box<Expression>>) }
+        pub enum Declaration { Declaration(DeclarationFlags, Rc<str>, Box<TypeSignature>, Option<Box<Expression>>) }
         ;
 
     Function
@@ -370,11 +370,25 @@ grammar! {
 impl_enter!(S, TranslationUnit, TranslationUnit, translation_unit, 1);
 impl_enter!(TranslationUnit, Units, "Vec<Unit>", units, 1);
 impl_enter!(Unit, Declaration, Declaration, declaration, 1);
-impl_enter_unbox!(Declaration, Declaration, TypeSignature, ty, 5);
-impl_enter_unbox_fmap!(Declaration, Declaration, Expression, expr, 6);
-impl_enter!(Declaration, Declaration, "Rc<str>", identifier, 4);
+impl_enter_unbox!(Declaration, Declaration, TypeSignature, ty, 3);
+impl_enter_unbox_fmap!(Declaration, Declaration, Expression, expr, 4);
+impl_enter!(Declaration, Declaration, "Rc<str>", identifier, 2);
 
 impl_enter!(Token, Identifier, "Rc<str>", identifier_s, 2);
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct DeclarationFlags {
+    pub mutable: bool,
+    pub public: bool,
+    pub inline: bool,
+    pub static_: bool,
+}
+
+impl Default for DeclarationFlags {
+    fn default() -> DeclarationFlags {
+        DeclarationFlags { mutable: true, public: true, inline: false, static_: false }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeSignature {
@@ -709,15 +723,13 @@ impl From<Param> for TypeSignature {
 impl Declaration {
     pub fn is_fn(&self) -> bool {
         if let Declaration::Declaration(
-            _,
-            false,
-            _,
-            _,
-            _,
+            flags,
+            _name,
+            _ty,
             Some(box Expression::PrimaryExpression(PrimaryExpression::Lambda(..))),
         ) = self
         {
-            true
+            !flags.mutable
         } else {
             false
         }
@@ -725,7 +737,7 @@ impl Declaration {
 
     pub fn is_fn_ty(&self) -> bool {
         if let Declaration::Declaration(
-            _, _, _, _, box TypeSignature::Function(..),
+            _flags, _name, box TypeSignature::Function(..),
             Some(_)
         ) = self {
             true
@@ -798,6 +810,7 @@ impl Expression {
             Expression::Op(op, ExprList::List(list)) => match op.as_ref() {
                 "+" => Ok(list[0].eval(constants)? + list[1].eval(constants)?),
                 "-" => Ok(list[0].eval(constants)? - list[1].eval(constants)?),
+                "*" => Ok(list[0].eval(constants)? * list[1].eval(constants)?),
                 "/" => Ok(list[0].eval(constants)? / list[1].eval(constants)?),
                 otherwise => panic!("Not implemented: {:?}", otherwise),
             },

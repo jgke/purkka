@@ -1,6 +1,6 @@
 import "dependencies/vec.h"
 
-fun foo() {
+pub fun foo() {
     let a = vec_int { 1, 2 };
     let b = a[0];
     return b;

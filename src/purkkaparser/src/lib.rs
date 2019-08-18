@@ -35,13 +35,13 @@ pub fn get_declarations(tree: &S, include_private: bool) -> Vec<(Rc<str>, TypeSi
         .flat_map(|unit| {
             if let Unit::Declaration(decl) = unit {
                 match &**decl {
-                    Declaration::Declaration(true, _, _, ident, ty, _) => {
+                    Declaration::Declaration(flags, ident, ty, _) if flags.public => {
                         Some((ident.clone(), *ty.clone()))
                     }
-                    Declaration::Declaration(false, _, _, ident, ty, _) if include_private => {
+                    Declaration::Declaration(_flags, ident, ty, _) if include_private => {
                         Some((ident.clone(), *ty.clone()))
                     }
-                    Declaration::Declaration(false, _, _, _, _, _) => None,
+                    Declaration::Declaration(..) => None,
                 }
             } else {
                 None

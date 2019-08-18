@@ -1,6 +1,6 @@
 import "stdio.h"
 
-fun main() {
+pub fun main() {
     pragma "omp parallel"
     {
         printf("Hello, world.\n");

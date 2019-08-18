@@ -1,14 +1,14 @@
 import "dependencies/macro.h"
 
-fun main() {
+pub fun main() {
     return @"FOO(1)";
 }
 
-fun bar() {
+pub fun bar() {
     return FOO(1);
 }
 
-fun baz() {
+pub fun baz() {
     {
         let FOO = 1;
         FOO as void;

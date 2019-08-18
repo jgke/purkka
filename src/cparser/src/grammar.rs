@@ -438,7 +438,7 @@ grammar! {
         | Both. &Specifiers &TypeSpecifier &Specifiers
         | Neither. &TypeSpecifier
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum DeclarationSpecifiers { DeclarationSpecifiers(Option<Specifiers>, Option<TypeSpecifier>) }
+        pub enum DeclarationSpecifiers { DeclarationSpecifiers(Specifiers, Option<TypeSpecifier>) }
         ;
 
     StorageClassSpecifiers

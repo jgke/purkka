@@ -1,3 +1,12 @@
-fun recursive() {
+pub fun recursive() {
     recursive();
+}
+
+pub fun arr_arg(s: [char]) {
+    s as void;
+}
+
+pub fun arr_call() {
+    let s: &char = "foo";
+    arr_arg(s);
 }

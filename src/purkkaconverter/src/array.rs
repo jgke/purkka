@@ -1,7 +1,8 @@
+/// Convert [T] to *T in parameters
+
 use crate::traits::TreeTransformer;
 use crate::PurkkaToC;
 use purkkasyntax::visitor::*;
-/// Convert [T] to *T
 use purkkasyntax::*;
 
 #[derive(Debug)]
@@ -17,6 +18,13 @@ impl<'a> TreeTransformer<'a> for ArrayToPointer<'a> {
     }
     fn transform(&mut self, s: &mut S) {
         self.visit_s(s);
+        let mut context = PurkkaToC::default();
+        for decl in &mut self.context.symbols.declarations {
+            ArrayToPointer { context: &mut context, inside_param: false }.visit_ty(decl.1);
+        }
+        for decl in &mut self.context.symbols.imported_declarations {
+            ArrayToPointer { context: &mut context, inside_param: false }.visit_ty(decl.1);
+        }
     }
 }
 
@@ -33,6 +41,18 @@ impl ASTVisitor for ArrayToPointer<'_> {
                 self.inside_param = false;
                 res
             }
+        }
+    }
+
+    fn visit_param(&mut self, e: &mut Param) -> Result<(), ()> {
+        match e {
+            Param::Param(_, ty) | Param::TypeOnly(ty) => {
+                self.inside_param = true;
+                let res = self.visit_ty(&mut **ty);
+                self.inside_param = false;
+                res
+            }
+            Param::Variadic => Ok(())
         }
     }
 

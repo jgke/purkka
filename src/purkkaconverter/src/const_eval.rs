@@ -33,7 +33,7 @@ impl ASTVisitor for EvalConstExprs<'_> {
             return Ok(())
         }
         match s {
-            Declaration::Declaration(_, _, _, name, ty, assignment) =>
+            Declaration::Declaration(_flags, name, ty, assignment) =>
                 vec![
                 self.visit_ty(ty)?,
                 self.fold_o(assignment, |v, a| {

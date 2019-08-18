@@ -3,7 +3,7 @@ struct Foo {
     baz: i32
 }
 
-fun main() {
+pub fun main() {
     let a = Foo { bar: 0, baz: 1 };
     let b = &a;
     let c = &b;

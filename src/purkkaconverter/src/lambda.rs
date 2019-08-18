@@ -35,9 +35,7 @@ impl ASTVisitor for StripLambda<'_> {
                     })
                     .for_each(|t| {
                         if let Unit::Declaration(box Declaration::Declaration(
-                            _,
-                            _,
-                            inline,
+                            flags,
                             name,
                             _,
                             Some(box Expression::PrimaryExpression(PrimaryExpression::Lambda(
@@ -46,7 +44,7 @@ impl ASTVisitor for StripLambda<'_> {
                         )) = t
                         {
                             self.visit_lambda(&mut lambda).unwrap();
-                            self.context.push_function(name, lambda, inline);
+                            self.context.push_function(name, lambda, flags);
                         } else {
                             unreachable!()
                         }

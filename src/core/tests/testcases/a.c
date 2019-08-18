@@ -1,1 +1,1 @@
-int foo;
+static int foo;

@@ -156,11 +156,8 @@ macro_rules! op_table {
 }
 
 fn has_typedef(spec: &DeclarationSpecifiers) -> bool {
-    if let DeclarationSpecifiers::DeclarationSpecifiers(Some(spec), _) = spec {
-        spec.0.typedef
-    } else {
-        false
-    }
+    let DeclarationSpecifiers::DeclarationSpecifiers(spec, _) = spec;
+    spec.0.typedef
 }
 
 #[derive(Debug, Default)]
@@ -297,12 +294,7 @@ where
 
     fn parse_external_declaration(&mut self) -> ExternalDeclaration {
         let spec = self.parse_declaration_specifiers();
-        let has_typedef = if let DeclarationSpecifiers::DeclarationSpecifiers(Some(spec), _) = &spec
-        {
-            spec.0.typedef
-        } else {
-            false
-        };
+        let has_typedef = has_typedef(&spec);
         if let Some(Token::Semicolon(..)) = self.peek() {
             return ExternalDeclaration::Declaration(Box::new(Declaration::Declaration(
                 Box::new(spec),
@@ -419,13 +411,7 @@ where
         let ty = self.parse_type_specifier();
         self.parse_specifiers(&mut spec);
 
-        let opt_spec = if spec.0.any() || spec.1.any() {
-            Some(spec)
-        } else {
-            None
-        };
-
-        DeclarationSpecifiers::DeclarationSpecifiers(opt_spec, ty)
+        DeclarationSpecifiers::DeclarationSpecifiers(spec, ty)
     }
 
     fn parse_specifiers(&mut self, spec: &mut Specifiers) {
@@ -822,7 +808,7 @@ where
                         Some(Token::Comma(..)) | Some(Token::CloseParen(..)) => {
                             if spec
                                 == Box::new(DeclarationSpecifiers::DeclarationSpecifiers(
-                                    None,
+                                    Specifiers::default(),
                                     Some(CType::Void),
                                 ))
                             {
@@ -847,7 +833,7 @@ where
                             if decl
                                 == ParameterDeclaration::AbstractDeclarator(
                                     Box::new(DeclarationSpecifiers::DeclarationSpecifiers(
-                                        None,
+                                        Specifiers::default(),
                                         Some(CType::Void),
                                     )),
                                     Box::new(AbstractDeclarator::AbstractDeclarator(

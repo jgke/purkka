@@ -85,6 +85,7 @@ fn check_result_files() {
                 .arg("-Wextra")
                 .arg("-Werror")
                 .arg("-Wno-unused-parameter")
+                .arg("-Wno-unused-variable")
                 .arg("-fopenmp")
                 .arg("-O2")
                 .arg("-o")
