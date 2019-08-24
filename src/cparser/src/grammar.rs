@@ -770,6 +770,7 @@ pub enum Pragma {
 #[derive(Clone, Debug, PartialEq)]
 pub enum MacroExpansion {
     Expression(Expression),
+    Declaration(ExternalDeclaration),
     Statement(Statement),
     Type(TypeName),
 }

@@ -1,7 +1,6 @@
 use smallvec::SmallVec;
 use syntax::ast;
 use syntax::ext::base::{ExtCtxt, MacEager, MacResult};
-use syntax::ext::build::AstBuilder;
 use syntax::parse;
 use syntax::ptr::P;
 use syntax::source_map::respan;
@@ -85,7 +84,6 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
 
     fn item_derive(&self, span: Span, ident: ast::Ident, kind: ast::ItemKind) -> P<ast::Item> {
         let derive = self.cx.attribute(
-            span,
             self.cx.meta_list(
                 span,
                 symbol::Symbol::intern("derive"),
@@ -119,10 +117,11 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         self.cx.ty_path(self.cx.path_all(
             self.span,
             true,
-            self.cx.std_path(&[
-                symbol::Symbol::intern("boxed"),
-                symbol::Symbol::intern("Box"),
-            ]),
+            vec![
+                self.cx.ident_of("std"),
+                self.cx.ident_of("boxed"),
+                self.cx.ident_of("Box"),
+            ],
             vec![ast::GenericArg::Type(ty)],
             Vec::new(),
         ))

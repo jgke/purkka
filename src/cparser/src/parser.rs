@@ -225,6 +225,9 @@ pub fn parse_macro_expansion<'a, I>(
 where
     I: IntoIterator<Item = &'a Token>,
 {
+    if_debug(DebugVal::CParserToken, || {
+        println!();
+    });
     let context = ParseContext {
         scope: vec![default_types(types)],
         vals: HashMap::new(),
@@ -254,6 +257,8 @@ where
         if_debug(DebugVal::CParserToken, || {
             if let Some(Token::Identifier(_, i)) = self.peek() {
                 println!("is {} type: {:?}", i, self.is_type(i));
+            } else {
+                println!("{:?}", self.peek());
             }
         });
         match self.peek() {
@@ -416,6 +421,7 @@ where
 
     fn parse_specifiers(&mut self, spec: &mut Specifiers) {
         loop {
+            self.maybe_parse_attributes();
             match self.peek() {
                 Some(Token::Typedef(..)) => spec.0.typedef = true,
                 Some(Token::Extern(..)) => spec.0.extern_ = true,
@@ -959,7 +965,7 @@ where
     fn parse_stmt_or_declaration(&mut self) -> StatementOrDeclaration {
         if let Some(Token::Identifier(_, ident)) = self.peek() {
             if !self.is_type(&ident.clone()) && !self.is_typeof(ident) {
-                return StatementOrDeclaration::Statement(self.parse_statement());
+                return StatementOrDeclaration::Statement(self.parse_statement(true));
             }
         }
         match_first!(
@@ -967,7 +973,7 @@ where
             default unexpected_token!(_t, self),
 
             Declaration => StatementOrDeclaration::Declaration(self.parse_declaration()),
-            Statement => StatementOrDeclaration::Statement(self.parse_statement()),
+            Statement => StatementOrDeclaration::Statement(self.parse_statement(true)),
         )
     }
 
@@ -990,12 +996,12 @@ where
         Declaration::Declaration(Box::new(spec), init_list, None)
     }
 
-    fn parse_statement(&mut self) -> Statement {
+    fn parse_statement(&mut self, semicolon: bool) -> Statement {
         match self.peek_n(2).as_slice() {
             [Token::Identifier(..), Token::Colon(..)]
             | [Token::Case(..), _]
             | [Token::Default(..), _] => {
-                return Statement::LabeledStatement(Box::new(self.parse_labeled_statement()))
+                return Statement::LabeledStatement(Box::new(self.parse_labeled_statement(semicolon)))
             }
             _ => {}
         }
@@ -1005,14 +1011,16 @@ where
 
             AsmStatement => {
                 let res = Statement::AsmStatement(Box::new(self.parse_asm_statement()));
-                read_token!(self, Token::Semicolon);
+                if semicolon {
+                    read_token!(self, Token::Semicolon);
+                }
                 res
             },
             CompoundStatement => Statement::CompoundStatement(Box::new(self.parse_compound_statement())),
             SelectionStatement => Statement::SelectionStatement(Box::new(self.parse_selection_statement())),
             IterationStatement => Statement::IterationStatement(Box::new(self.parse_iteration_statement())),
             JumpStatement => Statement::JumpStatement(Box::new(self.parse_jump_statement())),
-            ExpressionStatement => Statement::ExpressionStatement(Box::new(self.parse_expression_statement())),
+            ExpressionStatement => Statement::ExpressionStatement(Box::new(self.parse_expression_statement(semicolon))),
         )
     }
 
@@ -1070,23 +1078,27 @@ where
         }
     }
 
-    fn parse_expression_statement(&mut self) -> ExpressionStatement {
+    fn parse_expression_statement(&mut self, semicolon: bool) -> ExpressionStatement {
         if let Some(Token::Semicolon(..)) = self.peek() {
-            read_token!(self, Token::Semicolon);
+            if semicolon {
+                read_token!(self, Token::Semicolon);
+            }
             ExpressionStatement::Expression(None)
         } else {
             let e = ExpressionStatement::Expression(Some(Box::new(self.parse_expression().0)));
-            read_token!(self, Token::Semicolon);
+            if semicolon {
+                read_token!(self, Token::Semicolon);
+            }
             e
         }
     }
 
-    fn parse_labeled_statement(&mut self) -> LabeledStatement {
+    fn parse_labeled_statement(&mut self, semicolon: bool) -> LabeledStatement {
         match self.peek() {
             Some(Token::Identifier(..)) => {
                 let ident = read_token!(self, Token::Identifier);
                 let c = read_token!(self, Token::Colon);
-                let s = self.parse_statement();
+                let s = self.parse_statement(semicolon);
                 LabeledStatement::Identifier(ident, c, s)
             }
             Some(Token::Case(..)) => {
@@ -1096,18 +1108,18 @@ where
                     let v = read_token!(self, Token::Varargs);
                     let e2 = self.parse_general_expression().0;
                     let c = read_token!(self, Token::Colon);
-                    let s = self.parse_statement();
+                    let s = self.parse_statement(semicolon);
                     LabeledStatement::RangeCase(case, e, v, e2, c, s)
                 } else {
                     let c = read_token!(self, Token::Colon);
-                    let s = self.parse_statement();
+                    let s = self.parse_statement(semicolon);
                     LabeledStatement::Case(case, e, c, s)
                 }
             }
             Some(Token::Default(..)) => {
                 let def = read_token!(self, Token::Default);
                 let c = read_token!(self, Token::Colon);
-                let s = self.parse_statement();
+                let s = self.parse_statement(semicolon);
                 LabeledStatement::Default(def, c, s)
             }
             t => unexpected_token!(t, self),
@@ -1121,11 +1133,11 @@ where
                 read_token!(self, Token::OpenParen);
                 let e = self.parse_expression().0;
                 read_token!(self, Token::CloseParen);
-                let s = self.parse_statement();
+                let s = self.parse_statement(true);
                 let otherwise = match self.peek() {
                     Some(Token::Else(..)) => {
                         read_token!(self, Token::Else);
-                        Some(Box::new(self.parse_statement()))
+                        Some(Box::new(self.parse_statement(true)))
                     }
                     _ => None,
                 };
@@ -1136,7 +1148,7 @@ where
                 read_token!(self, Token::OpenParen);
                 let e = self.parse_expression().0;
                 read_token!(self, Token::CloseParen);
-                let s = self.parse_statement();
+                let s = self.parse_statement(true);
                 SelectionStatement::Switch(Box::new(e), s)
             }
             t => unexpected_token!(t, self),
@@ -1151,12 +1163,12 @@ where
                 let op = read_token!(self, Token::OpenParen);
                 let e = Box::new(self.parse_expression().0);
                 let cp = read_token!(self, Token::CloseParen);
-                let s = Box::new(self.parse_statement());
+                let s = Box::new(self.parse_statement(true));
                 IterationStatement::While(w, op, e, cp, s)
             }
             Some(Token::Do(..)) => {
                 let d = read_token!(self, Token::Do);
-                let s = Box::new(self.parse_statement());
+                let s = Box::new(self.parse_statement(true));
                 let w = read_token!(self, Token::While);
                 let op = read_token!(self, Token::OpenParen);
                 let e = Box::new(self.parse_expression().0);
@@ -1172,10 +1184,10 @@ where
                     DeclarationOrExpression::Declaration(Box::new(self.parse_declaration()))
                 } else {
                     DeclarationOrExpression::ExpressionStatement(Box::new(
-                        self.parse_expression_statement(),
+                        self.parse_expression_statement(true),
                     ))
                 };
-                let e2 = Box::new(self.parse_expression_statement());
+                let e2 = Box::new(self.parse_expression_statement(true));
                 let f_expr = if let Some(Token::CloseParen(..)) = self.peek() {
                     ForExpr::EmptyLast(e1, e2)
                 } else {
@@ -1183,7 +1195,7 @@ where
                     ForExpr::ForExpr(e1, e2, e3)
                 };
                 let cp = read_token!(self, Token::CloseParen);
-                let s = Box::new(self.parse_statement());
+                let s = Box::new(self.parse_statement(true));
                 IterationStatement::For(f, op, f_expr, cp, s)
             }
             t => unexpected_token!(t, self),
@@ -1829,6 +1841,9 @@ where
         loop {
             match self.peek() {
                 Some(Token::Identifier(_, ident)) if ident.as_ref() == "__attribute__" => {
+                    if_debug(DebugVal::CParserToken, || {
+                        println!("Parsing an __attribute__");
+                    });
                     read_token!(self, Token::Identifier);
                     read_token!(self, Token::OpenParen);
                     read_token!(self, Token::OpenParen);
@@ -1892,10 +1907,47 @@ where
         }
     }
 
+    #[allow(unreachable_patterns)]
     fn parse_type_statement_or_expression(&mut self) -> Vec<MacroExpansion> {
-        let e = self.parse_expression();
-        assert!(self.peek().is_none());
-        vec![MacroExpansion::Expression(e.0)]
+        let mut res = Vec::new();
+        loop {
+            let m = match self.peek() {
+                None => break,
+                Some(Token::Semicolon(..)) => continue,
+                Some(Token::Identifier(_, ident)) => {
+                    dbg!(&ident);
+                    if !self.is_type(&ident) && !self.is_typeof(ident) {
+                        dbg!("statement");
+                        let m = match self.parse_statement(false) {
+                            Statement::ExpressionStatement(
+                                box ExpressionStatement::Expression(Some(e))) => MacroExpansion::Expression(*e),
+                                Statement::ExpressionStatement(
+                                    box ExpressionStatement::Expression(None)) => continue,
+                                stmt => MacroExpansion::Statement(stmt),
+                        };
+                        res.push(m);
+                        continue;
+                    }
+                    dbg!("ext_declaration");
+                    MacroExpansion::Declaration(self.parse_external_declaration())
+                },
+                Some(t) => {
+                    let tt = t.clone();
+                    if self.starts_type(&tt) {
+                        dbg!("starts_type");
+                        MacroExpansion::Declaration(self.parse_external_declaration())
+                    } else {
+                        match self.parse_statement(false) {
+                            Statement::ExpressionStatement(box ExpressionStatement::Expression(Some(e))) => MacroExpansion::Expression(*e),
+                            Statement::ExpressionStatement(box ExpressionStatement::Expression(None)) => continue,
+                            stmt => MacroExpansion::Statement(stmt),
+                        }
+                    }
+                }
+            };
+            res.push(m);
+        }
+        res
     }
 }
 

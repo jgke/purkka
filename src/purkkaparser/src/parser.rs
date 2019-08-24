@@ -326,7 +326,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         let mut units = Vec::new();
         while maybe_read_token!(self, Token::SemiColon).is_some() {}
         while self.peek().is_some() {
-            units.push(self.parse_unit());
+            units.append(&mut self.parse_unit());
             while maybe_read_token!(self, Token::SemiColon).is_some() {}
         }
         TranslationUnit::Units(units)
@@ -387,16 +387,22 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 || self.symbols.imported_macros.1.contains(s))
     }
 
-    fn parse_unit(&mut self) -> Unit {
-        match_first!(
-            self.peek() => _t,
-            default unexpected_token!(_t, self),
+    fn parse_unit(&mut self) -> Vec<Unit> {
+        match self.peek() {
+            Some(Token::Operator(_, op)) if op.as_ref() == "@" => {
+                read_token!(self, Token::Operator);
+                self.parse_macro_unit()
+            }
+            _ => vec![match_first!(
+                self.peek() => _t,
+                default unexpected_token!(_t, self),
 
-            Declaration => Unit::Declaration(Box::new(self.parse_declaration(true))),
-            OperatorOverload => Unit::OperatorOverload(Box::new(self.parse_new_operator())),
-            ImportFile => Unit::ImportFile(Box::new(self.parse_include())),
-            Typedef => Unit::Typedef(Box::new(self.parse_typedef())),
-        )
+                Declaration => Unit::Declaration(Box::new(self.parse_declaration(true))),
+                OperatorOverload => Unit::OperatorOverload(Box::new(self.parse_new_operator())),
+                ImportFile => Unit::ImportFile(Box::new(self.parse_include())),
+                Typedef => Unit::Typedef(Box::new(self.parse_typedef())),
+            )]
+        }
     }
 
     fn parse_declaration(&mut self, semi: bool) -> Declaration {
@@ -825,7 +831,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         let mut expr = match self.peek() {
             Some(Token::Operator(_, op)) if op.as_ref() == "@" => {
                 read_token!(self, Token::Operator);
-                self.parse_macro()
+                self.parse_macro_expression()
             }
             Some(Token::Operator(_, op)) => match self.operators.unary.get(op).cloned() {
                 Some(ref n) if n.left_associative => {
@@ -901,7 +907,29 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         expr
     }
 
-    fn parse_macro(&mut self) -> Expression {
+    fn parse_macro_expression(&mut self) -> Expression {
+        let mut result = self.parse_macro();
+
+        assert_eq!(result.len(), 1);
+        match result.remove(0) {
+            MacroExpansion::Expression(e) => e,
+            _ => panic!(),
+        }
+    }
+
+    fn parse_macro_unit(&mut self) -> Vec<Unit> {
+        self.parse_macro().into_iter().map(|result| match result {
+            MacroExpansion::Expression(e) => panic!("Macro expanded into an expression {:?}", e),
+            MacroExpansion::Statement(s) => match s {
+                Statement::Declaration(d) => Unit::Declaration(d),
+                Statement::Pragma(_s) => unimplemented!(),
+                _ => panic!("Not supported"),
+            },
+            MacroExpansion::Type(_ty) =>  unimplemented!(),
+        }).collect()
+    }
+
+    fn parse_macro(&mut self) -> Vec<MacroExpansion> {
         let tys = self
             .symbols
             .types
@@ -912,12 +940,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         match self.peek() {
             Some(Token::StringLiteral(..)) => {
                 if let Token::StringLiteral(_, s) = read_token!(self, Token::StringLiteral) {
-                    let mut result = (self.expand)(s.to_string(), tys);
-                    assert_eq!(result.len(), 1);
-                    match result.remove(0) {
-                        MacroExpansion::Expression(e) => e,
-                        _ => panic!(),
-                    }
+                    (self.expand)(s.to_string(), tys)
                 } else {
                     unreachable!();
                 }
@@ -925,24 +948,12 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Identifier(_, s)) => {
                 if self.symbols.imported_macros.0.contains(s) {
                     let s = read_identifier_str!(self); 
-                    let mut result = (self.expand)(s.to_string(), tys);
-
-                    assert_eq!(result.len(), 1);
-                    match result.remove(0) {
-                        MacroExpansion::Expression(e) => e,
-                        _ => panic!(),
-                    }
+                    (self.expand)(s.to_string(), tys)
                 } else if self.symbols.imported_macros.1.contains(s) {
                     let s = read_identifier_str!(self);
                     let args = self.parse_args();
 
-                    let mut result = (self.expand_call)(s.to_string(), args, tys);
-
-                    assert_eq!(result.len(), 1);
-                    match result.remove(0) {
-                        MacroExpansion::Expression(e) => e,
-                        _ => panic!(),
-                    }
+                    (self.expand_call)(s.to_string(), args, tys)
                 } else {
                     unimplemented!();
                 }
@@ -955,7 +966,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         match self.peek() {
             Some(Token::Identifier(_, s)) => {
                 if self.starts_c_macro(s) {
-                    PrimaryExpression::Expression(Box::new(self.parse_macro()))
+                    PrimaryExpression::Expression(Box::new(self.parse_macro_expression()))
                 } else {
                     let t = self.next().identifier_s().unwrap().clone();
                     let ty = self.get_ty(&t).cloned();

@@ -4,7 +4,7 @@ pub fun main() {
     return @"FOO(1)";
 }
 
-pub fun bar() {
+pub fun qux() {
     return FOO(1);
 }
 
@@ -15,3 +15,5 @@ pub fun baz() {
     }
     return FOO(1);
 }
+
+@"BAR()";

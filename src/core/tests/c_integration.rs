@@ -385,3 +385,9 @@ fn typeof_extension() {
     assert!(parse("int a() { typedef int foo; }\nint b() { typedef int foo; }").is_ok());
     assert!(parse("int a() { __label__ foo; bar: baz(); foo = &&bar; }\n").is_ok());
 }
+
+#[test]
+fn void_function() {
+    assert!(parse("typedef int foo; static inline __attribute__ ((__unused__)) foo *bar() {}").is_ok());
+    assert!(parse("typedef int foo; static inline __attribute__ ((__unused__)) foo *bar(void) {}").is_ok());
+}

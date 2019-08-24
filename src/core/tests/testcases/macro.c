@@ -3,7 +3,7 @@
 int main() {
     return(1 + 1);
 }
-int bar() {
+int qux() {
     return((1 + 1));
 }
 int baz() {
@@ -12,4 +12,7 @@ int baz() {
         (void)FOO;
     }
     return((1 + 1));
+}
+int bar() {
+    return 0;
 }

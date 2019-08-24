@@ -1015,6 +1015,11 @@ impl CToPurkka {
     fn macro_expansion(&self, exp: cp::MacroExpansion) -> pp::MacroExpansion {
         match exp {
             cp::MacroExpansion::Expression(e) => pp::MacroExpansion::Expression(self.expression(e)),
+            cp::MacroExpansion::Declaration(d) => match d {
+                cp::ExternalDeclaration::FunctionDefinition(d) => pp::MacroExpansion::Statement(pp::Statement::Declaration(Box::new(self.function_definition(*d)))),
+                cp::ExternalDeclaration::Declaration(d) => pp::MacroExpansion::Statement(pp::Statement::Declaration(Box::new(self.declaration(*d)))),
+                cp::ExternalDeclaration::Semicolon(_d) => unimplemented!(),
+            }
             cp::MacroExpansion::Statement(s) => pp::MacroExpansion::Statement(self.statement(s)),
             cp::MacroExpansion::Type(t) => pp::MacroExpansion::Type(self.type_name(t)),
         }
@@ -1113,8 +1118,102 @@ impl CToPurkka {
         }
     }
 
-    fn statement(&self, _e: cp::Statement) -> pp::Statement {
-        unimplemented!()
+    fn declaration(&self, d: cp::Declaration) -> pp::Declaration {
+        match d {
+            cp::Declaration::Declaration(spec, mut decls, attrs) => {
+                dbg!(&decls);
+                if decls.len() != 1 {
+                    unimplemented!();
+                }
+                let decl = decls.remove(0);
+                match decl {
+                    cp::InitDeclarator::Declarator(decl) => {
+                        let spec_ty = self.decl_spec_to_type(&spec, attrs.unwrap_or_else(|| Vec::new()));
+                        let (name, ty) = self.declarator_to_type(&decl, spec_ty);
+                        pp::Declaration::Declaration(
+                            pp::DeclarationFlags::default(), 
+                            name,
+                            Box::new(ty),
+                            None
+                        )
+                    }
+                    cp::InitDeclarator::Asm(..) => unimplemented!(),
+                    cp::InitDeclarator::Assign(decl, _, initializer) => {
+                        let spec_ty = self.decl_spec_to_type(&spec, attrs.unwrap_or_else(|| Vec::new()));
+                        let (name, ty) = self.declarator_to_type(&decl, spec_ty);
+                        pp::Declaration::Declaration(
+                            pp::DeclarationFlags::default(), 
+                            name,
+                            Box::new(ty),
+                            match *initializer {
+                                cp::AssignmentOrInitializerList::AssignmentExpression(expr) => Some(Box::new(self.assignment_expression(expr))),
+                                cp::AssignmentOrInitializerList::Initializers(..) => unimplemented!(),
+                            }
+                        )
+                    }
+                }
+            }
+            cp::Declaration::Pragma(_pragma) => unimplemented!(),
+        }
+    }
+
+    fn function_definition(&self, d: cp::FunctionDefinition) -> pp::Declaration {
+        let cp::FunctionDefinition::FunctionDefinition(opt_spec, decl, stmt) = d;
+        let spec = opt_spec.unwrap_or_else(|| unimplemented!());
+        let spec_ty = self.decl_spec_to_type(&spec, Vec::new());
+        let (name, ty) = self.declarator_to_type(&decl, spec_ty);
+        let ret_ty = match &ty {
+            pp::TypeSignature::Function(_params, ret_ty) => ret_ty.clone(),
+            _ => panic!("Not a function: {:?}", ty),
+        };
+        let mut flags = pp::DeclarationFlags::default();
+        flags.mutable = false;
+        pp::Declaration::Declaration(
+            flags,
+            name,
+            Box::new(ty),
+            Some(
+                Box::new(pp::Expression::PrimaryExpression(pp::PrimaryExpression::Lambda(pp::Lambda::Lambda(
+                            self.declarator_to_params(&*decl),
+                            *ret_ty,
+                            self.block(*stmt)
+                ))))
+            )
+        )
+    }
+
+    fn block(&self, e: cp::CompoundStatement) -> pp::Block {
+        let cp::CompoundStatement::Statements(stmts) = e;
+        pp::Block::Statements(stmts.into_iter().map(|s| self.stmt_or_declaration(s)).collect())
+    }
+
+    fn stmt_or_declaration(&self, e: cp::StatementOrDeclaration) -> pp::Statement {
+        match e { 
+            cp::StatementOrDeclaration::Statement(stmt) => self.statement(stmt),
+            cp::StatementOrDeclaration::Declaration(decl) => pp::Statement::Declaration(Box::new(self.declaration(decl))),
+        }
+    }
+
+    fn statement(&self, e: cp::Statement) -> pp::Statement {
+        match e {
+            cp::Statement::LabeledStatement(..) => unimplemented!(),
+            cp::Statement::CompoundStatement(..) => unimplemented!(),
+            cp::Statement::ExpressionStatement(..) => unimplemented!(),
+            cp::Statement::SelectionStatement(..) => unimplemented!(),
+            cp::Statement::IterationStatement(..) => unimplemented!(),
+            cp::Statement::JumpStatement(stmt) => self.jump_statement(*stmt),
+            cp::Statement::AsmStatement(..) => unimplemented!(),
+        }
+    }
+
+    fn jump_statement(&self, e: cp::JumpStatement) -> pp::Statement {
+        match e {
+            cp::JumpStatement::Goto(..) => unimplemented!(),
+            cp::JumpStatement::Continue(..) => unimplemented!(),
+            cp::JumpStatement::Break(..) => unimplemented!(),
+            cp::JumpStatement::ReturnVoid(..) => unimplemented!(),
+            cp::JumpStatement::Return(_, e, _) => pp::Statement::Return(Some(Box::new(self.expression(e))))
+        }
     }
 
     fn type_name(&self, cp::TypeName::TypeName(spec, decl): cp::TypeName) -> pp::TypeSignature {
@@ -1215,6 +1314,29 @@ impl CToPurkka {
                     params.iter().map(|f| self.function_param(f)).collect(),
                     Box::new(ty),
                 )
+            }
+        }
+    }
+
+    fn declarator_to_params(
+        &self,
+        decl: &cp::Declarator,
+    ) -> Vec<pp::LambdaParam> {
+        let cp::Declarator::Declarator(_, decl) = decl;
+        self.direct_decl_to_params(decl)
+    }
+
+    fn direct_decl_to_params(
+        &self,
+        decl: &cp::DirectDeclarator,
+    ) -> Vec<pp::LambdaParam> {
+        match decl {
+            cp::DirectDeclarator::Identifier(..) |
+            cp::DirectDeclarator::AsmStatement(..) |
+            cp::DirectDeclarator::Array(..) => panic!("Not a function: {:?}", decl),
+            cp::DirectDeclarator::Parens(decl) => self.declarator_to_params(&**decl),
+            cp::DirectDeclarator::Function(_decl, params) => {
+                params.iter().map(|f| From::from(self.function_param(f))).collect()
             }
         }
     }
