@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 use preprocessor::PreprocessorOptions;
 
-use core::core::get_file_cb;
+use purkka::core::get_file_cb;
 
 use resolve::*;
 

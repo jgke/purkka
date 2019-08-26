@@ -2,13 +2,13 @@
 #![feature(plugin_registrar, rustc_private)]
 
 extern crate rustc;
-extern crate rustc_plugin;
+extern crate rustc_driver;
 extern crate rustc_target;
 extern crate smallvec;
 extern crate syntax;
 extern crate syntax_pos;
 
-use rustc_plugin::Registry;
+use rustc_driver::plugin::Registry;
 use syntax::ast;
 use syntax::ext::base::{DummyResult, ExtCtxt, MacResult};
 use syntax::parse;

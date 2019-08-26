@@ -5,4 +5,13 @@ authors = ["Jaakko Hannikainen <jgke@jgke.fi>"]
 edition = "2018"
 
 [dependencies]
-core = { path="../core" }
+cformat = { path="../cformat" }
+cparser = { path="../cparser" }
+ctoken = { path="../ctoken" }
+purkkaparser = { path="../purkkaparser" }
+purkkaconverter = { path="../purkkaconverter" }
+preprocessor = { path="../preprocessor" }
+resolve = { path="../resolve" }
+debug = { path="../debug" }
+clap = "2.32.0"
+tool = "0.2.1"

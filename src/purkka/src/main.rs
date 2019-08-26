@@ -1,5 +1,5 @@
-extern crate core;
+pub mod core;
 
 fn main() {
-    core::core::real_main()
+    core::real_main()
 }

@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "src/cformat",
-    "src/core",
     "src/cparser",
     "src/ctoken",
     "src/fragment",

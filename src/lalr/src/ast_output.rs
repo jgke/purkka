@@ -170,7 +170,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                             self.cx
                                 .variant(total_span, self.cx.ident_of(&real_name), vals);
                         if is_empty {
-                            variant.node.data =
+                            variant.data =
                                 ast::VariantData::Tuple(Vec::new(), ast::DUMMY_NODE_ID);
                         }
                         variant
