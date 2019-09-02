@@ -11,3 +11,4 @@ purkkaparser = { path="../purkkaparser" }
 purkkasyntax = { path="../purkkasyntax" }
 purkkatoken = { path="../purkkatoken" }
 resolve = { path="../resolve" }
+shared = { path="../shared" }

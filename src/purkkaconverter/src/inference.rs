@@ -1,5 +1,5 @@
 /// Infer types
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::ops::Deref;
 use std::rc::Rc;
@@ -532,7 +532,7 @@ impl TypeInferrer<'_> {
             if let Some(ty) = self.get_ident_ty(name) {
                 struct_ty = From::from(ty);
             } else {
-                panic!("Cannot get field {} from type {}", ident, name)
+                panic!("Cannot access field {} from type {}", ident, name)
             }
         }
         match struct_ty {
@@ -644,7 +644,13 @@ impl TypeInferrer<'_> {
                     .types
                     .get(ident)
                     .unwrap_or_else(|| &self.context.symbols.imported_types[ident]);
-                if let TypeSignature::Struct(_, struct_fields) = struct_ty {
+                if let TypeSignature::Struct(struct_name, struct_fields) = struct_ty {
+                    let mut used_names: HashSet<Rc<str>> = HashSet::new();
+                    let mut remaining_names: Vec<Rc<str>> = struct_fields
+                        .iter()
+                        .map(|StructField::Field { name, .. }| name.clone())
+                        .rev()
+                        .collect::<Vec<_>>();
                     let mut struct_field_tys = struct_fields
                         .iter()
                         .map(|StructField::Field { ty, name, .. }| (name, ty))
@@ -654,10 +660,35 @@ impl TypeInferrer<'_> {
                     let mut arg_field_tys = fields
                         .iter_mut()
                         .map(
-                            |StructInitializationField::StructInitializationField(name, e)| {
-                                Ok((name, self.get_type(&mut **e)?))
-                            },
-                        )
+                            |StructInitializationField::StructInitializationField(ref mut name, e)| {
+                                if name.is_none() {
+                                    let res = remaining_names.pop().unwrap_or_else(|| {
+                                        panic!(format!(
+                                            "Struct {:?} has only {} fields",
+                                            struct_name,
+                                            used_names.len()
+                                        ))
+                                    });
+                                    used_names.insert(res.clone());
+                                    *name = Some(res);
+                                } else {
+                                    let ident = name.as_ref().unwrap();
+                                    if !remaining_names.contains(&ident) {
+                                        if used_names.contains(ident) {
+                                            panic!("Cannot instantiate field {} more than once", ident);
+                                        } else {
+                                            panic!("Field {} does not exist in struct {:?}", ident, struct_name);
+                                        }
+                                    }
+                                    remaining_names
+                                        .iter()
+                                        .position(|name| name == ident)
+                                        .map(|i| remaining_names.remove(i));
+
+                                    used_names.insert(ident.clone());
+                                }
+                                Ok((name.as_mut().unwrap(), self.get_type(&mut **e)?))
+                        })
                         .collect::<Result<
                             Vec<(&mut Rc<str>, (IntermediateType, Vec<IntermediateType>))>,
                             String,
@@ -1127,6 +1158,8 @@ impl TypeInferrer<'_> {
             (IntermediateNumber::Indeterminate, TypeSignature::Pointer {..})
                 // Cast pointer to int, eg. if ptr { ptr is not null } else { ptr is null }
                 => return Ok(()),
+            // XXX: temporory hack for C
+            (IntermediateNumber::Float, TypeSignature::Primitive(..)) => return Ok(()),
             otherwise => return not_impl!(otherwise),
         };
 
@@ -1287,8 +1320,14 @@ impl TypeInferrer<'_> {
         match (lvalue, rvalue) {
             (Primitive::Int(l), Primitive::Int(r)) if l >= r => Ok(()),
             (Primitive::UInt(l), Primitive::UInt(r)) if l >= r => Ok(()),
+
             // Allow placing smaller uints to larger ints
-            (Primitive::Int(l), Primitive::UInt(r)) if l > r => Ok(()),
+            //(Primitive::Int(l), Primitive::UInt(r)) if l > r => Ok(()),
+
+            // XXX: C allows this, so allow this for now
+            (Primitive::Int(l), Primitive::UInt(r)) if l == r => Ok(()),
+            (Primitive::UInt(l), Primitive::Int(r)) if l == r => Ok(()),
+
             (l, r) => self.fail_if_prim(l != r, l, r),
         }
     }
@@ -1307,11 +1346,12 @@ impl TypeInferrer<'_> {
     }
 
     fn fail_if_prim(&self, cond: bool, left: &Primitive, right: &Primitive) -> Result<(), String> {
-        if cond {
-            Err(format!("Cannot implicitly assign {} to {}", right, left))
-        } else {
+        // XXX: hack for C
+        //if cond {
+        //    Err(format!("Cannot implicitly assign {} to {}", right, left))
+        //} else {
             Ok(())
-        }
+        //}
     }
 }
 

@@ -240,6 +240,7 @@ dependencies = [
  "purkkasyntax 0.1.0",
  "purkkatoken 0.1.0",
  "resolve 0.1.0",
+ "shared 0.1.0",
 ]
 
 [[package]]

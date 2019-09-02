@@ -42,7 +42,8 @@ impl ASTVisitor for InlineOperators<'_> {
     fn visit_expression(&mut self, e: &mut Expression) -> Result<(), ()> {
         if let Expression::Op(op, list) = e {
             let ExprList::List(list) = list;
-            let operator = &self.context.operators.infix[op];
+            let operator = &self.context.operators.infix.get(op)
+                .unwrap_or_else(|| panic!("Unknown operator: {}", op));
             if let Some(expr) = &operator.handler {
                 *e = Expression::Call(Box::new(expr.clone()), list.clone())
             }

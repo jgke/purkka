@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use debug::debug::{if_debug, DebugVal};
 use shared::traits::{multipeek, MultiPeek};
+use shared::utils;
 
 use ctoken::token::Token;
 use purkkasyntax::{Primitive, TypeSignature};
@@ -1652,13 +1653,7 @@ where
                 if let Some(ty) = float {
                     (PrimaryExpression::Number(t), None, Some(ty))
                 } else {
-                    let val = if lc.starts_with("0x") {
-                        i128::from_str_radix(&lc[2..], 16).unwrap()
-                    } else if lc.starts_with('0') && lc.len() > 1 {
-                        i128::from_str_radix(&lc[1..], 8).unwrap()
-                    } else {
-                        i128::from_str_radix(&lc, 10).unwrap()
-                    };
+                    let val = utils::int_from_str(&lc);
                     (
                         PrimaryExpression::Number(t),
                         Some(val),
@@ -1915,9 +1910,7 @@ where
                 None => break,
                 Some(Token::Semicolon(..)) => continue,
                 Some(Token::Identifier(_, ident)) => {
-                    dbg!(&ident);
                     if !self.is_type(&ident) && !self.is_typeof(ident) {
-                        dbg!("statement");
                         let m = match self.parse_statement(false) {
                             Statement::ExpressionStatement(
                                 box ExpressionStatement::Expression(Some(e))) => MacroExpansion::Expression(*e),
@@ -1928,13 +1921,11 @@ where
                         res.push(m);
                         continue;
                     }
-                    dbg!("ext_declaration");
                     MacroExpansion::Declaration(self.parse_external_declaration())
                 },
                 Some(t) => {
                     let tt = t.clone();
                     if self.starts_type(&tt) {
-                        dbg!("starts_type");
                         MacroExpansion::Declaration(self.parse_external_declaration())
                     } else {
                         match self.parse_statement(false) {

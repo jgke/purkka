@@ -165,9 +165,16 @@ fn default_bin_ops() -> OperatorMap {
 
     // Assignment
     infix_operators.insert(From::from("="), Operator::binop_right(1, bin_any_to_any(), None));
-    infix_operators.insert(From::from("&="), Operator::binop_right(1, bin_num_to_num(), None));
-    infix_operators.insert(From::from("+="), Operator::binop_right(1, bin_num_to_num(), None));
-    infix_operators.insert(From::from("-="), Operator::binop_right(1, bin_num_to_num(), None));
+    infix_operators.insert(From::from("*="), Operator::binop_right(1, bin_any_to_any(), None)); 
+    infix_operators.insert(From::from("/="), Operator::binop_right(1, bin_any_to_any(), None));
+    infix_operators.insert(From::from("%="), Operator::binop_right(1, bin_any_to_any(), None));
+    infix_operators.insert(From::from("+="), Operator::binop_right(1, bin_any_to_any(), None));
+    infix_operators.insert(From::from("-="), Operator::binop_right(1, bin_any_to_any(), None));
+    infix_operators.insert(From::from("<<="), Operator::binop_right(1, bin_any_to_any(), None));
+    infix_operators.insert(From::from(">>="), Operator::binop_right(1, bin_any_to_any(), None));
+    infix_operators.insert(From::from("&="), Operator::binop_right(1, bin_any_to_any(), None));
+    infix_operators.insert(From::from("^="), Operator::binop_right(1, bin_any_to_any(), None));
+    infix_operators.insert(From::from("|="), Operator::binop_right(1, bin_any_to_any(), None));
 
     // Ternary
     infix_operators.insert(From::from("?"), Operator::binop_right(2, bin_num_to_num(), None));
@@ -828,7 +835,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     #[allow(clippy::cognitive_complexity)]
     fn parse_expression_(&mut self, precedence: usize) -> Expression {
-        let mut expr = match self.peek() {
+        let expr = match self.peek() {
             Some(Token::Operator(_, op)) if op.as_ref() == "@" => {
                 read_token!(self, Token::Operator);
                 self.parse_macro_expression()
@@ -853,6 +860,11 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
             _ => Expression::PrimaryExpression(self.parse_primary_expression()),
         };
+        self.parse_expression__(expr, precedence)
+    }
+
+    #[allow(clippy::cognitive_complexity)]
+    fn parse_expression__(&mut self, mut expr: Expression, precedence: usize) -> Expression {
         loop {
             match self.peek() {
                 Some(Token::As(..)) => {
@@ -926,6 +938,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 _ => panic!("Not supported"),
             },
             MacroExpansion::Type(_ty) =>  unimplemented!(),
+            MacroExpansion::Typedef(typedef) => {
+                dbg!(&typedef);
+                if let Typedef::Alias(_, name, ty) = typedef.clone() {
+                    self.symbols.types.insert(name.clone(), *ty);
+                }
+                Unit::Typedef(Box::new(typedef))
+            }
         }).collect()
     }
 
@@ -1237,8 +1256,35 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         Block::Statements(stmts)
     }
 
+    fn parse_macro_as_statement(&mut self) -> Statement {
+        let mut res = self.parse_macro().into_iter().map(|m| match m {
+            MacroExpansion::Expression(e) => Statement::Expression(Box::new(e)),
+            MacroExpansion::Statement(s) => s,
+            MacroExpansion::Type(_t) => unimplemented!(),
+            MacroExpansion::Typedef(_t) => unimplemented!(),
+        }).collect::<Vec<_>>();
+        if res.len() == 1 {
+            match res.remove(0) {
+                Statement::Expression(e) => Statement::Expression(Box::new(self.parse_expression__(*e, 1))),
+                otherwise => otherwise
+            }
+        } else {
+            Statement::BlockExpression(Box::new(BlockExpression::Block(Block::Statements(res))))
+        }
+    }
+
     #[allow(unreachable_patterns)]
     fn parse_statement(&mut self, semi: bool) -> Statement {
+        match self.peek().cloned() {
+            Some(Token::Operator(_, op)) if op.as_ref() == "@" => {
+                read_token!(self, Token::Operator);
+                return self.parse_macro_as_statement()
+            }
+            Some(Token::Identifier(_, ident)) if self.starts_c_macro(&ident) => {
+                return self.parse_macro_as_statement()
+            }
+            _ => {}
+        }
         let res = match_first!(
             self.peek() => _t,
             default unexpected_token!(_t, self),
@@ -1281,6 +1327,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 read_token!(self, Token::Break);
                 JumpStatement::Break
             }
+            Some(Token::Continue(..)) => {
+                read_token!(self, Token::Continue);
+                JumpStatement::Continue
+            }
             t => unexpected_token!(t, self),
         }
     }
@@ -1317,19 +1367,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     #[allow(clippy::cognitive_complexity)]
     fn parse_initialization_fields(&mut self, ty: &Rc<str>) -> Vec<StructInitializationField> {
-        let struct_fields = if let TypeSignature::Struct(_, fields) = &self.symbols.types[ty] {
-            fields
+        if let TypeSignature::Struct(..) = &self.symbols.types[ty] {
         } else {
             panic!("Cannot instantiate non-struct type {} as struct", ty);
         };
-
-        let mut remaining_names = struct_fields
-            .iter()
-            .map(|StructField::Field { name, .. }| name.clone())
-            .rev()
-            .collect::<Vec<_>>();
-
-        let mut used_names = HashSet::new();
 
         let mut fields = Vec::new();
 
@@ -1350,23 +1391,9 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                             {
                                 read_token!(self, Token::Colon);
                                 let expr = self.parse_expression();
-                                if !remaining_names.contains(&ident) {
-                                    if used_names.contains(&ident) {
-                                        panic!("Cannot instantiate field {} more than once", ident);
-                                    } else {
-                                        panic!("Field {} does not exist in struct {}", ident, ty);
-                                    }
-                                }
-
-                                remaining_names
-                                    .iter()
-                                    .position(|name| name == &ident)
-                                    .map(|i| remaining_names.remove(i));
-
-                                used_names.insert(ident.clone());
 
                                 fields.push(StructInitializationField::StructInitializationField(
-                                    ident,
+                                    Some(ident),
                                     Box::new(expr),
                                 ));
                             } else {
@@ -1385,16 +1412,8 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                             }
                         }
                         Some(Token::Comma(..)) => {
-                            let ident = remaining_names.pop().unwrap_or_else(|| {
-                                panic!(format!(
-                                    "Struct {} has only {} fields",
-                                    ty,
-                                    used_names.len()
-                                ))
-                            });
-                            used_names.insert(ident.clone());
                             fields.push(StructInitializationField::StructInitializationField(
-                                ident.clone(),
+                                None,
                                 Box::new(expr),
                             ));
                             read_token!(self, Token::Comma);

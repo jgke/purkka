@@ -231,7 +231,7 @@ grammar! {
         | #Token::Identifier Token::Operator Expression
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum StructInitializationField {
-            StructInitializationField(Rc<str>, Box<Expression>)
+            StructInitializationField(Option<Rc<str>>, Box<Expression>)
         }
         ;
 
@@ -348,9 +348,11 @@ grammar! {
 
     JumpStatement
        -> #Token::Break
+        | #Token::Continue
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum JumpStatement {
             Break,
+            Continue,
         }
         ;
 
@@ -844,8 +846,10 @@ impl From<&str> for Box<PrimaryExpression> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub enum MacroExpansion {
     Expression(Expression),
     Statement(Statement),
     Type(TypeSignature),
+    Typedef(Typedef),
 }
