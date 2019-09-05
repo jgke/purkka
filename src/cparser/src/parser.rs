@@ -1908,7 +1908,10 @@ where
         loop {
             let m = match self.peek() {
                 None => break,
-                Some(Token::Semicolon(..)) => continue,
+                Some(Token::Semicolon(..)) => {
+                    read_token!(self, Token::Semicolon);
+                    continue;
+                }
                 Some(Token::Identifier(_, ident)) => {
                     if !self.is_type(&ident) && !self.is_typeof(ident) {
                         let m = match self.parse_statement(false) {

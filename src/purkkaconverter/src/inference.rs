@@ -697,8 +697,10 @@ impl TypeInferrer<'_> {
 
                     let mut ret_tys = Vec::new();
 
-                    if struct_field_tys.len() != arg_field_tys.len() {
-                        return Err(format!("Expected {} fields, but got {}",
+                    // XXX: another C hack
+                    // if struct_field_tys.len() != arg_field_tys.len() {
+                    if struct_field_tys.len() < arg_field_tys.len() {
+                        return Err(format!("Expected {} struct initialization fields, but got {}",
                                            struct_field_tys.len(),
                                            arg_field_tys.len()));
                     }

@@ -11,3 +11,4 @@ fragment = { path="../fragment" }
 resolve = { path="../resolve" }
 shared = { path="../shared" }
 regex = "1.1.0"
+uuid = { version = "0.7", features = ["v4"] }

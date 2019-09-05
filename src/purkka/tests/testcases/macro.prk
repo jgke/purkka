@@ -17,3 +17,5 @@ pub fun baz() {
 }
 
 @"BAR()";
+
+@"BAZ()";

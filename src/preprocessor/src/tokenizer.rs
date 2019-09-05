@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use uuid::Uuid;
 
 use debug::debug::*;
 use fragment::fragment::{FragmentIterator, Source};
@@ -389,7 +390,8 @@ where
             // file to the end
             while t.advance_and_reset_span() {}
             while t.next().is_some() {}
-            t.split_and_push_file("<macro expansion>", content);
+            let exp_name = format!("<macro expansion> {}", Uuid::new_v4().to_hyphenated());
+            t.split_and_push_file(&exp_name, content);
             t
         })
         .unwrap_or_else(|| FragmentIterator::new("<macro expansion>", content))

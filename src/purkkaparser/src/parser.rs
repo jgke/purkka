@@ -930,22 +930,25 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_macro_unit(&mut self) -> Vec<Unit> {
-        self.parse_macro().into_iter().map(|result| match result {
+        self.parse_macro().into_iter().flat_map(|result| match result {
             MacroExpansion::Expression(e) => panic!("Macro expanded into an expression {:?}", e),
             MacroExpansion::Statement(s) => match s {
-                Statement::Declaration(d) => Unit::Declaration(d),
+                Statement::Declaration(d) => Some(Unit::Declaration(d)),
                 Statement::Pragma(_s) => unimplemented!(),
                 _ => panic!("Not supported"),
             },
-            MacroExpansion::Type(_ty) =>  unimplemented!(),
+            MacroExpansion::Type(ty) => match ty {
+                TypeSignature::Struct(Some(n), fields) => Some(Unit::Typedef(Box::new(Typedef::Struct(n, fields)))),
+                TypeSignature::Enum(Some(n), fields) => Some(Unit::Typedef(Box::new(Typedef::Enum(n, fields)))),
+                _ => None
+            }
             MacroExpansion::Typedef(typedef) => {
-                dbg!(&typedef);
                 if let Typedef::Alias(_, name, ty) = typedef.clone() {
                     self.symbols.types.insert(name.clone(), *ty);
                 }
-                Unit::Typedef(Box::new(typedef))
+                Some(Unit::Typedef(Box::new(typedef)))
             }
-        }).collect()
+        }.into_iter()).collect()
     }
 
     fn parse_macro(&mut self) -> Vec<MacroExpansion> {

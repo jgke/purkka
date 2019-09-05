@@ -5,6 +5,7 @@ pub enum DebugVal {
     DebugFragment,
     MacroExpand,
     CParserToken,
+    Core,
 }
 
 pub static DEBUG_VALS: &[&str] = &[
@@ -14,6 +15,7 @@ pub static DEBUG_VALS: &[&str] = &[
     "DEBUG_FRAGMENT",
     "DEBUG_MACRO_EXPAND",
     "DEBUG_CPARSER_TOKEN",
+    "DEBUG_CORE",
 ];
 
 #[cfg(debug_assertions)]
@@ -41,5 +43,12 @@ where
 {
     if is_debug_enabled(ident) {
         cb();
+    }
+}
+
+#[inline]
+pub fn debug_p(d: DebugVal, s: &str) {
+    if is_debug_enabled(d) {
+        println!("{}", s);
     }
 }

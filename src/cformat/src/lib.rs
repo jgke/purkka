@@ -210,17 +210,17 @@ impl Context {
                                 }
                                 Token::StringLiteral(_, s) => {
                                     self.push("*");
-                                    self.push(&format!("{:?}", s));
+                                    self.push("\"");
+                                    for c in s.chars() {
+                                        self.format_char(c);
+                                    }
+                                    self.push("\"");
                                     return;
                                 }
                                 Token::CharLiteral(_, s) => {
                                     self.push("'");
                                     self.whitespace = false;
-                                    match s {
-                                        '\n' => self.push("\\n"),
-                                        '\t' => self.push("\\t"),
-                                        _ => self.push(&s.to_string()),
-                                    }
+                                    self.format_char(*s);
                                     self.push("'");
                                     return;
                                 }
@@ -247,6 +247,32 @@ impl Context {
         self.whitespace = true;
         self.push(s);
         self.whitespace = true;
+    }
+
+    fn format_char(&mut self, c: char) {
+        self.whitespace = false;
+        // note: C standard doesn't require the source character set to contain '$', '@', '`' nor
+        // '|', but we just print them here
+        match c {
+            '\'' => self.push("\\'"),
+            '\"' => self.push("\\\""),
+            '!'..='~' | ' ' => self.push(&c.to_string()),
+            '\n' => self.push("\\n"),
+            '\t' => self.push("\\t"),
+
+            _ => match c as usize {
+                i if i <= 9 => self.push(&format!("\\{}", c as usize)),
+                i if i <= 0xf => self.push(&format!("\\u000{:x}", c as usize)),
+                i if i <= 0xff => self.push(&format!("\\u00{:x}", c as usize)),
+                i if i <= 0xfff => self.push(&format!("\\u0{:x}", c as usize)),
+                i if i <= 0xffff => self.push(&format!("\\u{:x}", c as usize)),
+                i if i <= 0xfffff => self.push(&format!("\\U000{:x}", c as usize)),
+                i if i <= 0xffffff => self.push(&format!("\\U00{:x}", c as usize)),
+                i if i <= 0xfffffff => self.push(&format!("\\U0{:x}", c as usize)),
+                i if i <= 0xffffffff => self.push(&format!("\\U{:x}", c as usize)),
+                _ => unreachable!()
+            }
+        }
     }
 
     fn translation_unit(&mut self, tree: &TranslationUnit) {
@@ -767,7 +793,11 @@ impl Context {
                 self.push_token(&Token::CloseParen(0));
             }
             PrimaryExpression::StringLiteral(s) => {
-                self.push(&format!("{:?}", s));
+                self.push("\"");
+                for c in s.chars() {
+                    self.format_char(c);
+                }
+                self.push("\"");
             }
             PrimaryExpression::CharLiteral(s) => {
                 self.push("'");

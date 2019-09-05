@@ -7,7 +7,7 @@ use std::path;
 use clap::{App, Arg};
 use tool::fix;
 
-use debug::debug::{if_debug, DebugVal::IncludeName};
+use debug::debug::{if_debug, debug_p, DebugVal::IncludeName, DebugVal::Core};
 use preprocessor::{
     tokenizer::{Macro, MacroContext},
     PreprocessorOptions,
@@ -48,6 +48,7 @@ pub fn get_file_cb<'a>(
                 &content,
                 get_file,
                 &|expansion, types| {
+                    debug_p(Core, "Expanding Purkka->C string macro");
                     let result = preprocessor::preprocess_str(
                         &expansion,
                         get_file,
@@ -58,14 +59,17 @@ pub fn get_file_cb<'a>(
                         Ok(output) => {
                             let iter_ref = ctx.borrow();
                             let iter = iter_ref.as_ref().and_then(|c| c.iter.as_ref()).unwrap();
+                            debug_p(Core, "Parsing result as C");
                             let parsed =
                                 cparser::parse_macro_expansion(output, iter, types).unwrap();
+                            debug_p(Core, "Converting to Purkka");
                             purkkaconverter::to_purkka(parsed)
                         }
                         Err(e) => panic!(e),
                     }
                 },
                 &|macro_name, args, types| {
+                    debug_p(Core, "Converting arguments to C");
                     let c_args: Vec<String> = args
                         .into_iter()
                         .map(purkkaconverter::expression_to_c)
@@ -74,6 +78,7 @@ pub fn get_file_cb<'a>(
 
                     let expansion = format!("{}({})", macro_name, c_args.join(", "));
 
+                    debug_p(Core, "Preprocessing Purkka->C macro");
                     let result = preprocessor::preprocess_str(
                         &expansion,
                         get_file,
@@ -84,8 +89,10 @@ pub fn get_file_cb<'a>(
                         Ok(output) => {
                             let iter_ref = ctx.borrow();
                             let iter = iter_ref.as_ref().and_then(|c| c.iter.as_ref()).unwrap();
+                            debug_p(Core, "Parsing result as C");
                             let parsed =
                                 cparser::parse_macro_expansion(output, iter, types).unwrap();
+                            debug_p(Core, "Converting result to Purkka");
                             purkkaconverter::to_purkka(parsed)
                         }
                         Err(e) => panic!(e),
@@ -105,6 +112,7 @@ pub fn get_file_cb<'a>(
                 c_macros: (HashSet::new(), HashSet::new()),
             }
         } else {
+            debug_p(Core, "Preprocessing content");
             let result = preprocessor::preprocess_file(
                 &full_path,
                 get_file,
@@ -116,7 +124,9 @@ pub fn get_file_cb<'a>(
                 Ok(output) => {
                     let iter_ref = ctx.borrow();
                     let iter = iter_ref.as_ref().and_then(|c| c.iter.as_ref()).unwrap();
+                    debug_p(Core, "Parsing as C");
                     let parsed = cparser::parse(output, iter, req.types).unwrap();
+                    debug_p(Core, "Formatting output as C");
                     let formatted = cformat::format_c(&parsed, HashSet::new());
                     let (declarations, types) = cparser::get_declarations(&parsed);
                     let mut c_macros = (HashSet::new(), HashSet::new());

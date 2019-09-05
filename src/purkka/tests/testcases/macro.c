@@ -1,5 +1,8 @@
 #include "dependencies/macro.h"
 
+struct foo {
+    int a;
+};
 int main() {
     return(1 + 1);
 }

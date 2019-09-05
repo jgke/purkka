@@ -684,6 +684,11 @@ impl PurkkaToC {
             }
             TypeSignature::Struct(_, _) => cp::DirectAbstractDeclarator::Epsilon(),
             TypeSignature::Pointer { ty, .. } => self.format_abstract_direct_decl(*ty),
+            TypeSignature::Function(params, ret_ty)  =>
+                cp::DirectAbstractDeclarator::Function(
+                    Box::new(self.format_abstract_direct_decl(*ret_ty)),
+                    self.parameter_list_from_params(params.into_iter().map(From::from).collect())
+                    ),
             other => panic!("Not implemented: {:?}", other),
         }
     }
@@ -1055,8 +1060,9 @@ impl CToPurkka {
             cp::MacroExpansion::Expression(e) => vec![pp::MacroExpansion::Expression(self.expression(e))],
             cp::MacroExpansion::Declaration(d) => match d {
                 cp::ExternalDeclaration::FunctionDefinition(d) => vec![pp::MacroExpansion::Statement(pp::Statement::Declaration(Box::new(self.function_definition(*d))))],
-                cp::ExternalDeclaration::Declaration(d) =>
-                    if is_typedef(&d) {
+                cp::ExternalDeclaration::Declaration(d) => {
+                    let maybe_t = self.get_struct_type(&*d).into_iter();
+                    let rest: Vec<_> = if is_typedef(&d) {
                         self.typedef(*d).into_iter()
                             .map(|t| pp::MacroExpansion::Typedef(t))
                             .collect()
@@ -1065,11 +1071,23 @@ impl CToPurkka {
                             .into_iter()
                             .map(|decl| pp::MacroExpansion::Statement(pp::Statement::Declaration(Box::new(decl))))
                             .collect()
-                    }
+                    };
+                    maybe_t.chain(rest.into_iter()).collect()
+                }
                 cp::ExternalDeclaration::Semicolon(_d) => unimplemented!(),
             }
             cp::MacroExpansion::Statement(s) => vec![pp::MacroExpansion::Statement(self.statement(s))],
             cp::MacroExpansion::Type(t) => vec![pp::MacroExpansion::Type(self.type_name(t))],
+        }
+    }
+
+    fn get_struct_type(&self, d: &cp::Declaration) -> Option<pp::MacroExpansion> {
+        match d {
+            cp::Declaration::Declaration(spec, _, attrs) => {
+                let attrs = attrs.clone().unwrap_or_else(|| Vec::new());
+                Some(pp::MacroExpansion::Type(self.decl_spec_to_type(&spec, attrs.clone())))
+            }
+            cp::Declaration::Pragma(_pragma) => None,
         }
     }
 
