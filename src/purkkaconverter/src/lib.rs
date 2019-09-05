@@ -1170,7 +1170,7 @@ impl CToPurkka {
                        MoreThan, ">",
                        LessEqThan, "<=",
                        MoreEqThan, ">=",
-                       Equals, "=",
+                       Equals, "==",
                        NotEquals, "!=",
                        BitAnd, "&",
                        BitXor, "^",

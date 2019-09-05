@@ -802,11 +802,7 @@ impl Context {
             PrimaryExpression::CharLiteral(s) => {
                 self.push("'");
                 self.whitespace = false;
-                match s {
-                    '\n' => self.push("\\n"),
-                    '\t' => self.push("\\t"),
-                    _ => self.push(&s.to_string()),
-                }
+                self.format_char(*s);
                 self.push("'");
             }
             PrimaryExpression::Builtin(extension) => {

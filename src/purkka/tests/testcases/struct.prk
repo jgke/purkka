@@ -10,3 +10,10 @@ pub fun main() {
 
     return a.bar + b.baz + c.baz;
 }
+
+pub fun ternary() {
+    let a = Foo { bar: 0, baz: 0 };
+    let b = &a;
+
+    return b.bar ? b.bar : b.bar;
+}

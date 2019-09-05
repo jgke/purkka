@@ -390,7 +390,7 @@ impl TypeInferrer<'_> {
                     let if_t = &mut list[1];
                     let if_t_ty = self.get_type(if_t)?;
 
-                    let if_f = &mut list[1];
+                    let if_f = &mut list[2];
                     let if_f_ty = self.get_type(if_f)?;
 
                     self.make_equal_to_num(&cond_ty.0)?;
