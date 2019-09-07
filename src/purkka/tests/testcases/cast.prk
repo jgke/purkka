@@ -1,0 +1,6 @@
+pub fun f (a: i32) => a;
+pub fun cast() {
+    let a = &f;
+    let b = a as i32 -> &void;
+    b as void;
+}

@@ -418,17 +418,35 @@ impl PurkkaToC {
         &mut self,
         name: Rc<str>,
         params: Vec<pp::LambdaParam>,
+        ptr: Option<Box<cp::Pointer>>
     ) -> cp::DirectDeclarator {
         let e = Box::new(cp::DirectDeclarator::Parens(Box::new(
             cp::Declarator::Declarator(
-                Some(Box::new(cp::Pointer::Ptr(
-                    cp::TypeQualifiers::default(),
-                    None,
-                ))),
+                Some(ptr.unwrap_or_else(|| 
+                                   Box::new(cp::Pointer::Ptr(
+                                               cp::TypeQualifiers::default(),
+                                               None)))),
                 Box::new(cp::DirectDeclarator::Identifier(name)),
             ),
         )));
         cp::DirectDeclarator::Function(e, self.parameter_list_from_params(params))
+    }
+
+    pub fn abstract_function_pointer_from_params(
+        &mut self,
+        params: Vec<pp::LambdaParam>,
+        ptr: Option<Box<cp::Pointer>>
+    ) -> cp::DirectAbstractDeclarator {
+        let e = Box::new(cp::DirectAbstractDeclarator::Parens(Box::new(
+            cp::AbstractDeclarator::AbstractDeclarator(
+                Some(ptr.unwrap_or_else(|| 
+                                   Box::new(cp::Pointer::Ptr(
+                                               cp::TypeQualifiers::default(),
+                                               None)))),
+                Box::new(cp::DirectAbstractDeclarator::Epsilon()),
+            ),
+        )));
+        cp::DirectAbstractDeclarator::Function(e, self.parameter_list_from_params(params))
     }
 
     pub fn parameter_list_from_params(
@@ -626,11 +644,52 @@ impl PurkkaToC {
             _ => None,
         }
     }
+
+    fn unpack_fn(&self, ty: TypeSignature) -> Result<(TypeSignature, Vec<pp::Param>, Box<TypeSignature>), TypeSignature> {
+        let res;
+        {
+            let mut p_ty = &ty;
+            while let TypeSignature::Pointer { ty, .. } = p_ty {
+                p_ty = &*ty;
+            }
+            match p_ty {
+                TypeSignature::Function(params, _ret_ty) => res = true,
+                _ => res = false,
+            }
+        }
+
+        if res {
+            let mut p_ty = ty.clone();
+            while let TypeSignature::Pointer { ty, .. } = p_ty {
+                p_ty = *ty;
+            }
+            match p_ty {
+                TypeSignature::Function(params, ret_ty) => Ok((ty, params, ret_ty)),
+                _ => unreachable!()
+            }
+        } else {
+            Err(ty)
+        }
+    }
+
     pub fn format_decl(&mut self, name: Rc<str>, ty: TypeSignature) -> cp::Declarator {
-        cp::Declarator::Declarator(
-            self.ty_to_pointer(ty.clone()),
-            Box::new(self.format_direct_decl(name, ty)),
-        )
+        let is_fn = self.unpack_fn(ty);
+        match is_fn {
+            Ok((ty, params, ret_ty)) => {
+                let ptr = self.ty_to_pointer(ty.clone());
+                let ret_ptr = self.ty_to_pointer(*ret_ty);
+                let converted_params = params.into_iter().map(From::from).collect();
+                let fun = self.function_pointer_from_params(name, converted_params, ptr);
+                cp::Declarator::Declarator(ret_ptr, Box::new(fun))
+            }
+            Err(ty) => {
+                let ptr = self.ty_to_pointer(ty.clone());
+                cp::Declarator::Declarator(
+                    ptr,
+                    Box::new(self.format_direct_decl(name, ty)),
+                )
+            }
+        }
     }
 
     pub fn format_direct_decl(&mut self, name: Rc<str>, ty: TypeSignature) -> cp::DirectDeclarator {
@@ -640,7 +699,7 @@ impl PurkkaToC {
             }
             TypeSignature::Pointer { ty, .. } => self.format_direct_decl(name, *ty),
             TypeSignature::Function(params, _ret_ty) => self
-                .function_pointer_from_params(name, params.into_iter().map(From::from).collect()),
+                .function_pointer_from_params(name, params.into_iter().map(From::from).collect(), None),
             TypeSignature::Array(ty, size) => cp::DirectDeclarator::Array(
                 Box::new(self.format_direct_decl(name, *ty)),
                 size.map(|lit| {
@@ -668,10 +727,23 @@ impl PurkkaToC {
     }
 
     pub fn format_abstract_decl(&mut self, ty: TypeSignature) -> cp::AbstractDeclarator {
-        cp::AbstractDeclarator::AbstractDeclarator(
-            self.ty_to_pointer(ty.clone()),
-            Box::new(self.format_abstract_direct_decl(ty)),
-        )
+        let is_fn = self.unpack_fn(ty);
+        match is_fn {
+            Ok((ty, params, ret_ty)) => {
+                let ptr = self.ty_to_pointer(ty.clone());
+                let ret_ptr = self.ty_to_pointer(*ret_ty);
+                let converted_params = params.into_iter().map(From::from).collect();
+                let fun = self.abstract_function_pointer_from_params(converted_params, ptr);
+                cp::AbstractDeclarator::AbstractDeclarator(ret_ptr, Box::new(fun))
+            }
+            Err(ty) => {
+                let ptr = self.ty_to_pointer(ty.clone());
+                cp::AbstractDeclarator::AbstractDeclarator(
+                    ptr,
+                    Box::new(self.format_abstract_direct_decl(ty)),
+                )
+            }
+        }
     }
 
     pub fn format_abstract_direct_decl(
@@ -684,11 +756,8 @@ impl PurkkaToC {
             }
             TypeSignature::Struct(_, _) => cp::DirectAbstractDeclarator::Epsilon(),
             TypeSignature::Pointer { ty, .. } => self.format_abstract_direct_decl(*ty),
-            TypeSignature::Function(params, ret_ty)  =>
-                cp::DirectAbstractDeclarator::Function(
-                    Box::new(self.format_abstract_direct_decl(*ret_ty)),
-                    self.parameter_list_from_params(params.into_iter().map(From::from).collect())
-                    ),
+            TypeSignature::Function(params, _ret_ty) => self
+                .abstract_function_pointer_from_params(params.into_iter().map(From::from).collect(), None),
             other => panic!("Not implemented: {:?}", other),
         }
     }
