@@ -49,7 +49,7 @@ impl ASTVisitor for StripImports<'_> {
                     });
             }
         }
-        Ok(self.ok())
+        Ok(())
     }
 
     fn visit_primary_expression(&mut self, e: &mut PrimaryExpression) -> Result<(), ()> {

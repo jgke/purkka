@@ -408,7 +408,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 OperatorOverload => Unit::OperatorOverload(Box::new(self.parse_new_operator())),
                 ImportFile => Unit::ImportFile(Box::new(self.parse_include())),
                 Typedef => Unit::Typedef(Box::new(self.parse_typedef())),
-            )]
+            )],
         }
     }
 
@@ -422,7 +422,12 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let ident = read_identifier_str!(self);
                 let (params, return_type, block) = self.parse_lambda();
                 return Declaration::Declaration(
-                    DeclarationFlags {  public, inline, mutable: false, static_: false },
+                    DeclarationFlags {
+                        public,
+                        inline,
+                        mutable: false,
+                        static_: false,
+                    },
                     ident,
                     Box::new(TypeSignature::Function(
                         params.iter().cloned().map(From::from).collect(),
@@ -446,7 +451,12 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             _ => Box::new(self.get_inferred_type()),
         };
 
-        let flags = DeclarationFlags { public, mutable, inline: false, static_: false };
+        let flags = DeclarationFlags {
+            public,
+            mutable,
+            inline: false,
+            static_: false,
+        };
 
         let res = match self.peek() {
             Some(Token::Operator(_, t)) if &**t == "=" => {
@@ -930,25 +940,37 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_macro_unit(&mut self) -> Vec<Unit> {
-        self.parse_macro().into_iter().flat_map(|result| match result {
-            MacroExpansion::Expression(e) => panic!("Macro expanded into an expression {:?}", e),
-            MacroExpansion::Statement(s) => match s {
-                Statement::Declaration(d) => Some(Unit::Declaration(d)),
-                Statement::Pragma(_s) => unimplemented!(),
-                _ => panic!("Not supported"),
-            },
-            MacroExpansion::Type(ty) => match ty {
-                TypeSignature::Struct(Some(n), fields) => Some(Unit::Typedef(Box::new(Typedef::Struct(n, fields)))),
-                TypeSignature::Enum(Some(n), fields) => Some(Unit::Typedef(Box::new(Typedef::Enum(n, fields)))),
-                _ => None
-            }
-            MacroExpansion::Typedef(typedef) => {
-                if let Typedef::Alias(_, name, ty) = typedef.clone() {
-                    self.symbols.types.insert(name.clone(), *ty);
+        self.parse_macro()
+            .into_iter()
+            .flat_map(|result| {
+                match result {
+                    MacroExpansion::Expression(e) => {
+                        panic!("Macro expanded into an expression {:?}", e)
+                    }
+                    MacroExpansion::Statement(s) => match s {
+                        Statement::Declaration(d) => Some(Unit::Declaration(d)),
+                        Statement::Pragma(_s) => unimplemented!(),
+                        _ => panic!("Not supported"),
+                    },
+                    MacroExpansion::Type(ty) => match ty {
+                        TypeSignature::Struct(Some(n), fields) => {
+                            Some(Unit::Typedef(Box::new(Typedef::Struct(n, fields))))
+                        }
+                        TypeSignature::Enum(Some(n), fields) => {
+                            Some(Unit::Typedef(Box::new(Typedef::Enum(n, fields))))
+                        }
+                        _ => None,
+                    },
+                    MacroExpansion::Typedef(typedef) => {
+                        if let Typedef::Alias(_, name, ty) = typedef.clone() {
+                            self.symbols.types.insert(name.clone(), *ty);
+                        }
+                        Some(Unit::Typedef(Box::new(typedef)))
+                    }
                 }
-                Some(Unit::Typedef(Box::new(typedef)))
-            }
-        }.into_iter()).collect()
+                .into_iter()
+            })
+            .collect()
     }
 
     fn parse_macro(&mut self) -> Vec<MacroExpansion> {
@@ -969,7 +991,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             }
             Some(Token::Identifier(_, s)) => {
                 if self.symbols.imported_macros.0.contains(s) {
-                    let s = read_identifier_str!(self); 
+                    let s = read_identifier_str!(self);
                     (self.expand)(s.to_string(), tys)
                 } else if self.symbols.imported_macros.1.contains(s) {
                     let s = read_identifier_str!(self);
@@ -1008,9 +1030,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     }
                 }
             }
-            Some(Token::Integer(..)) | Some(Token::Float(..)) | Some(Token::StringLiteral(..)) | Some(Token::Char(..)) => {
-                PrimaryExpression::Literal(self.parse_literal())
-            }
+            Some(Token::Integer(..))
+            | Some(Token::Float(..))
+            | Some(Token::StringLiteral(..))
+            | Some(Token::Char(..)) => PrimaryExpression::Literal(self.parse_literal()),
             Some(Token::If(..)) | Some(Token::While(..)) | Some(Token::Do(..)) => {
                 PrimaryExpression::BlockExpression(Box::new(self.parse_block_expression()))
             }
@@ -1119,8 +1142,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     if let Some(Token::Comma(..)) = self.peek() {
                         read_token!(self, Token::Comma);
                         continue;
-                    }
-                    else {
+                    } else {
                         break;
                     }
                 }
@@ -1260,16 +1282,22 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_macro_as_statement(&mut self) -> Statement {
-        let mut res = self.parse_macro().into_iter().map(|m| match m {
-            MacroExpansion::Expression(e) => Statement::Expression(Box::new(e)),
-            MacroExpansion::Statement(s) => s,
-            MacroExpansion::Type(_t) => unimplemented!(),
-            MacroExpansion::Typedef(_t) => unimplemented!(),
-        }).collect::<Vec<_>>();
+        let mut res = self
+            .parse_macro()
+            .into_iter()
+            .map(|m| match m {
+                MacroExpansion::Expression(e) => Statement::Expression(Box::new(e)),
+                MacroExpansion::Statement(s) => s,
+                MacroExpansion::Type(_t) => unimplemented!(),
+                MacroExpansion::Typedef(_t) => unimplemented!(),
+            })
+            .collect::<Vec<_>>();
         if res.len() == 1 {
             match res.remove(0) {
-                Statement::Expression(e) => Statement::Expression(Box::new(self.parse_expression__(*e, 1))),
-                otherwise => otherwise
+                Statement::Expression(e) => {
+                    Statement::Expression(Box::new(self.parse_expression__(*e, 1)))
+                }
+                otherwise => otherwise,
             }
         } else {
             Statement::BlockExpression(Box::new(BlockExpression::Block(Block::Statements(res))))
@@ -1281,7 +1309,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         match self.peek().cloned() {
             Some(Token::Operator(_, op)) if op.as_ref() == "@" => {
                 read_token!(self, Token::Operator);
-                return self.parse_macro_as_statement()
+                return self.parse_macro_as_statement();
             }
             Some(Token::Identifier(_, ident)) if self.starts_c_macro(&ident) => {
                 return self.parse_macro_as_statement()
@@ -1766,7 +1794,12 @@ mod tests {
             s,
             S::TranslationUnit(TranslationUnit::Units(vec![Unit::Declaration(Box::new(
                 Declaration::Declaration(
-                    DeclarationFlags { public: false, inline: false, mutable: true, static_: false },
+                    DeclarationFlags {
+                        public: false,
+                        inline: false,
+                        mutable: true,
+                        static_: false
+                    },
                     From::from("bar"),
                     Box::new(TypeSignature::Pointer {
                         nullable: false,

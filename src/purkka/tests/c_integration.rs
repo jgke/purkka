@@ -388,6 +388,11 @@ fn typeof_extension() {
 
 #[test]
 fn void_function() {
-    assert!(parse("typedef int foo; static inline __attribute__ ((__unused__)) foo *bar() {}").is_ok());
-    assert!(parse("typedef int foo; static inline __attribute__ ((__unused__)) foo *bar(void) {}").is_ok());
+    assert!(
+        parse("typedef int foo; static inline __attribute__ ((__unused__)) foo *bar() {}").is_ok()
+    );
+    assert!(
+        parse("typedef int foo; static inline __attribute__ ((__unused__)) foo *bar(void) {}")
+            .is_ok()
+    );
 }

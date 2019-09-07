@@ -104,7 +104,7 @@ fn read_string(
     iter: &mut FragmentIterator,
     intern: &mut StringInterner,
     num: usize,
-    ) -> (Token, Source) {
+) -> (Token, Source) {
     match iter.next_new_span() {
         Some('"') => {}
         Some(t) => panic!("Unexpected character: {}", t),

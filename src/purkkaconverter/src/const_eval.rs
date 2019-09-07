@@ -16,7 +16,10 @@ pub struct EvalConstExprs<'a> {
 #[allow(unused_must_use)]
 impl<'a> TreeTransformer<'a> for EvalConstExprs<'a> {
     fn new(context: &'a mut PurkkaToC) -> EvalConstExprs<'a> {
-        EvalConstExprs { context, exprs: HashMap::new() }
+        EvalConstExprs {
+            context,
+            exprs: HashMap::new(),
+        }
     }
     fn transform(&mut self, s: &mut S) {
         self.visit_s(s);
@@ -30,18 +33,18 @@ impl ASTVisitor for EvalConstExprs<'_> {
     // visit all top-level declarations without traversing the body
     fn visit_declaration(&mut self, s: &mut Declaration) -> Result<(), String> {
         if s.is_fn() {
-            return Ok(())
+            return Ok(());
         }
         match s {
-            Declaration::Declaration(_flags, name, ty, assignment) =>
-                vec![
+            Declaration::Declaration(_flags, name, ty, assignment) => vec![
                 self.visit_ty(ty)?,
                 self.fold_o(assignment, |v, a| {
                     let e = v.eval_expression(a)?;
                     v.exprs.insert(name.clone(), e);
                     Ok(())
                 })?,
-            ].flatten(self)
+            ]
+            .flatten(self),
         }
     }
 }
@@ -53,8 +56,8 @@ impl EvalConstExprs<'_> {
             Expression::Op(op, ExprList::List(args)) => match op.as_ref() {
                 "+" => Ok(self.eval_expression(&mut args[0])? + self.eval_expression(&mut args[1])?),
                 "*" => Ok(self.eval_expression(&mut args[0])? * self.eval_expression(&mut args[1])?),
-                _ => unimplemented!("{}", op)
-            }
+                _ => unimplemented!("{}", op),
+            },
             Expression::Unary(_op, _args) => unimplemented!(),
             Expression::PostFix(_arg, _op) => unimplemented!(),
             Expression::Cast(_expr, _ty) => unimplemented!(),
@@ -76,7 +79,9 @@ impl EvalConstExprs<'_> {
             PrimaryExpression::Literal(lit) => Ok(lit.clone()),
             PrimaryExpression::BlockExpression(_block) => unimplemented!(),
             PrimaryExpression::Expression(expr) => self.eval_expression(expr),
-            PrimaryExpression::Lambda(_lambda) => Err("Cannot evaluate lambdas without calling them".to_string()),
+            PrimaryExpression::Lambda(_lambda) => {
+                Err("Cannot evaluate lambdas without calling them".to_string())
+            }
         }
     }
 }

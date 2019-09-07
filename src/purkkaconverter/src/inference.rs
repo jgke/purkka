@@ -54,10 +54,23 @@ impl<'a> TreeTransformer<'a> for TypeInferrer<'a> {
 }
 
 macro_rules! not_impl {
-    ($arg:ident) => { Err(format!("[{}:{}] Not yet implemented: {:?}",
-                                 file!(), line!(), $arg)); };
-    ($arg1:ident, $arg2:ident) => { Err(format!("[{}:{}] Not yet implemented:\n  {:?}\n  {:?}",
-                                 file!(), line!(), $arg1, $arg2)); }
+    ($arg:ident) => {
+        Err(format!(
+            "[{}:{}] Not yet implemented: {:?}",
+            file!(),
+            line!(),
+            $arg
+        ));
+    };
+    ($arg1:ident, $arg2:ident) => {
+        Err(format!(
+            "[{}:{}] Not yet implemented:\n  {:?}\n  {:?}",
+            file!(),
+            line!(),
+            $arg1,
+            $arg2
+        ));
+    };
 }
 
 impl ASTVisitor for TypeInferrer<'_> {
@@ -78,7 +91,7 @@ impl ASTVisitor for TypeInferrer<'_> {
                                 self.make_equal(&ret_ty, &From::from(*ret.clone()))?;
                             }
                         }
-                        otherwise => return not_impl!(otherwise)
+                        otherwise => return not_impl!(otherwise),
                     }
                 }
                 self.make_equal(&ty.0, &intermediate)?;
@@ -419,7 +432,7 @@ impl TypeInferrer<'_> {
                         })
                         .collect::<Result<Vec<Vec<IntermediateType>>, String>>()?
                         .into_iter()
-                        .flat_map(|x| x)
+                        .flatten()
                         .collect();
 
                     (ret, ret_tys)
@@ -457,7 +470,7 @@ impl TypeInferrer<'_> {
                         })
                         .collect::<Result<Vec<Vec<IntermediateType>>, String>>()?
                         .into_iter()
-                        .flat_map(|x| x)
+                        .flatten()
                         .collect();
 
                     (ret, ret_tys)
@@ -630,9 +643,9 @@ impl TypeInferrer<'_> {
                 };
                 self.make_equal(&From::from(return_type.clone()), &ret_ty)?;
                 let ty = From::from(TypeSignature::Function(
-                        params.iter().cloned().map(From::from).collect(),
-                        Box::new(From::from(ret_ty)),
-                        ));
+                    params.iter().cloned().map(From::from).collect(),
+                    Box::new(From::from(ret_ty)),
+                ));
                 self.pop_block();
                 Ok((ty, Vec::new()))
             }
@@ -660,7 +673,10 @@ impl TypeInferrer<'_> {
                     let mut arg_field_tys = fields
                         .iter_mut()
                         .map(
-                            |StructInitializationField::StructInitializationField(ref mut name, e)| {
+                            |StructInitializationField::StructInitializationField(
+                                ref mut name,
+                                e,
+                            )| {
                                 if name.is_none() {
                                     let res = remaining_names.pop().unwrap_or_else(|| {
                                         panic!(format!(
@@ -675,9 +691,15 @@ impl TypeInferrer<'_> {
                                     let ident = name.as_ref().unwrap();
                                     if !remaining_names.contains(&ident) {
                                         if used_names.contains(ident) {
-                                            panic!("Cannot instantiate field {} more than once", ident);
+                                            panic!(
+                                                "Cannot instantiate field {} more than once",
+                                                ident
+                                            );
                                         } else {
-                                            panic!("Field {} does not exist in struct {:?}", ident, struct_name);
+                                            panic!(
+                                                "Field {} does not exist in struct {:?}",
+                                                ident, struct_name
+                                            );
                                         }
                                     }
                                     remaining_names
@@ -688,7 +710,8 @@ impl TypeInferrer<'_> {
                                     used_names.insert(ident.clone());
                                 }
                                 Ok((name.as_mut().unwrap(), self.get_type(&mut **e)?))
-                        })
+                            },
+                        )
                         .collect::<Result<
                             Vec<(&mut Rc<str>, (IntermediateType, Vec<IntermediateType>))>,
                             String,
@@ -700,9 +723,11 @@ impl TypeInferrer<'_> {
                     // XXX: another C hack
                     // if struct_field_tys.len() != arg_field_tys.len() {
                     if struct_field_tys.len() < arg_field_tys.len() {
-                        return Err(format!("Expected {} struct initialization fields, but got {}",
-                                           struct_field_tys.len(),
-                                           arg_field_tys.len()));
+                        return Err(format!(
+                            "Expected {} struct initialization fields, but got {}",
+                            struct_field_tys.len(),
+                            arg_field_tys.len()
+                        ));
                     }
 
                     for (i, (name, (e_ty, mut ret_ty))) in arg_field_tys.into_iter().enumerate() {
@@ -748,16 +773,25 @@ impl TypeInferrer<'_> {
             }
             PrimaryExpression::ArrayLiteral(exprs) => {
                 let (l, r) = if let Some((l, r)) = self.fold_expr_list(exprs)? {
-                    (From::from(l), r)
+                    (l, r)
                 } else {
                     (IntermediateType::new_any(), Vec::new())
                 };
-                Ok((From::from(TypeSignature::Array(Box::new(From::from(l)), Some(exprs.len()))), r))
+                Ok((
+                    From::from(TypeSignature::Array(
+                        Box::new(From::from(l)),
+                        Some(exprs.len()),
+                    )),
+                    r,
+                ))
             }
         }
     }
 
-    fn fold_expr_list(&mut self, exprs: &mut [Expression]) -> Result<Option<(IntermediateType, Vec<IntermediateType>)>, String> {
+    fn fold_expr_list(
+        &mut self,
+        exprs: &mut [Expression],
+    ) -> Result<Option<(IntermediateType, Vec<IntermediateType>)>, String> {
         if let Some((first, rest)) = exprs.split_first_mut() {
             let (ty, mut ret_tys) = self.get_type(first)?;
             for e in rest {
@@ -870,7 +904,10 @@ impl TypeInferrer<'_> {
 
                     Ok((otherwise_ty, ret_vals))
                 } else {
-                    Ok((None, res_vec.into_iter().flat_map(|t| t.1.into_iter()).collect()))
+                    Ok((
+                        None,
+                        res_vec.into_iter().flat_map(|t| t.1.into_iter()).collect(),
+                    ))
                 }
             }
             BlockExpression::While(e, block, else_block, _is_do_while) => {
@@ -1037,12 +1074,18 @@ impl TypeInferrer<'_> {
             TypeSignature::Function(params, return_type) => {
                 if params.last() != Some(&Param::Variadic) {
                     if args.len() != params.len() {
-                        return Err(format!("Expected {} arguments, but got {}", params.len(), args.len()))
+                        return Err(format!(
+                            "Expected {} arguments, but got {}",
+                            params.len(),
+                            args.len()
+                        ));
                     }
-                } else {
-                    if args.len() < params.len() - 1 {
-                        return Err(format!("Expected at least {} arguments, but got {}", params.len() - 1, args.len()))
-                    }
+                } else if args.len() < params.len() - 1 {
+                    return Err(format!(
+                        "Expected at least {} arguments, but got {}",
+                        params.len() - 1,
+                        args.len()
+                    ));
                 }
                 for (arg, param) in args.iter_mut().zip(params.iter()) {
                     if param != &Param::Variadic {
@@ -1230,10 +1273,18 @@ impl TypeInferrer<'_> {
             }
         }
 
-        if let TypeSignature::Pointer { ty: box TypeSignature::Primitive(Primitive::Void), .. } = lvalue {
-            return Ok(())
-        } else if let TypeSignature::Pointer { ty: box TypeSignature::Primitive(Primitive::Void), .. } = rvalue {
-            return Ok(())
+        if let TypeSignature::Pointer {
+            ty: box TypeSignature::Primitive(Primitive::Void),
+            ..
+        } = lvalue
+        {
+            return Ok(());
+        } else if let TypeSignature::Pointer {
+            ty: box TypeSignature::Primitive(Primitive::Void),
+            ..
+        } = rvalue
+        {
+            return Ok(());
         }
 
         match lvalue {
@@ -1265,7 +1316,9 @@ impl TypeInferrer<'_> {
                     nullable: right_nullable,
                 } => {
                     if *right_nullable && !*left_nullable {
-                        return Err(format!("Cannot assign nullable pointer to a non-nullable pointer"));
+                        return Err(
+                            "Cannot assign nullable pointer to a non-nullable pointer".to_string()
+                        );
                     }
                     self.unify_types(left_ty, right_ty)
                 }
@@ -1290,13 +1343,11 @@ impl TypeInferrer<'_> {
             TypeSignature::Enum(_name, _fields) => not_impl!(lvalue, rvalue),
             TypeSignature::Union(_name, _fields) => not_impl!(lvalue, rvalue),
             TypeSignature::Tuple(_tys) => not_impl!(lvalue, rvalue),
-            TypeSignature::Array(l_ty, _) => {
-                match rvalue {
-                    TypeSignature::Array(r_ty, _) => self.unify_types(&**l_ty, &**r_ty),
-                    TypeSignature::DynamicArray(r_ty, _) => self.unify_types(&**l_ty, &**r_ty),
-                    _ => not_impl!(lvalue, rvalue)
-                }
-            }
+            TypeSignature::Array(l_ty, _) => match rvalue {
+                TypeSignature::Array(r_ty, _) => self.unify_types(&**l_ty, &**r_ty),
+                TypeSignature::DynamicArray(r_ty, _) => self.unify_types(&**l_ty, &**r_ty),
+                _ => not_impl!(lvalue, rvalue),
+            },
             TypeSignature::DynamicArray(ty, _expr) => {
                 let right = rvalue.dereference(&self.infer_map).unwrap();
                 self.unify_types(&ty, &right)
@@ -1314,11 +1365,7 @@ impl TypeInferrer<'_> {
         }
     }
 
-    fn unify_primitives(
-        &mut self,
-        lvalue: &Primitive,
-        rvalue: &Primitive,
-    ) -> Result<(), String> {
+    fn unify_primitives(&mut self, lvalue: &Primitive, rvalue: &Primitive) -> Result<(), String> {
         match (lvalue, rvalue) {
             (Primitive::Int(l), Primitive::Int(r)) if l >= r => Ok(()),
             (Primitive::UInt(l), Primitive::UInt(r)) if l >= r => Ok(()),
@@ -1347,12 +1394,17 @@ impl TypeInferrer<'_> {
         }
     }
 
-    fn fail_if_prim(&self, cond: bool, left: &Primitive, right: &Primitive) -> Result<(), String> {
+    fn fail_if_prim(
+        &self,
+        _cond: bool,
+        _left: &Primitive,
+        _right: &Primitive,
+    ) -> Result<(), String> {
         // XXX: hack for C
         //if cond {
         //    Err(format!("Cannot implicitly assign {} to {}", right, left))
         //} else {
-            Ok(())
+        Ok(())
         //}
     }
 }

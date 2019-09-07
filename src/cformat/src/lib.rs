@@ -270,8 +270,8 @@ impl Context {
                 i if i <= 0xffffff => self.push(&format!("\\U00{:x}", c as usize)),
                 i if i <= 0xfffffff => self.push(&format!("\\U0{:x}", c as usize)),
                 i if i <= 0xffffffff => self.push(&format!("\\U{:x}", c as usize)),
-                _ => unreachable!()
-            }
+                _ => unreachable!(),
+            },
         }
     }
 

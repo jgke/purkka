@@ -83,11 +83,10 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
     }
 
     fn item_derive(&self, span: Span, ident: ast::Ident, kind: ast::ItemKind) -> P<ast::Item> {
-        let derive = self.cx.attribute(
-            self.cx.meta_list(
-                span,
-                symbol::Symbol::intern("derive"),
-                vec![
+        let derive = self.cx.attribute(self.cx.meta_list(
+            span,
+            symbol::Symbol::intern("derive"),
+            vec![
                     self.cx
                         .meta_list_item_word(span, symbol::Symbol::intern("Clone")),
                     self.cx
@@ -95,8 +94,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                     self.cx
                         .meta_list_item_word(span, symbol::Symbol::intern("PartialEq")),
                 ],
-            ),
-        );
+        ));
         let mut item = self.cx.item(span, ident, vec![derive], kind);
         item.vis = respan(span.shrink_to_lo(), ast::VisibilityKind::Public);
         item
@@ -170,8 +168,7 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
                             self.cx
                                 .variant(total_span, self.cx.ident_of(&real_name), vals);
                         if is_empty {
-                            variant.data =
-                                ast::VariantData::Tuple(Vec::new(), ast::DUMMY_NODE_ID);
+                            variant.data = ast::VariantData::Tuple(Vec::new(), ast::DUMMY_NODE_ID);
                         }
                         variant
                     },

@@ -31,7 +31,8 @@ pub fn int_from_str(s: &str) -> i128 {
         i128::from_str_radix(&s[1..suffix], 8)
     } else {
         i128::from_str_radix(&s[..suffix], 10)
-    }.unwrap_or_else(|_| panic!("Invalid number: {}", s))
+    }
+    .unwrap_or_else(|_| panic!("Invalid number: {}", s))
 }
 
 #[test]

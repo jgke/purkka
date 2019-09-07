@@ -7,7 +7,7 @@ use std::path;
 use clap::{App, Arg};
 use tool::fix;
 
-use debug::debug::{if_debug, debug_p, DebugVal::IncludeName, DebugVal::Core};
+use debug::debug::{debug_p, if_debug, DebugVal::Core, DebugVal::IncludeName};
 use preprocessor::{
     tokenizer::{Macro, MacroContext},
     PreprocessorOptions,

@@ -1002,7 +1002,9 @@ where
             [Token::Identifier(..), Token::Colon(..)]
             | [Token::Case(..), _]
             | [Token::Default(..), _] => {
-                return Statement::LabeledStatement(Box::new(self.parse_labeled_statement(semicolon)))
+                return Statement::LabeledStatement(Box::new(
+                    self.parse_labeled_statement(semicolon),
+                ))
             }
             _ => {}
         }
@@ -1916,24 +1918,30 @@ where
                     if !self.is_type(&ident) && !self.is_typeof(ident) {
                         let m = match self.parse_statement(false) {
                             Statement::ExpressionStatement(
-                                box ExpressionStatement::Expression(Some(e))) => MacroExpansion::Expression(*e),
-                                Statement::ExpressionStatement(
-                                    box ExpressionStatement::Expression(None)) => continue,
-                                stmt => MacroExpansion::Statement(stmt),
+                                box ExpressionStatement::Expression(Some(e)),
+                            ) => MacroExpansion::Expression(*e),
+                            Statement::ExpressionStatement(
+                                box ExpressionStatement::Expression(None),
+                            ) => continue,
+                            stmt => MacroExpansion::Statement(stmt),
                         };
                         res.push(m);
                         continue;
                     }
                     MacroExpansion::Declaration(self.parse_external_declaration())
-                },
+                }
                 Some(t) => {
-                    let tt = t.clone();
+                    let tt = (*t).clone();
                     if self.starts_type(&tt) {
                         MacroExpansion::Declaration(self.parse_external_declaration())
                     } else {
                         match self.parse_statement(false) {
-                            Statement::ExpressionStatement(box ExpressionStatement::Expression(Some(e))) => MacroExpansion::Expression(*e),
-                            Statement::ExpressionStatement(box ExpressionStatement::Expression(None)) => continue,
+                            Statement::ExpressionStatement(
+                                box ExpressionStatement::Expression(Some(e)),
+                            ) => MacroExpansion::Expression(*e),
+                            Statement::ExpressionStatement(
+                                box ExpressionStatement::Expression(None),
+                            ) => continue,
                             stmt => MacroExpansion::Statement(stmt),
                         }
                     }

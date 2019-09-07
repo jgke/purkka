@@ -110,7 +110,16 @@ impl PurkkaToC {
 
     fn push_anonymous_function(&mut self, lambda: pp::Lambda) -> Rc<str> {
         let name: Rc<str> = From::from(format!("_lambda_{}", self.functions.len()));
-        self.functions.push((name.clone(), lambda, pp::DeclarationFlags { public: false, inline: true, mutable: true, static_: true }));
+        self.functions.push((
+            name.clone(),
+            lambda,
+            pp::DeclarationFlags {
+                public: false,
+                inline: true,
+                mutable: true,
+                static_: true,
+            },
+        ));
         name
     }
 
@@ -130,13 +139,17 @@ impl PurkkaToC {
                     .types
                     .clone()
                     .into_iter()
-                    .map(|ty| self.format_type_as_external_decl(ty.1, pp::DeclarationFlags::default()))
+                    .map(|ty| {
+                        self.format_type_as_external_decl(ty.1, pp::DeclarationFlags::default())
+                    })
                     .collect::<Vec<_>>();
                 let vars = u
-                    .drain_filter(|t| if let pp::Unit::Declaration(decl) = t {
-                        !decl.is_fn_ty()
-                    } else {
-                        false
+                    .drain_filter(|t| {
+                        if let pp::Unit::Declaration(decl) = t {
+                            !decl.is_fn_ty()
+                        } else {
+                            false
+                        }
                     })
                     .map(|u| self.unit_to_external_decl(u))
                     .collect::<Vec<_>>();
@@ -181,7 +194,11 @@ impl PurkkaToC {
         ))
     }
 
-    fn format_type_as_external_decl(&mut self, ty: pp::TypeSignature, flags: pp::DeclarationFlags) -> cp::ExternalDeclaration {
+    fn format_type_as_external_decl(
+        &mut self,
+        ty: pp::TypeSignature,
+        flags: pp::DeclarationFlags,
+    ) -> cp::ExternalDeclaration {
         cp::ExternalDeclaration::Declaration(Box::new(cp::Declaration::Declaration(
             Box::new(self.type_to_declaration_specifiers(ty.clone(), flags)),
             vec![],
@@ -356,7 +373,8 @@ impl PurkkaToC {
         match expr {
             pp::Statement::Expression(e) => self.expression(*e),
             pp::Statement::BlockExpression(e) => self.expression(
-                 pp::Expression::PrimaryExpression(pp::PrimaryExpression::BlockExpression(e))),
+                pp::Expression::PrimaryExpression(pp::PrimaryExpression::BlockExpression(e)),
+            ),
             other => panic!("Not implemented: {:?}", other),
         }
     }
@@ -390,15 +408,18 @@ impl PurkkaToC {
                 )))
             }
             pp::Statement::Jump(jump) => match jump {
-                pp::JumpStatement::Break => 
-                cp::StatementOrDeclaration::Statement(cp::Statement::JumpStatement(Box::new(
-                    cp::JumpStatement::Break(ct::Token::Break(0), ct::Token::Semicolon(0)),
-                ))),
-                pp::JumpStatement::Continue => 
-                cp::StatementOrDeclaration::Statement(cp::Statement::JumpStatement(Box::new(
-                    cp::JumpStatement::Continue(ct::Token::Continue(0), ct::Token::Semicolon(0)),
-                )))
-            }
+                pp::JumpStatement::Break => {
+                    cp::StatementOrDeclaration::Statement(cp::Statement::JumpStatement(Box::new(
+                        cp::JumpStatement::Break(ct::Token::Break(0), ct::Token::Semicolon(0)),
+                    )))
+                }
+                pp::JumpStatement::Continue => cp::StatementOrDeclaration::Statement(
+                    cp::Statement::JumpStatement(Box::new(cp::JumpStatement::Continue(
+                        ct::Token::Continue(0),
+                        ct::Token::Semicolon(0),
+                    ))),
+                ),
+            },
             pp::Statement::Pragma(s) => cp::StatementOrDeclaration::Declaration(
                 cp::Declaration::Pragma(cp::Pragma::Pragma(s)),
             ),
@@ -418,14 +439,13 @@ impl PurkkaToC {
         &mut self,
         name: Rc<str>,
         params: Vec<pp::LambdaParam>,
-        ptr: Option<Box<cp::Pointer>>
+        ptr: Option<Box<cp::Pointer>>,
     ) -> cp::DirectDeclarator {
         let e = Box::new(cp::DirectDeclarator::Parens(Box::new(
             cp::Declarator::Declarator(
-                Some(ptr.unwrap_or_else(|| 
-                                   Box::new(cp::Pointer::Ptr(
-                                               cp::TypeQualifiers::default(),
-                                               None)))),
+                Some(ptr.unwrap_or_else(|| {
+                    Box::new(cp::Pointer::Ptr(cp::TypeQualifiers::default(), None))
+                })),
                 Box::new(cp::DirectDeclarator::Identifier(name)),
             ),
         )));
@@ -435,14 +455,13 @@ impl PurkkaToC {
     pub fn abstract_function_pointer_from_params(
         &mut self,
         params: Vec<pp::LambdaParam>,
-        ptr: Option<Box<cp::Pointer>>
+        ptr: Option<Box<cp::Pointer>>,
     ) -> cp::DirectAbstractDeclarator {
         let e = Box::new(cp::DirectAbstractDeclarator::Parens(Box::new(
             cp::AbstractDeclarator::AbstractDeclarator(
-                Some(ptr.unwrap_or_else(|| 
-                                   Box::new(cp::Pointer::Ptr(
-                                               cp::TypeQualifiers::default(),
-                                               None)))),
+                Some(ptr.unwrap_or_else(|| {
+                    Box::new(cp::Pointer::Ptr(cp::TypeQualifiers::default(), None))
+                })),
                 Box::new(cp::DirectAbstractDeclarator::Epsilon()),
             ),
         )));
@@ -457,7 +476,10 @@ impl PurkkaToC {
             .into_iter()
             .map(|t| match t {
                 pp::LambdaParam::LambdaParam(name, ty) => {
-                    let decl_spec = self.type_to_declaration_specifiers(*ty.clone(), pp::DeclarationFlags::default());
+                    let decl_spec = self.type_to_declaration_specifiers(
+                        *ty.clone(),
+                        pp::DeclarationFlags::default(),
+                    );
                     let decl = self.format_decl(name, *ty);
                     cp::FunctionParam::Parameter(cp::ParameterDeclaration::Declarator(
                         Box::new(decl_spec),
@@ -505,7 +527,8 @@ impl PurkkaToC {
         &mut self,
         pp::StructField::Field { name, ty, .. }: pp::StructField,
     ) -> cp::StructField {
-        let c_ty = self.type_to_declaration_specifiers(*ty.clone(), pp::DeclarationFlags::default());
+        let c_ty =
+            self.type_to_declaration_specifiers(*ty.clone(), pp::DeclarationFlags::default());
         let decl = self.format_decl(name, *ty);
         (
             Box::new(c_ty),
@@ -520,7 +543,9 @@ impl PurkkaToC {
                 pp::Expression::PrimaryExpression(pp::PrimaryExpression::ArrayLiteral(exprs)) => {
                     cp::AssignmentOrInitializerList::Initializers(self.exprs_to_initializer(exprs))
                 }
-                e => cp::AssignmentOrInitializerList::AssignmentExpression(self.assignment_expression(e))
+                e => cp::AssignmentOrInitializerList::AssignmentExpression(
+                    self.assignment_expression(e),
+                ),
             };
             res.push(cp::Initializer::Initializer(None, Box::new(res_expr)));
         }
@@ -529,21 +554,24 @@ impl PurkkaToC {
 
     pub fn convert_declaration(&mut self, k: pp::Declaration) -> cp::Declaration {
         match k {
-            pp::Declaration::Declaration(flags, name, ty, Some(
-                    box pp::Expression::PrimaryExpression(pp::PrimaryExpression::ArrayLiteral(exprs))
-            )) => {
-                cp::Declaration::Declaration(
-                    Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags)),
-                    vec![cp::InitDeclarator::Assign(
-                        Box::new(self.format_decl(name, *ty)),
-                        ct::Token::Assign(0),
-                        Box::new(cp::AssignmentOrInitializerList::Initializers(
-                                self.exprs_to_initializer(exprs)
-                        )),
-                    )],
-                    None,
-                )
-            }
+            pp::Declaration::Declaration(
+                flags,
+                name,
+                ty,
+                Some(box pp::Expression::PrimaryExpression(pp::PrimaryExpression::ArrayLiteral(
+                    exprs,
+                ))),
+            ) => cp::Declaration::Declaration(
+                Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags)),
+                vec![cp::InitDeclarator::Assign(
+                    Box::new(self.format_decl(name, *ty)),
+                    ct::Token::Assign(0),
+                    Box::new(cp::AssignmentOrInitializerList::Initializers(
+                        self.exprs_to_initializer(exprs),
+                    )),
+                )],
+                None,
+            ),
             pp::Declaration::Declaration(flags, name, ty, Some(expr)) => {
                 cp::Declaration::Declaration(
                     Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags)),
@@ -557,29 +585,28 @@ impl PurkkaToC {
                     None,
                 )
             }
-            pp::Declaration::Declaration(flags, name, ty, None) => {
-                cp::Declaration::Declaration(
-                    Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags)),
-                    vec![cp::InitDeclarator::Declarator(Box::new(
-                        self.format_decl(name, *ty),
-                    ))],
-                    None,
-                )
-            }
+            pp::Declaration::Declaration(flags, name, ty, None) => cp::Declaration::Declaration(
+                Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags)),
+                vec![cp::InitDeclarator::Declarator(Box::new(
+                    self.format_decl(name, *ty),
+                ))],
+                None,
+            ),
         }
     }
 
     pub fn type_to_declaration_specifiers(
         &mut self,
         ty: TypeSignature,
-        flags: pp::DeclarationFlags
+        flags: pp::DeclarationFlags,
     ) -> cp::DeclarationSpecifiers {
         let converted_flags = self.declaration_flags(flags);
         match ty {
             TypeSignature::Plain(ty) => {
                 let c_ty = match ty.as_ref() {
                     t if self.symbols.types.contains_key(t) => {
-                        return self.type_to_declaration_specifiers(self.symbols.types[t].clone(), flags)
+                        return self
+                            .type_to_declaration_specifiers(self.symbols.types[t].clone(), flags)
                     }
                     _ => cp::CType::Custom(ty.clone()),
                 };
@@ -645,7 +672,10 @@ impl PurkkaToC {
         }
     }
 
-    fn unpack_fn(&self, ty: TypeSignature) -> Result<(TypeSignature, Vec<pp::Param>, Box<TypeSignature>), TypeSignature> {
+    fn unpack_fn(
+        &self,
+        ty: TypeSignature,
+    ) -> Result<(TypeSignature, Vec<pp::Param>, Box<TypeSignature>), TypeSignature> {
         let res;
         {
             let mut p_ty = &ty;
@@ -653,7 +683,7 @@ impl PurkkaToC {
                 p_ty = &*ty;
             }
             match p_ty {
-                TypeSignature::Function(params, _ret_ty) => res = true,
+                TypeSignature::Function(_params, _ret_ty) => res = true,
                 _ => res = false,
             }
         }
@@ -665,7 +695,7 @@ impl PurkkaToC {
             }
             match p_ty {
                 TypeSignature::Function(params, ret_ty) => Ok((ty, params, ret_ty)),
-                _ => unreachable!()
+                _ => unreachable!(),
             }
         } else {
             Err(ty)
@@ -684,10 +714,7 @@ impl PurkkaToC {
             }
             Err(ty) => {
                 let ptr = self.ty_to_pointer(ty.clone());
-                cp::Declarator::Declarator(
-                    ptr,
-                    Box::new(self.format_direct_decl(name, ty)),
-                )
+                cp::Declarator::Declarator(ptr, Box::new(self.format_direct_decl(name, ty)))
             }
         }
     }
@@ -698,8 +725,11 @@ impl PurkkaToC {
                 cp::DirectDeclarator::Identifier(name)
             }
             TypeSignature::Pointer { ty, .. } => self.format_direct_decl(name, *ty),
-            TypeSignature::Function(params, _ret_ty) => self
-                .function_pointer_from_params(name, params.into_iter().map(From::from).collect(), None),
+            TypeSignature::Function(params, _ret_ty) => self.function_pointer_from_params(
+                name,
+                params.into_iter().map(From::from).collect(),
+                None,
+            ),
             TypeSignature::Array(ty, size) => cp::DirectDeclarator::Array(
                 Box::new(self.format_direct_decl(name, *ty)),
                 size.map(|lit| {
@@ -721,7 +751,9 @@ impl PurkkaToC {
 
     pub fn type_to_type_name(&mut self, ty: TypeSignature) -> cp::TypeName {
         cp::TypeName::TypeName(
-            Box::new(self.type_to_declaration_specifiers(ty.clone(), pp::DeclarationFlags::default())),
+            Box::new(
+                self.type_to_declaration_specifiers(ty.clone(), pp::DeclarationFlags::default()),
+            ),
             Box::new(self.format_abstract_decl(ty)),
         )
     }
@@ -756,8 +788,10 @@ impl PurkkaToC {
             }
             TypeSignature::Struct(_, _) => cp::DirectAbstractDeclarator::Epsilon(),
             TypeSignature::Pointer { ty, .. } => self.format_abstract_direct_decl(*ty),
-            TypeSignature::Function(params, _ret_ty) => self
-                .abstract_function_pointer_from_params(params.into_iter().map(From::from).collect(), None),
+            TypeSignature::Function(params, _ret_ty) => self.abstract_function_pointer_from_params(
+                params.into_iter().map(From::from).collect(),
+                None,
+            ),
             other => panic!("Not implemented: {:?}", other),
         }
     }
@@ -782,7 +816,7 @@ impl PurkkaToC {
                     other => panic!("Not implemented: {:?}", other),
                 }
             }
-            e => cp::Expression::Expression(vec![self.assignment_expression(e)])
+            e => cp::Expression::Expression(vec![self.assignment_expression(e)]),
         }
     }
 
@@ -995,8 +1029,9 @@ impl PurkkaToC {
     pub fn primary_expression(&mut self, k: pp::Expression) -> cp::PrimaryExpression {
         match k {
             // add parens to block expressions if converted here
-            pp::Expression::PrimaryExpression(pp::PrimaryExpression::BlockExpression(_)) =>
-                cp::PrimaryExpression::Expression(Box::new(self.expression(k))),
+            pp::Expression::PrimaryExpression(pp::PrimaryExpression::BlockExpression(_)) => {
+                cp::PrimaryExpression::Expression(Box::new(self.expression(k)))
+            }
             pp::Expression::PrimaryExpression(primary) => self.primary_to_primary(primary),
             _ => cp::PrimaryExpression::Expression(Box::new(self.expression(k))),
         }
@@ -1053,7 +1088,7 @@ impl PurkkaToC {
                         .collect(),
                 )
             }
-            pp::PrimaryExpression::ArrayLiteral(..) => unreachable!()
+            pp::PrimaryExpression::ArrayLiteral(..) => unreachable!(),
         }
     }
 
@@ -1068,9 +1103,7 @@ impl PurkkaToC {
             pp::Literal::StringLiteral(pt::Token::StringLiteral(_, i)) => {
                 cp::PrimaryExpression::StringLiteral(From::from(i.to_string()))
             }
-            pp::Literal::Char(pt::Token::Char(_, i)) => {
-                cp::PrimaryExpression::CharLiteral(i)
-            }
+            pp::Literal::Char(pt::Token::Char(_, i)) => cp::PrimaryExpression::CharLiteral(i),
             _ => unreachable!(),
         }
     }
@@ -1118,34 +1151,51 @@ macro_rules! op_conversion {
 
 fn is_typedef(d: &cp::Declaration) -> bool {
     match d {
-        cp::Declaration::Declaration(box cp::DeclarationSpecifiers::DeclarationSpecifiers(spec, _), _, _) => spec.0.typedef,
-        _ => false
+        cp::Declaration::Declaration(
+            box cp::DeclarationSpecifiers::DeclarationSpecifiers(spec, _),
+            _,
+            _,
+        ) => spec.0.typedef,
+        _ => false,
     }
 }
 
 impl CToPurkka {
     fn macro_expansion(&self, exp: cp::MacroExpansion) -> Vec<pp::MacroExpansion> {
         match exp {
-            cp::MacroExpansion::Expression(e) => vec![pp::MacroExpansion::Expression(self.expression(e))],
+            cp::MacroExpansion::Expression(e) => {
+                vec![pp::MacroExpansion::Expression(self.expression(e))]
+            }
             cp::MacroExpansion::Declaration(d) => match d {
-                cp::ExternalDeclaration::FunctionDefinition(d) => vec![pp::MacroExpansion::Statement(pp::Statement::Declaration(Box::new(self.function_definition(*d))))],
+                cp::ExternalDeclaration::FunctionDefinition(d) => {
+                    vec![pp::MacroExpansion::Statement(pp::Statement::Declaration(
+                        Box::new(self.function_definition(*d)),
+                    ))]
+                }
                 cp::ExternalDeclaration::Declaration(d) => {
                     let maybe_t = self.get_struct_type(&*d).into_iter();
                     let rest: Vec<_> = if is_typedef(&d) {
-                        self.typedef(*d).into_iter()
-                            .map(|t| pp::MacroExpansion::Typedef(t))
+                        self.typedef(*d)
+                            .into_iter()
+                            .map(pp::MacroExpansion::Typedef)
                             .collect()
                     } else {
                         self.declaration(*d)
                             .into_iter()
-                            .map(|decl| pp::MacroExpansion::Statement(pp::Statement::Declaration(Box::new(decl))))
+                            .map(|decl| {
+                                pp::MacroExpansion::Statement(pp::Statement::Declaration(Box::new(
+                                    decl,
+                                )))
+                            })
                             .collect()
                     };
                     maybe_t.chain(rest.into_iter()).collect()
                 }
                 cp::ExternalDeclaration::Semicolon(_d) => unimplemented!(),
+            },
+            cp::MacroExpansion::Statement(s) => {
+                vec![pp::MacroExpansion::Statement(self.statement(s))]
             }
-            cp::MacroExpansion::Statement(s) => vec![pp::MacroExpansion::Statement(self.statement(s))],
             cp::MacroExpansion::Type(t) => vec![pp::MacroExpansion::Type(self.type_name(t))],
         }
     }
@@ -1153,8 +1203,10 @@ impl CToPurkka {
     fn get_struct_type(&self, d: &cp::Declaration) -> Option<pp::MacroExpansion> {
         match d {
             cp::Declaration::Declaration(spec, _, attrs) => {
-                let attrs = attrs.clone().unwrap_or_else(|| Vec::new());
-                Some(pp::MacroExpansion::Type(self.decl_spec_to_type(&spec, attrs.clone())))
+                let attrs = attrs.clone().unwrap_or_else(Vec::new);
+                Some(pp::MacroExpansion::Type(
+                    self.decl_spec_to_type(&spec, attrs.clone()),
+                ))
             }
             cp::Declaration::Pragma(_pragma) => None,
         }
@@ -1166,19 +1218,18 @@ impl CToPurkka {
                 if exprs.len() == 1 {
                     self.assignment_expression(exprs.remove(0))
                 } else {
-                    pp::Expression::PrimaryExpression(
-                        pp::PrimaryExpression::BlockExpression(
-                            Box::new(pp::BlockExpression::Block(
-                                pp::Block::Statements(
-                                    exprs.into_iter()
-                                    .map(|expr| pp::Statement::Expression(
-                                        Box::new(self.assignment_expression(expr))
+                    pp::Expression::PrimaryExpression(pp::PrimaryExpression::BlockExpression(
+                        Box::new(pp::BlockExpression::Block(pp::Block::Statements(
+                            exprs
+                                .into_iter()
+                                .map(|expr| {
+                                    pp::Statement::Expression(Box::new(
+                                        self.assignment_expression(expr),
                                     ))
-                                    .collect()
-                                )
-                            ))
-                        )
-                    )
+                                })
+                                .collect(),
+                        ))),
+                    ))
                 }
             }
         }
@@ -1189,23 +1240,25 @@ impl CToPurkka {
             cp::AssignmentExpression::TernaryExpression(e) => self.ternary_expression(e),
             cp::AssignmentExpression::Assignment(left, op, right) => {
                 let op = match op {
-                        cp::AssignmentOperator::Assign(..) => "=",
-                        cp::AssignmentOperator::TimesAssign(..) => "*=",
-                        cp::AssignmentOperator::DivAssign(..) => "/=",
-                        cp::AssignmentOperator::ModAssign(..) => "%=",
-                        cp::AssignmentOperator::PlusAssign(..) => "+=",
-                        cp::AssignmentOperator::MinusAssign(..) => "-=",
-                        cp::AssignmentOperator::BitShiftLeftAssign(..) => "<<=",
-                        cp::AssignmentOperator::BitShiftRightAssign(..) => ">>=",
-                        cp::AssignmentOperator::BitAndAssign(..) => "&=",
-                        cp::AssignmentOperator::BitXorAssign(..) => "^=",
-                        cp::AssignmentOperator::BitOrAssign(..) => "|=",
+                    cp::AssignmentOperator::Assign(..) => "=",
+                    cp::AssignmentOperator::TimesAssign(..) => "*=",
+                    cp::AssignmentOperator::DivAssign(..) => "/=",
+                    cp::AssignmentOperator::ModAssign(..) => "%=",
+                    cp::AssignmentOperator::PlusAssign(..) => "+=",
+                    cp::AssignmentOperator::MinusAssign(..) => "-=",
+                    cp::AssignmentOperator::BitShiftLeftAssign(..) => "<<=",
+                    cp::AssignmentOperator::BitShiftRightAssign(..) => ">>=",
+                    cp::AssignmentOperator::BitAndAssign(..) => "&=",
+                    cp::AssignmentOperator::BitXorAssign(..) => "^=",
+                    cp::AssignmentOperator::BitOrAssign(..) => "|=",
                 };
-                pp::Expression::Op(From::from(op),
+                pp::Expression::Op(
+                    From::from(op),
                     pp::ExprList::List(vec![
-                                       self.unary_expression(*left),
-                                       self.assignment_expression(*right),
-                    ]))
+                        self.unary_expression(*left),
+                        self.assignment_expression(*right),
+                    ]),
+                )
             }
         }
     }
@@ -1213,15 +1266,14 @@ impl CToPurkka {
     fn ternary_expression(&self, e: cp::TernaryExpression) -> pp::Expression {
         match e {
             cp::TernaryExpression::GeneralExpression(e) => self.general_expression(e),
-            cp::TernaryExpression::Ternary(cond, _, left, _, right) =>
-                pp::Expression::Op(
-                    From::from("?"),
-                    pp::ExprList::List(vec![
-                                       self.general_expression(cond),
-                                       self.expression(*left),
-                                       self.ternary_expression(*right),
-                    ])
-                )
+            cp::TernaryExpression::Ternary(cond, _, left, _, right) => pp::Expression::Op(
+                From::from("?"),
+                pp::ExprList::List(vec![
+                    self.general_expression(cond),
+                    self.expression(*left),
+                    self.ternary_expression(*right),
+                ]),
+            ),
         }
     }
 
@@ -1263,28 +1315,24 @@ impl CToPurkka {
             cp::UnaryExpression::SizeofTy(ty) => {
                 pp::Expression::Sizeof(pp::Sizeof::Type(Box::new(self.type_name(*ty))))
             }
-            cp::UnaryExpression::UnaryOperator(op, expr) => {
-                pp::Expression::Unary(
-                    From::from(match op {
-                        cp::UnaryOperator::BitAnd(_) => "&",
-                        cp::UnaryOperator::Times(_) => "*",
-                        cp::UnaryOperator::Not(_) => "!",
-                        cp::UnaryOperator::Plus(_) => "+",
-                        cp::UnaryOperator::Minus(_) => "-",
-                        cp::UnaryOperator::BitNot(_) => "~",
-                    }),
-                    pp::ExprList::List(vec![self.cast_expression(*expr)]),
-                )
-            }
-            cp::UnaryExpression::IncrementOrDecrement(op, expr) => {
-                pp::Expression::Unary(
-                    From::from(match op {
-                        cp::IncrementOrDecrement::Increment(_) => "++",
-                        cp::IncrementOrDecrement::Decrement(_) => "--",
-                    }),
-                    pp::ExprList::List(vec![self.unary_expression(*expr)]),
-                )
-            }
+            cp::UnaryExpression::UnaryOperator(op, expr) => pp::Expression::Unary(
+                From::from(match op {
+                    cp::UnaryOperator::BitAnd(_) => "&",
+                    cp::UnaryOperator::Times(_) => "*",
+                    cp::UnaryOperator::Not(_) => "!",
+                    cp::UnaryOperator::Plus(_) => "+",
+                    cp::UnaryOperator::Minus(_) => "-",
+                    cp::UnaryOperator::BitNot(_) => "~",
+                }),
+                pp::ExprList::List(vec![self.cast_expression(*expr)]),
+            ),
+            cp::UnaryExpression::IncrementOrDecrement(op, expr) => pp::Expression::Unary(
+                From::from(match op {
+                    cp::IncrementOrDecrement::Increment(_) => "++",
+                    cp::IncrementOrDecrement::Decrement(_) => "--",
+                }),
+                pp::ExprList::List(vec![self.unary_expression(*expr)]),
+            ),
             other => panic!("Not implemented: {:?}", other),
         }
     }
@@ -1313,15 +1361,15 @@ impl CToPurkka {
             }
             cp::PostfixExpression::Index(expr, _, index_expr, _) => pp::Expression::ArrayAccess(
                 Box::new(self.postfix_expression(*expr)),
-                Box::new(self.expression(*index_expr))),
-            cp::PostfixExpression::Increment(expr, inc_or_dec) =>
-                pp::Expression::PostFix(
-                    Box::new(self.postfix_expression(*expr)),
-                    match inc_or_dec {
-                        cp::IncrementOrDecrement::Increment(..) => From::from("++"),
-                        cp::IncrementOrDecrement::Decrement(..) => From::from("--"),
-                    }
-                )
+                Box::new(self.expression(*index_expr)),
+            ),
+            cp::PostfixExpression::Increment(expr, inc_or_dec) => pp::Expression::PostFix(
+                Box::new(self.postfix_expression(*expr)),
+                match inc_or_dec {
+                    cp::IncrementOrDecrement::Increment(..) => From::from("++"),
+                    cp::IncrementOrDecrement::Decrement(..) => From::from("--"),
+                },
+            ),
         }
     }
 
@@ -1330,85 +1378,104 @@ impl CToPurkka {
             cp::PrimaryExpression::Expression(e) => {
                 pp::PrimaryExpression::Expression(Box::new(self.expression(*e)))
             }
-            cp::PrimaryExpression::Number(e) =>
-            if e.contains('+') || e.contains('.') || e.contains('e') || e.contains('E') {
-                pp::PrimaryExpression::Literal(
-                    pp::Literal::Float(pt::Token::Float(0, From::from(e)))
-                )
-            } else {
-                pp::PrimaryExpression::Literal(
-                    pp::Literal::Integer(pt::Token::Integer(0, utils::int_from_str(&e)))
-                )
-            },
+            cp::PrimaryExpression::Number(e) => {
+                if e.contains('+') || e.contains('.') || e.contains('e') || e.contains('E') {
+                    pp::PrimaryExpression::Literal(pp::Literal::Float(pt::Token::Float(0, e)))
+                } else {
+                    pp::PrimaryExpression::Literal(pp::Literal::Integer(pt::Token::Integer(
+                        0,
+                        utils::int_from_str(&e),
+                    )))
+                }
+            }
             cp::PrimaryExpression::Identifier(ident) => pp::PrimaryExpression::Identifier(ident),
-            cp::PrimaryExpression::StructValue(type_name, initializers) =>
+            cp::PrimaryExpression::StructValue(type_name, initializers) => {
                 pp::PrimaryExpression::StructInitialization(
                     self.str_from_type_name(*type_name),
-                    initializers.into_iter().map(|init| self.initializer(init)).collect()
-                ),
+                    initializers
+                        .into_iter()
+                        .map(|init| self.initializer(init))
+                        .collect(),
+                )
+            }
             other => panic!("Not implemented: {:?}", other),
         }
     }
 
     fn str_from_type_name(&self, d: cp::TypeName) -> Rc<str> {
         match d {
-            cp::TypeName::TypeName(box cp::DeclarationSpecifiers::DeclarationSpecifiers(_, type_spec), _) => match type_spec {
+            cp::TypeName::TypeName(
+                box cp::DeclarationSpecifiers::DeclarationSpecifiers(_, type_spec),
+                _,
+            ) => match type_spec {
                 Some(cp::CType::Compound(compound)) => match compound {
                     cp::CompoundType::Struct(ident, _)
-                        | cp::CompoundType::Union(ident, _)
-                        | cp::CompoundType::Enum(ident, _) => ident,
+                    | cp::CompoundType::Union(ident, _)
+                    | cp::CompoundType::Enum(ident, _) => ident,
                     _ => unimplemented!(),
-                }
+                },
                 Some(cp::CType::Custom(ident)) => ident,
-                _ => unimplemented!()
-            }
+                _ => unimplemented!(),
+            },
         }
     }
 
     fn initializer(&self, d: cp::Initializer) -> pp::StructInitializationField {
         match d {
-            cp::Initializer::Initializer(s, init_list) => pp::StructInitializationField::StructInitializationField(
-                s, match *init_list {
-                    cp::AssignmentOrInitializerList::AssignmentExpression(e) => Box::new(self.assignment_expression(e)),
-                    _ => unimplemented!()
-                })
+            cp::Initializer::Initializer(s, init_list) => {
+                pp::StructInitializationField::StructInitializationField(
+                    s,
+                    match *init_list {
+                        cp::AssignmentOrInitializerList::AssignmentExpression(e) => {
+                            Box::new(self.assignment_expression(e))
+                        }
+                        _ => unimplemented!(),
+                    },
+                )
+            }
         }
     }
 
     fn typedef(&self, d: cp::Declaration) -> Vec<pp::Typedef> {
         let (spec, init, attrs) = if let cp::Declaration::Declaration(spec, init, attrs) = d {
-            (*spec, init, attrs.unwrap_or_else(|| Vec::new()))
+            (*spec, init, attrs.unwrap_or_else(Vec::new))
         } else {
             unreachable!()
         };
 
         let spec_ty = self.decl_spec_to_type(&spec, attrs.clone());
 
-        init.into_iter().map(|init_decl| match init_decl {
-            cp::InitDeclarator::Declarator(decl) | cp::InitDeclarator::Assign(decl, _, _) => {
-                let (name, ty) = self.declarator_to_type(&decl, spec_ty.clone());
-                pp::Typedef::Alias(true, name, Box::new(ty))
-            }
-            cp::InitDeclarator::Asm(..) => panic!("Cannot typedef asm declarations")
-        }).collect()
+        init.into_iter()
+            .map(|init_decl| match init_decl {
+                cp::InitDeclarator::Declarator(decl) | cp::InitDeclarator::Assign(decl, _, _) => {
+                    let (name, ty) = self.declarator_to_type(&decl, spec_ty.clone());
+                    pp::Typedef::Alias(true, name, Box::new(ty))
+                }
+                cp::InitDeclarator::Asm(..) => panic!("Cannot typedef asm declarations"),
+            })
+            .collect()
     }
 
     fn declaration_or_expression(&self, d: cp::DeclarationOrExpression) -> Vec<pp::Statement> {
         match d {
             cp::DeclarationOrExpression::ExpressionStatement(stmt) => match *stmt {
-                cp::ExpressionStatement::Expression(Some(e)) => vec![pp::Statement::Expression(Box::new(self.expression(*e)))],
+                cp::ExpressionStatement::Expression(Some(e)) => {
+                    vec![pp::Statement::Expression(Box::new(self.expression(*e)))]
+                }
                 cp::ExpressionStatement::Expression(None) => Vec::new(),
-            }
-            cp::DeclarationOrExpression::Declaration(decl) => self.declaration(*decl).into_iter()
+            },
+            cp::DeclarationOrExpression::Declaration(decl) => self
+                .declaration(*decl)
+                .into_iter()
                 .map(|decl| pp::Statement::Declaration(Box::new(decl)))
-                .collect()
+                .collect(),
         }
     }
 
     fn declaration(&self, d: cp::Declaration) -> Vec<pp::Declaration> {
         match d {
             cp::Declaration::Declaration(spec, decls, attrs) => {
-                let attrs = attrs.unwrap_or_else(|| Vec::new());
+                let attrs = attrs.unwrap_or_else(Vec::new);
                 let mut res_vec = Vec::new();
                 for decl in decls {
                     let res = match decl {
@@ -1416,25 +1483,27 @@ impl CToPurkka {
                             let spec_ty = self.decl_spec_to_type(&spec, attrs.clone());
                             let (name, ty) = self.declarator_to_type(&decl, spec_ty);
                             pp::Declaration::Declaration(
-                                pp::DeclarationFlags::default(), 
+                                pp::DeclarationFlags::default(),
                                 name,
                                 Box::new(ty),
-                                None
-                                )
+                                None,
+                            )
                         }
                         cp::InitDeclarator::Asm(..) => unimplemented!(),
                         cp::InitDeclarator::Assign(decl, _, initializer) => {
                             let spec_ty = self.decl_spec_to_type(&spec, attrs.clone());
                             let (name, ty) = self.declarator_to_type(&decl, spec_ty);
                             pp::Declaration::Declaration(
-                                pp::DeclarationFlags::default(), 
+                                pp::DeclarationFlags::default(),
                                 name,
                                 Box::new(ty),
                                 match *initializer {
-                                    cp::AssignmentOrInitializerList::AssignmentExpression(expr) => Some(Box::new(self.assignment_expression(expr))),
+                                    cp::AssignmentOrInitializerList::AssignmentExpression(expr) => {
+                                        Some(Box::new(self.assignment_expression(expr)))
+                                    }
                                     cp::AssignmentOrInitializerList::Initializers(..) => unimplemented!(),
-                                }
-                                )
+                                },
+                            )
                         }
                     };
                     res_vec.push(res);
@@ -1460,26 +1529,32 @@ impl CToPurkka {
             flags,
             name,
             Box::new(ty),
-            Some(
-                Box::new(pp::Expression::PrimaryExpression(pp::PrimaryExpression::Lambda(pp::Lambda::Lambda(
-                            self.declarator_to_params(&*decl),
-                            *ret_ty,
-                            self.block(*stmt)
-                ))))
-            )
+            Some(Box::new(pp::Expression::PrimaryExpression(
+                pp::PrimaryExpression::Lambda(pp::Lambda::Lambda(
+                    self.declarator_to_params(&*decl),
+                    *ret_ty,
+                    self.block(*stmt),
+                )),
+            ))),
         )
     }
 
     fn block(&self, e: cp::CompoundStatement) -> pp::Block {
         let cp::CompoundStatement::Statements(stmts) = e;
-        pp::Block::Statements(stmts.into_iter().flat_map(|s| self.stmt_or_declaration(s).into_iter()).collect())
+        pp::Block::Statements(
+            stmts
+                .into_iter()
+                .flat_map(|s| self.stmt_or_declaration(s).into_iter())
+                .collect(),
+        )
     }
 
     fn stmt_or_declaration(&self, e: cp::StatementOrDeclaration) -> Vec<pp::Statement> {
-        match e { 
+        match e {
             cp::StatementOrDeclaration::Statement(stmt) => vec![self.statement(stmt)],
-            cp::StatementOrDeclaration::Declaration(decl) =>
-                self.declaration(decl).into_iter()
+            cp::StatementOrDeclaration::Declaration(decl) => self
+                .declaration(decl)
+                .into_iter()
                 .map(|decl| pp::Statement::Declaration(Box::new(decl)))
                 .collect(),
         }
@@ -1489,8 +1564,9 @@ impl CToPurkka {
         match e {
             cp::Statement::LabeledStatement(..) => unimplemented!(),
             cp::Statement::CompoundStatement(stmt) => self.compound_statement(*stmt),
-            cp::Statement::ExpressionStatement(box cp::ExpressionStatement::Expression(Some(e))) =>
-                pp::Statement::Expression(Box::new(self.expression(*e))),
+            cp::Statement::ExpressionStatement(box cp::ExpressionStatement::Expression(Some(
+                e,
+            ))) => pp::Statement::Expression(Box::new(self.expression(*e))),
             cp::Statement::ExpressionStatement(box cp::ExpressionStatement::Expression(None)) => unimplemented!(),
             cp::Statement::SelectionStatement(stmt) => self.selection_statement(*stmt),
             cp::Statement::IterationStatement(stmt) => self.iteration_statement(*stmt),
@@ -1512,12 +1588,15 @@ impl CToPurkka {
 
     fn selection_statement(&self, e: cp::SelectionStatement) -> pp::Statement {
         match e {
-            cp::SelectionStatement::If(condition, stmt, maybe_else) => pp::Statement::BlockExpression(
-                Box::new(pp::BlockExpression::If(
-                    vec![(Box::new(self.expression(*condition)), Box::new(self.statement_as_block(stmt)))],
-                    maybe_else.map(|s| Box::new(self.statement_as_block(*s)))
-                ))
-            ),
+            cp::SelectionStatement::If(condition, stmt, maybe_else) => {
+                pp::Statement::BlockExpression(Box::new(pp::BlockExpression::If(
+                    vec![(
+                        Box::new(self.expression(*condition)),
+                        Box::new(self.statement_as_block(stmt)),
+                    )],
+                    maybe_else.map(|s| Box::new(self.statement_as_block(*s))),
+                )))
+            }
             cp::SelectionStatement::Switch(_expr, _stmt) => unimplemented!(),
         }
     }
@@ -1528,44 +1607,71 @@ impl CToPurkka {
             cp::JumpStatement::Continue(..) => pp::Statement::Jump(pp::JumpStatement::Continue),
             cp::JumpStatement::Break(..) => pp::Statement::Jump(pp::JumpStatement::Break),
             cp::JumpStatement::ReturnVoid(..) => unimplemented!(),
-            cp::JumpStatement::Return(_, e, _) => pp::Statement::Return(Some(Box::new(self.expression(e))))
+            cp::JumpStatement::Return(_, e, _) => {
+                pp::Statement::Return(Some(Box::new(self.expression(e))))
+            }
         }
     }
 
     fn iteration_statement(&self, e: cp::IterationStatement) -> pp::Statement {
         pp::Statement::BlockExpression(Box::new(match e {
             cp::IterationStatement::While(_, _, e, _, s) => pp::BlockExpression::While(
-                Box::new(self.expression(*e)), Box::new(self.statement_as_block(*s)), None, false),
+                Box::new(self.expression(*e)),
+                Box::new(self.statement_as_block(*s)),
+                None,
+                false,
+            ),
             cp::IterationStatement::Do(_, s, _, _, e, _, _) => pp::BlockExpression::While(
-                Box::new(self.expression(*e)), Box::new(self.statement_as_block(*s)), None, true),
+                Box::new(self.expression(*e)),
+                Box::new(self.statement_as_block(*s)),
+                None,
+                true,
+            ),
             cp::IterationStatement::For(
-                _, _, cp::ForExpr::EmptyLast(
-                    decl_expr, box cp::ExpressionStatement::Expression(expr)), _, s) => 
-                pp::BlockExpression::For(
-                    self.statement_list_to_optional_block(self.declaration_or_expression(decl_expr)),
-                    expr.map(|e| Box::new(self.expression(*e))),
-                    None,
-                    Box::new(self.statement_as_block(*s)),
-                    None),
+                _,
+                _,
+                cp::ForExpr::EmptyLast(decl_expr, box cp::ExpressionStatement::Expression(expr)),
+                _,
+                s,
+            ) => pp::BlockExpression::For(
+                self.statement_list_to_optional_block(self.declaration_or_expression(decl_expr)),
+                expr.map(|e| Box::new(self.expression(*e))),
+                None,
+                Box::new(self.statement_as_block(*s)),
+                None,
+            ),
             cp::IterationStatement::For(
-                _, _, cp::ForExpr::ForExpr(
-                    decl_expr, box cp::ExpressionStatement::Expression(expr), last_expr), _, s) => 
-                pp::BlockExpression::For(
-                    self.statement_list_to_optional_block(self.declaration_or_expression(decl_expr)),
-                    expr.map(|e| Box::new(self.expression(*e))),
-                    Some(Box::new(self.expression(*last_expr))),
-                    Box::new(self.statement_as_block(*s)),
-                    None),
+                _,
+                _,
+                cp::ForExpr::ForExpr(
+                    decl_expr,
+                    box cp::ExpressionStatement::Expression(expr),
+                    last_expr,
+                ),
+                _,
+                s,
+            ) => pp::BlockExpression::For(
+                self.statement_list_to_optional_block(self.declaration_or_expression(decl_expr)),
+                expr.map(|e| Box::new(self.expression(*e))),
+                Some(Box::new(self.expression(*last_expr))),
+                Box::new(self.statement_as_block(*s)),
+                None,
+            ),
         }))
     }
 
-    fn statement_list_to_optional_block(&self, mut e: Vec<pp::Statement>) -> Option<Box<pp::Statement>> {
+    fn statement_list_to_optional_block(
+        &self,
+        mut e: Vec<pp::Statement>,
+    ) -> Option<Box<pp::Statement>> {
         if e.is_empty() {
             None
         } else if e.len() == 1 {
             Some(Box::new(e.remove(0)))
         } else {
-            Some(Box::new(pp::Statement::BlockExpression(Box::new(pp::BlockExpression::Block(pp::Block::Statements(e))))))
+            Some(Box::new(pp::Statement::BlockExpression(Box::new(
+                pp::BlockExpression::Block(pp::Block::Statements(e)),
+            ))))
         }
     }
 
@@ -1671,26 +1777,21 @@ impl CToPurkka {
         }
     }
 
-    fn declarator_to_params(
-        &self,
-        decl: &cp::Declarator,
-    ) -> Vec<pp::LambdaParam> {
+    fn declarator_to_params(&self, decl: &cp::Declarator) -> Vec<pp::LambdaParam> {
         let cp::Declarator::Declarator(_, decl) = decl;
         self.direct_decl_to_params(decl)
     }
 
-    fn direct_decl_to_params(
-        &self,
-        decl: &cp::DirectDeclarator,
-    ) -> Vec<pp::LambdaParam> {
+    fn direct_decl_to_params(&self, decl: &cp::DirectDeclarator) -> Vec<pp::LambdaParam> {
         match decl {
-            cp::DirectDeclarator::Identifier(..) |
-            cp::DirectDeclarator::AsmStatement(..) |
-            cp::DirectDeclarator::Array(..) => panic!("Not a function: {:?}", decl),
+            cp::DirectDeclarator::Identifier(..)
+            | cp::DirectDeclarator::AsmStatement(..)
+            | cp::DirectDeclarator::Array(..) => panic!("Not a function: {:?}", decl),
             cp::DirectDeclarator::Parens(decl) => self.declarator_to_params(&**decl),
-            cp::DirectDeclarator::Function(_decl, params) => {
-                params.iter().map(|f| From::from(self.function_param(f))).collect()
-            }
+            cp::DirectDeclarator::Function(_decl, params) => params
+                .iter()
+                .map(|f| From::from(self.function_param(f)))
+                .collect(),
         }
     }
 

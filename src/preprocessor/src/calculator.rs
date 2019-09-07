@@ -20,7 +20,7 @@ use self::Paren::*;
 
 fn parse_number(mut num: &str) -> i128 {
     let mut num_len = 0;
-    let radix = if num.chars().next() == Some('0') {
+    let radix = if num.starts_with('0') {
         if num.chars().nth(1) == Some('x') || num.chars().nth(1) == Some('X') {
             num = &num[2..];
             16
@@ -34,8 +34,8 @@ fn parse_number(mut num: &str) -> i128 {
     let mut iter = num.chars().peekable();
     loop {
         let c = iter.next();
-        if c.is_some() {
-            match c.unwrap() {
+        if let Some(c) = c {
+            match c {
                 '0'..='9' | 'x' | 'X' | 'a'..='f' | 'A'..='F' => num_len += 1,
                 _ => break,
             };

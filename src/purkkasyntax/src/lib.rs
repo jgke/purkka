@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 
 use std::rc::Rc;
 
-use std::ops::{Add, Div, Sub, Mul};
+use std::ops::{Add, Div, Mul, Sub};
 
 use purkkatoken::token::Token;
 
@@ -388,7 +388,12 @@ pub struct DeclarationFlags {
 
 impl Default for DeclarationFlags {
     fn default() -> DeclarationFlags {
-        DeclarationFlags { mutable: true, public: true, inline: false, static_: false }
+        DeclarationFlags {
+            mutable: true,
+            public: true,
+            inline: false,
+            static_: false,
+        }
     }
 }
 
@@ -738,10 +743,9 @@ impl Declaration {
     }
 
     pub fn is_fn_ty(&self) -> bool {
-        if let Declaration::Declaration(
-            _flags, _name, box TypeSignature::Function(..),
-            Some(_)
-        ) = self {
+        if let Declaration::Declaration(_flags, _name, box TypeSignature::Function(..), Some(_)) =
+            self
+        {
             true
         } else {
             false

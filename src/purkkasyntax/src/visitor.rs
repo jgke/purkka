@@ -308,9 +308,7 @@ pub fn walk_primary_expression<T: ASTVisitor + ?Sized>(
         PrimaryExpression::VectorInitialization(_ident, list) => {
             visitor.fold(list, ASTVisitor::visit_expression)
         }
-        PrimaryExpression::ArrayLiteral(list) => {
-            visitor.fold(list, ASTVisitor::visit_expression)
-        }
+        PrimaryExpression::ArrayLiteral(list) => visitor.fold(list, ASTVisitor::visit_expression),
     }
 }
 
