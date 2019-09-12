@@ -429,6 +429,15 @@ impl TypeSignature {
         }
     }
 
+    pub fn is_array(&self, context: &HashMap<i128, IntermediateType>) -> Option<Box<TypeSignature>> {
+        use TypeSignature::*;
+        match self {
+            Array(ty, _) | DynamicArray(ty, _) => Some(ty.clone()),
+            Infer(infer) => infer.is_array(context),
+            _ => None,
+        }
+    }
+
     pub fn is_compound(&self, context: &HashMap<i128, IntermediateType>) -> bool {
         use TypeSignature::*;
         match self {
@@ -454,7 +463,7 @@ impl TypeSignature {
     ) -> (Option<i128>, Option<TypeSignature>) {
         match self {
             TypeSignature::Struct(_, fields) | TypeSignature::Union(_, fields) => {
-                for StructField::Field { name, ty, .. } in fields {
+                for StructField { name, ty, .. } in fields {
                     if name.as_ref() == ident {
                         return (None, Some(*ty.clone()));
                     }
@@ -462,7 +471,7 @@ impl TypeSignature {
                 (None, None)
             }
             TypeSignature::Enum(_, fields) => {
-                for EnumField::Field { name, value, .. } in fields {
+                for EnumField { name, value, .. } in fields {
                     if name.as_ref() == ident {
                         return (
                             Some(*value),
@@ -605,6 +614,20 @@ impl IntermediateType {
         }
     }
 
+    pub fn is_array(&self, context: &HashMap<i128, IntermediateType>) -> Option<Box<TypeSignature>> {
+        match self {
+            IntermediateType::Any(id) => {
+                if let Some(ty) = context.get(id) {
+                    ty.is_array(context)
+                } else {
+                    None
+                }
+            }
+            IntermediateType::Number(..) => None,
+            IntermediateType::Exact(t) => t.is_array(context),
+        }
+    }
+
     pub fn is_compound(&self, context: &HashMap<i128, IntermediateType>) -> bool {
         match self {
             IntermediateType::Any(id) => {
@@ -675,21 +698,17 @@ pub enum Param {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum StructField {
-    Field {
-        name: Rc<str>,
-        ty: Box<TypeSignature>,
-        bitfield: Option<usize>,
-    },
+pub struct StructField {
+    pub name: Rc<str>,
+    pub ty: Box<TypeSignature>,
+    pub bitfield: Option<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum EnumField {
-    Field {
-        name: Rc<str>,
-        value: i128,
-        ty: Option<TypeSignature>,
-    },
+pub struct EnumField {
+    pub name: Rc<str>,
+    pub value: i128,
+    pub ty: Option<TypeSignature>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -1,3 +1,5 @@
+#![feature(box_patterns)]
+
 pub mod parser;
 
 use std::collections::HashSet;
@@ -5,7 +7,7 @@ use std::rc::Rc;
 
 use purkkasyntax::*;
 use purkkatoken::tokenizer::tokenize;
-use resolve::{FileQuery, ResolveResult};
+use resolve::{Declarations, FileQuery, ResolveResult};
 
 use parser::{parse, Operators, Symbols};
 
@@ -28,24 +30,20 @@ pub fn parse_file(
     )
 }
 
-pub fn get_declarations(tree: &S, include_private: bool) -> Vec<(Rc<str>, TypeSignature)> {
+pub fn get_declarations(tree: &S) -> (Declarations, Declarations)  {
     let S::TranslationUnit(u) = tree;
     let TranslationUnit::Units(list) = u;
-    list.iter()
-        .flat_map(|unit| {
-            if let Unit::Declaration(decl) = unit {
-                match &**decl {
-                    Declaration::Declaration(flags, ident, ty, _) if flags.public => {
-                        Some((ident.clone(), *ty.clone()))
-                    }
-                    Declaration::Declaration(_flags, ident, ty, _) if include_private => {
-                        Some((ident.clone(), *ty.clone()))
-                    }
-                    Declaration::Declaration(..) => None,
+    let (decls, types): (Vec<_>, Vec<_>) = list.iter()
+        .map(|unit| {
+            match unit {
+                Unit::Declaration(box Declaration::Declaration(flags, ident, ty, _)) => {
+                    (Some((ident.clone(), *ty.clone())), None)
                 }
-            } else {
-                None
+                // XXX: fix
+                _ => (None, None)
+                //t => unimplemented!("{:?}", t)
             }
         })
-        .collect()
+        .unzip();
+    (decls.into_iter().flatten().collect(), types.into_iter().flatten().collect())
 }

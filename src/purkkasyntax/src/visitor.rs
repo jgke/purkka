@@ -242,7 +242,7 @@ pub fn walk_struct_field<T: ASTVisitor + ?Sized>(
     s: &mut StructField,
 ) -> Result<T::Succ, T::Err> {
     match s {
-        StructField::Field { ty, .. } => visitor.visit_ty(ty.deref_mut()),
+        StructField { ty, .. } => visitor.visit_ty(ty.deref_mut()),
     }
 }
 
@@ -251,7 +251,7 @@ pub fn walk_enum_field<T: ASTVisitor + ?Sized>(
     s: &mut EnumField,
 ) -> Result<T::Succ, T::Err> {
     match s {
-        EnumField::Field { ty, .. } => visitor.fold_o(ty, ASTVisitor::visit_ty),
+        EnumField { ty, .. } => visitor.fold_o(ty, ASTVisitor::visit_ty),
     }
 }
 

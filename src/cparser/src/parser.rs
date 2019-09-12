@@ -2259,7 +2259,7 @@ impl DeclarationContext {
                         self.declarator_to_type(decl, spec_ty.clone())
                     }
                 };
-                purkkasyntax::StructField::Field {
+                purkkasyntax::StructField {
                     name,
                     ty: Box::new(ty),
                     bitfield,
@@ -2269,7 +2269,7 @@ impl DeclarationContext {
     }
 
     fn enum_field(&self, f: &EnumField) -> purkkasyntax::EnumField {
-        purkkasyntax::EnumField::Field {
+        purkkasyntax::EnumField {
             name: f.0.clone(),
             value: f.2,
             ty: None,

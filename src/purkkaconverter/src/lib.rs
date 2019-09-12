@@ -525,7 +525,7 @@ impl PurkkaToC {
 
     pub fn struct_field(
         &mut self,
-        pp::StructField::Field { name, ty, .. }: pp::StructField,
+        pp::StructField { name, ty, .. }: pp::StructField,
     ) -> cp::StructField {
         let c_ty =
             self.type_to_declaration_specifiers(*ty.clone(), pp::DeclarationFlags::default());
@@ -1113,7 +1113,14 @@ struct CToPurkka {
     types: HashMap<Rc<str>, TypeSignature>,
 }
 
-pub fn to_purkka(c_exps: Vec<cp::MacroExpansion>) -> Vec<pp::MacroExpansion> {
+pub fn to_purkka(s: cp::S) -> pp::S {
+    let context = CToPurkka {
+        types: HashMap::new(),
+    };
+    context.s(s)
+}
+
+pub fn macros_to_purkka(c_exps: Vec<cp::MacroExpansion>) -> Vec<pp::MacroExpansion> {
     let context = CToPurkka {
         types: HashMap::new(),
     };
@@ -1161,6 +1168,59 @@ fn is_typedef(d: &cp::Declaration) -> bool {
 }
 
 impl CToPurkka {
+    fn s(&self, s: cp::S) -> pp::S {
+        match s {
+            cp::S::TranslationUnit(t) => pp::S::TranslationUnit(self.translation_unit(t))
+        }
+    }
+
+    fn translation_unit(&self, t: cp::TranslationUnit) -> pp::TranslationUnit {
+        match t {
+            cp::TranslationUnit::Units(units) => pp::TranslationUnit::Units(
+                units.into_iter()
+                .flat_map(|u| self.unit(u).into_iter())
+                .collect())
+        }
+    }
+
+    fn unit(&self, t: cp::ExternalDeclaration) -> Vec<pp::Unit> {
+        match t {
+            cp::ExternalDeclaration::FunctionDefinition(f) => vec![self.function_declaration_to_unit(*f)],
+            cp::ExternalDeclaration::Declaration(f) => self.declaration_to_units(*f),
+            cp::ExternalDeclaration::Semicolon(..) => vec![]
+        }
+    }
+
+    fn function_declaration_to_unit(&self, f: cp::FunctionDefinition) -> pp::Unit {
+        pp::Unit::Declaration(Box::new(self.function_definition(f)))
+    }
+
+    fn declaration_to_units(&self, d: cp::Declaration) -> Vec<pp::Unit> {
+        let maybe_t = self.get_declaration_type(&d).into_iter();
+        let rest: Vec<_> = if is_typedef(&d) {
+            self.typedef(d)
+                .into_iter()
+                .map(Box::new)
+                .map(pp::Unit::Typedef)
+                .collect()
+        } else {
+            self.declaration(d)
+                .into_iter()
+                .map(|decl| {
+                    pp::Unit::Declaration(Box::new(decl))
+                })
+            .collect()
+        };
+        maybe_t
+            .flat_map(|t| match t {
+                TypeSignature::Struct(Some(s), fields) => Some(pp::Unit::Typedef(Box::new(pp::Typedef::Struct(s, fields)))),
+                TypeSignature::Enum(Some(s), fields) => Some(pp::Unit::Typedef(Box::new(pp::Typedef::Enum(s, fields)))),
+                TypeSignature::Union(..) => unimplemented!(),
+                _ => None
+            }.into_iter())
+            .chain(rest.into_iter()).collect()
+    }
+
     fn macro_expansion(&self, exp: cp::MacroExpansion) -> Vec<pp::MacroExpansion> {
         match exp {
             cp::MacroExpansion::Expression(e) => {
@@ -1173,7 +1233,7 @@ impl CToPurkka {
                     ))]
                 }
                 cp::ExternalDeclaration::Declaration(d) => {
-                    let maybe_t = self.get_struct_type(&*d).into_iter();
+                    let maybe_t = self.get_declaration_type(&*d).into_iter();
                     let rest: Vec<_> = if is_typedef(&d) {
                         self.typedef(*d)
                             .into_iter()
@@ -1189,7 +1249,9 @@ impl CToPurkka {
                             })
                             .collect()
                     };
-                    maybe_t.chain(rest.into_iter()).collect()
+                    maybe_t
+                        .map(pp::MacroExpansion::Type)
+                        .chain(rest.into_iter()).collect()
                 }
                 cp::ExternalDeclaration::Semicolon(_d) => unimplemented!(),
             },
@@ -1200,13 +1262,13 @@ impl CToPurkka {
         }
     }
 
-    fn get_struct_type(&self, d: &cp::Declaration) -> Option<pp::MacroExpansion> {
+    fn get_declaration_type(&self, d: &cp::Declaration) -> Option<TypeSignature> {
         match d {
             cp::Declaration::Declaration(spec, _, attrs) => {
                 let attrs = attrs.clone().unwrap_or_else(Vec::new);
-                Some(pp::MacroExpansion::Type(
+                Some(
                     self.decl_spec_to_type(&spec, attrs.clone()),
-                ))
+                )
             }
             cp::Declaration::Pragma(_pragma) => None,
         }
@@ -1333,7 +1395,7 @@ impl CToPurkka {
                 }),
                 pp::ExprList::List(vec![self.unary_expression(*expr)]),
             ),
-            other => panic!("Not implemented: {:?}", other),
+            other => panic!("Not implemented: {:?}", other)
         }
     }
 
@@ -1928,7 +1990,7 @@ impl CToPurkka {
                         self.declarator_to_type(decl, spec_ty.clone())
                     }
                 };
-                purkkasyntax::StructField::Field {
+                purkkasyntax::StructField {
                     name,
                     ty: Box::new(ty),
                     bitfield,
@@ -1938,7 +2000,7 @@ impl CToPurkka {
     }
 
     fn enum_field(&self, f: &cp::EnumField) -> purkkasyntax::EnumField {
-        purkkasyntax::EnumField::Field {
+        purkkasyntax::EnumField {
             name: f.0.clone(),
             value: f.2,
             ty: None,

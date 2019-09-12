@@ -660,7 +660,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn parse_struct_list(&mut self) -> Vec<StructField> {
         let vec = self.parse_comma_delimited_to_vec(Self::parse_struct_field);
         let mut names = HashSet::new();
-        for StructField::Field { name, .. } in &vec {
+        for StructField { name, .. } in &vec {
             if names.contains(&name) {
                 panic!("Duplicate field name {}", name);
             }
@@ -679,7 +679,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 let name = self.next().identifier_s().unwrap().clone();
                 read_token!(self, Token::Colon);
                 let ty = Box::new(self.parse_type());
-                Some(StructField::Field {
+                Some(StructField {
                     name,
                     ty,
                     bitfield: None,
@@ -703,7 +703,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     Some(Token::OpenParen(..)) => Some(self.parse_type()),
                     _ => None,
                 };
-                Some(EnumField::Field { name, value, ty })
+                Some(EnumField { name, value, ty })
             }
             _ => None,
         }

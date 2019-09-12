@@ -63,7 +63,7 @@ pub fn get_file_cb<'a>(
                             let parsed =
                                 cparser::parse_macro_expansion(output, iter, types).unwrap();
                             debug_p(Core, "Converting to Purkka");
-                            purkkaconverter::to_purkka(parsed)
+                            purkkaconverter::macros_to_purkka(parsed)
                         }
                         Err(e) => panic!(e),
                     }
@@ -93,13 +93,13 @@ pub fn get_file_cb<'a>(
                             let parsed =
                                 cparser::parse_macro_expansion(output, iter, types).unwrap();
                             debug_p(Core, "Converting result to Purkka");
-                            purkkaconverter::to_purkka(parsed)
+                            purkkaconverter::macros_to_purkka(parsed)
                         }
                         Err(e) => panic!(e),
                     }
                 },
             );
-            let declarations = purkkaparser::get_declarations(&prk_tree, false);
+            let (declarations, types) = purkkaparser::get_declarations(&prk_tree);
             let (parsed, context) = purkkaconverter::convert(prk_tree, operators, symbols);
             let formatted = cformat::format_c(&parsed, context.local_includes);
             ResolveResult {
@@ -108,7 +108,7 @@ pub fn get_file_cb<'a>(
                 h_content: None,
                 dependencies: None,
                 declarations: Some(declarations),
-                types: Some(Vec::new()),
+                types: Some(types),
                 c_macros: (HashSet::new(), HashSet::new()),
             }
         } else {
@@ -128,6 +128,8 @@ pub fn get_file_cb<'a>(
                     let parsed = cparser::parse(output, iter, req.types).unwrap();
                     debug_p(Core, "Formatting output as C");
                     let formatted = cformat::format_c(&parsed, HashSet::new());
+                    //let converted = purkkaconverter::to_purkka(parsed);
+                    //let (declarations, types) = purkkaparser::get_declarations(&converted);
                     let (declarations, types) = cparser::get_declarations(&parsed);
                     let mut c_macros = (HashSet::new(), HashSet::new());
                     for (k, v) in &iter_ref.as_ref().unwrap().symbols {

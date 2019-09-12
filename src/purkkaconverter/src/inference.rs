@@ -550,7 +550,7 @@ impl TypeInferrer<'_> {
         }
         match struct_ty {
             IntermediateType::Exact(box TypeSignature::Struct(s, fields)) => {
-                for StructField::Field { name, ty, .. } in &fields {
+                for StructField { name, ty, .. } in &fields {
                     if name.as_ref() == ident.as_ref() {
                         return Ok(From::from(*ty.clone()));
                     }
@@ -661,12 +661,12 @@ impl TypeInferrer<'_> {
                     let mut used_names: HashSet<Rc<str>> = HashSet::new();
                     let mut remaining_names: Vec<Rc<str>> = struct_fields
                         .iter()
-                        .map(|StructField::Field { name, .. }| name.clone())
+                        .map(|StructField { name, .. }| name.clone())
                         .rev()
                         .collect::<Vec<_>>();
                     let mut struct_field_tys = struct_fields
                         .iter()
-                        .map(|StructField::Field { ty, name, .. }| (name, ty))
+                        .map(|StructField { ty, name, .. }| (name, ty))
                         .collect::<Vec<_>>();
                     struct_field_tys.sort_by(|(l_name, _), (r_name, _)| l_name.cmp(&r_name));
 
