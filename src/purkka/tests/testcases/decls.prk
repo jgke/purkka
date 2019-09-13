@@ -1,0 +1,4 @@
+pub fun foo() {
+    let a: [[char; 5]; 7];
+    a as void;
+}

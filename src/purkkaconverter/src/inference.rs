@@ -1325,6 +1325,7 @@ impl TypeInferrer<'_> {
                 TypeSignature::Array(right_ty, _) | TypeSignature::DynamicArray(right_ty, _) => {
                     self.unify_types(left_ty, right_ty)
                 }
+                TypeSignature::Primitive(Primitive::Int(32)) => Ok(()), //XXX: not ok
                 _ => not_impl!(rvalue, lvalue),
             },
             TypeSignature::Struct(left_name, left_fields) => match rvalue {

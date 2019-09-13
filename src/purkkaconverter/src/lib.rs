@@ -437,7 +437,7 @@ impl PurkkaToC {
 
     pub fn function_pointer_from_params(
         &mut self,
-        name: Rc<str>,
+        decl: cp::DirectDeclarator,
         params: Vec<pp::LambdaParam>,
         ptr: Option<Box<cp::Pointer>>,
     ) -> cp::DirectDeclarator {
@@ -446,7 +446,7 @@ impl PurkkaToC {
                 Some(ptr.unwrap_or_else(|| {
                     Box::new(cp::Pointer::Ptr(cp::TypeQualifiers::default(), None))
                 })),
-                Box::new(cp::DirectDeclarator::Identifier(name)),
+                Box::new(decl),
             ),
         )));
         cp::DirectDeclarator::Function(e, self.parameter_list_from_params(params))
@@ -709,42 +709,44 @@ impl PurkkaToC {
                 let ptr = self.ty_to_pointer(ty.clone());
                 let ret_ptr = self.ty_to_pointer(*ret_ty);
                 let converted_params = params.into_iter().map(From::from).collect();
-                let fun = self.function_pointer_from_params(name, converted_params, ptr);
+                let decl = cp::DirectDeclarator::Identifier(name);
+                let fun = self.function_pointer_from_params(decl, converted_params, ptr);
                 cp::Declarator::Declarator(ret_ptr, Box::new(fun))
             }
             Err(ty) => {
                 let ptr = self.ty_to_pointer(ty.clone());
-                cp::Declarator::Declarator(ptr, Box::new(self.format_direct_decl(name, ty)))
+                let decl = cp::DirectDeclarator::Identifier(name);
+                cp::Declarator::Declarator(ptr, Box::new(self.format_direct_decl(decl, ty)))
             }
         }
     }
 
-    pub fn format_direct_decl(&mut self, name: Rc<str>, ty: TypeSignature) -> cp::DirectDeclarator {
+    pub fn format_direct_decl(&mut self, decl: cp::DirectDeclarator, ty: TypeSignature) -> cp::DirectDeclarator {
         match ty {
             TypeSignature::Plain(_) | TypeSignature::Primitive(_) | TypeSignature::Struct(_, _) => {
-                cp::DirectDeclarator::Identifier(name)
+                decl
             }
-            TypeSignature::Pointer { ty, .. } => self.format_direct_decl(name, *ty),
+            TypeSignature::Pointer { ty, .. } => self.format_direct_decl(decl, *ty),
             TypeSignature::Function(params, _ret_ty) => self.function_pointer_from_params(
-                name,
+                decl,
                 params.into_iter().map(From::from).collect(),
                 None,
             ),
-            TypeSignature::Array(ty, size) => cp::DirectDeclarator::Array(
-                Box::new(self.format_direct_decl(name, *ty)),
-                size.map(|lit| {
+            TypeSignature::Array(ty, size) => {
+                let expr = size.map(|lit| {
                     Box::new(self.general_expression(pp::Expression::PrimaryExpression(
                         pp::PrimaryExpression::Literal(pp::Literal::Integer(pt::Token::Integer(
                             0,
                             lit.try_into().unwrap(),
                         ))),
                     )))
-                }),
-            ),
-            TypeSignature::DynamicArray(ty, expr) => cp::DirectDeclarator::Array(
-                Box::new(self.format_direct_decl(name, *ty)),
-                Some(Box::new(self.general_expression(*expr))),
-            ),
+                });
+                self.format_direct_decl(cp::DirectDeclarator::Array(Box::new(decl), expr), *ty)
+            }
+            TypeSignature::DynamicArray(ty, expr) => {
+                let expr = Some(Box::new(self.general_expression(*expr)));
+                self.format_direct_decl(cp::DirectDeclarator::Array(Box::new(decl), expr), *ty)
+            }
             other => panic!("Not implemented: {:?}", other),
         }
     }
