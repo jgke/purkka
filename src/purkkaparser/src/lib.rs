@@ -1,6 +1,7 @@
 #![feature(box_patterns)]
 
 pub mod parser;
+mod builtins;
 
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -20,7 +21,7 @@ pub fn parse_file(
 ) -> (S, Operators, Symbols) {
     let (tokens, _interner, fragment, sources) = tokenize(content, filename);
     parse(
-        &mut tokens.iter().peekable(),
+        tokens,
         &sources,
         &fragment,
         filename,
@@ -36,7 +37,7 @@ pub fn get_declarations(tree: &S) -> (Declarations, Declarations)  {
     let (decls, types): (Vec<_>, Vec<_>) = list.iter()
         .map(|unit| {
             match unit {
-                Unit::Declaration(box Declaration::Declaration(flags, ident, ty, _)) => {
+                Unit::Declaration(box Declaration::Declaration(_, ident, ty, _)) => {
                     (Some((ident.clone(), *ty.clone())), None)
                 }
                 // XXX: fix

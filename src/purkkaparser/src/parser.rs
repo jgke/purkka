@@ -1,6 +1,5 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::TryFrom;
-use std::iter::Peekable;
 use std::rc::Rc;
 
 use regex::Regex;
@@ -9,6 +8,8 @@ use fragment::fragment::{FragmentIterator, Source};
 use purkkasyntax::*;
 use purkkatoken::token::Token;
 use resolve::{FileQuery, ResolveResult};
+
+use crate::builtins::insert_builtins;
 
 macro_rules! maybe_read_token {
     ($iter:expr, $tok:path) => {
@@ -237,8 +238,20 @@ fn default_postfix_ops() -> OperatorMap {
     postfix_operators
 }
 
+fn default_symbols() -> Symbols {
+    let mut imported_declarations = Types::default();
+    insert_builtins(&mut imported_declarations);
+    Symbols {
+        types: Types::default(),
+        declarations: Types::default(),
+        imported_types: Types::default(),
+        imported_declarations,
+        imported_macros: (HashSet::new(), HashSet::new()),
+    }
+}
+
 pub fn parse(
-    iter: Iter,
+    iter: Vec<Token>,
     sources: &[Source],
     fragment_iter: &FragmentIterator,
     current_file: &str,
@@ -246,16 +259,17 @@ pub fn parse(
     expand: &dyn Fn(String, HashSet<Rc<str>>) -> Vec<MacroExpansion>,
     expand_call: &dyn Fn(String, Vec<Expression>, HashSet<Rc<str>>) -> Vec<MacroExpansion>,
 ) -> (S, Operators, Symbols) {
+    let symbols = default_symbols();
     let mut context = ParseContext {
         operators: Operators {
             unary: default_unary_ops(),
             postfix: default_postfix_ops(),
             infix: default_bin_ops(),
         },
-        iter,
+        iter: From::from(iter),
         fragment: fragment_iter,
         sources,
-        symbols: Symbols::default(),
+        symbols,
         current_identifiers: vec![HashSet::new()],
         current_file,
         get_file,
@@ -305,14 +319,12 @@ impl Operator {
     }
 }
 
-pub(crate) type Iter<'a, 'b> = &'a mut Peekable<std::slice::Iter<'b, Token>>;
-
-struct ParseContext<'a, 'b> {
+struct ParseContext<'a> {
     operators: Operators,
     symbols: Symbols,
     current_identifiers: Vec<HashSet<Rc<str>>>,
 
-    iter: Iter<'a, 'b>,
+    iter: VecDeque<Token>,
     fragment: &'a FragmentIterator,
     sources: &'a [Source],
 
@@ -322,12 +334,12 @@ struct ParseContext<'a, 'b> {
     expand_call: &'a dyn Fn(String, Vec<Expression>, HashSet<Rc<str>>) -> Vec<MacroExpansion>,
 }
 
-impl<'a, 'b> ParseContext<'a, 'b> {
-    fn next(&mut self) -> Option<&'a Token> {
-        self.iter.next()
+impl<'a> ParseContext<'a> {
+    fn next(&mut self) -> Option<Token> {
+        self.iter.pop_front()
     }
-    fn peek(&mut self) -> Option<&&'a Token> {
-        self.iter.peek()
+    fn peek(&self) -> Option<Token> {
+        self.iter.get(0).cloned()
     }
     fn parse_translation_unit(&mut self) -> TranslationUnit {
         let mut units = Vec::new();
@@ -395,7 +407,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_unit(&mut self) -> Vec<Unit> {
-        match self.peek() {
+        match &self.peek() {
             Some(Token::Operator(_, op)) if op.as_ref() == "@" => {
                 read_token!(self, Token::Operator);
                 self.parse_macro_unit()
@@ -458,7 +470,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             static_: false,
         };
 
-        let res = match self.peek() {
+        let res = match &self.peek() {
             Some(Token::Operator(_, t)) if &**t == "=" => {
                 read_token!(self, Token::Operator);
                 let expr = Box::new(self.parse_expression());
@@ -479,7 +491,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_type_(&mut self, maybe_fn: bool) -> TypeSignature {
         let ref_regex = Regex::new(r"^(&|&\?)+$").unwrap();
-        let ty = match self.peek() {
+        let ty = match &self.peek() {
             /* int */
             /* int -> int */
             Some(Token::Identifier(..)) => {
@@ -490,6 +502,13 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                     "float" => TypeSignature::Primitive(Primitive::Float),
                     "double" => TypeSignature::Primitive(Primitive::Double),
                     "int" | "long" => panic!("Use i32 and i64 instead of int/long"),
+                    "__attribute__" => {
+                        read_token!(self, Token::OpenParen);
+                        let ty = self.parse_type();
+                        let res = self.parse_attributes(ty);
+                        read_token!(self, Token::CloseParen);
+                        res
+                    }
                     _ => {
                         let first = t.chars().next();
                         if first == Some('i') || first == Some('u') {
@@ -517,7 +536,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             /* [int] */
             Some(Token::OpenBracket(..)) => self.parse_array(),
             /* &int, &?int */
-            Some(Token::Operator(_, t)) if ref_regex.is_match(t) => self.parse_ptr(t),
+            Some(Token::Operator(_, t)) if ref_regex.is_match(&t) => self.parse_ptr(&t),
             t => unexpected_token!(t, self),
         };
         if maybe_fn {
@@ -527,9 +546,31 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         }
     }
 
+    fn parse_attributes(&mut self, mut ty: TypeSignature) -> TypeSignature {
+        let mut attrs = Vec::new();
+        while let Some(Token::Comma(..)) = self.peek() {
+            read_token!(self, Token::Comma);
+            match self.peek() {
+                Some(Token::Identifier(_, ref s)) if &**s == "vector_size" => {
+                    read_token!(self, Token::Identifier);
+                    read_token!(self, Token::OpenParen);
+                    let e = self.parse_expression();
+                    read_token!(self, Token::CloseParen);
+                    ty = match ty {
+                        TypeSignature::Primitive(p) => TypeSignature::Vector(p),
+                        _ => panic!("Cannot convert non-primitive type {:?} to a vector", ty)
+                    };
+                    attrs.push(Attribute::Vector(e));
+                }
+                t => unimplemented!("{:?}", t)
+            }
+        }
+        TypeSignature::Attribute(Box::new(ty), attrs)
+    }
+
     fn parse_fn_or_tuple(&mut self, maybe_fn: bool) -> TypeSignature {
         let params = self.parse_param_list();
-        match self.peek() {
+        match &self.peek() {
             Some(Token::Operator(_, t)) if &**t == "->" && maybe_fn => {
                 read_token!(self, Token::Operator);
                 let return_type = self.parse_type();
@@ -545,7 +586,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         read_token!(self, Token::OpenBrace);
         let fields = self.parse_struct_list();
         read_token!(self, Token::CloseBrace);
-        TypeSignature::Struct(name.identifier_s().cloned(), fields)
+        TypeSignature::Struct(name.as_ref().identifier_s().cloned(), fields)
     }
 
     fn parse_enum(&mut self) -> TypeSignature {
@@ -554,7 +595,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
         read_token!(self, Token::OpenBrace);
         let fields = self.parse_enum_list();
         read_token!(self, Token::CloseBrace);
-        TypeSignature::Enum(name.identifier_s().cloned(), fields)
+        TypeSignature::Enum(name.as_ref().identifier_s().cloned(), fields)
     }
 
     fn parse_array(&mut self) -> TypeSignature {
@@ -609,7 +650,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn maybe_parse_fn(&mut self, arg_ty: TypeSignature) -> TypeSignature {
-        match self.peek() {
+        match &self.peek() {
             Some(Token::Operator(_, t)) if &**t == "->" => {
                 read_token!(self, Token::Operator);
                 let return_type = self.parse_type();
@@ -676,7 +717,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn parse_struct_field(&mut self) -> Option<StructField> {
         match self.peek() {
             Some(Token::Identifier(_, _)) => {
-                let name = self.next().identifier_s().unwrap().clone();
+                let name = self.next().as_ref().identifier_s().unwrap().clone();
                 read_token!(self, Token::Colon);
                 let ty = Box::new(self.parse_type());
                 Some(StructField {
@@ -690,10 +731,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     }
 
     fn parse_enum_field(&mut self) -> Option<EnumField> {
-        match self.peek() {
+        match &self.peek() {
             Some(Token::Identifier(_, _)) => {
-                let name = self.next().identifier_s().unwrap().clone();
-                let value = match self.peek() {
+                let name = self.next().as_ref().identifier_s().unwrap().clone();
+                let value = match &self.peek() {
                     Some(Token::Operator(_, t)) if &**t == "=" => {
                         panic!("Not implemented");
                     }
@@ -732,7 +773,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Identifier(i, t)) => match t.as_ref() {
                 "left" => true,
                 "right" => false,
-                _ => unexpected_token!(Some(Token::Identifier(*i, t.clone())), self),
+                _ => unexpected_token!(Some(Token::Identifier(i, t.clone())), self),
             },
             None => true,
             Some(_) => unreachable!(),
@@ -830,6 +871,11 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Type(..)) => {
                 read_token!(self, Token::Type);
                 let name = read_identifier_str!(self);
+                let op = read_token!(self, Token::Operator);
+                match op {
+                    Token::Operator(_, ref s) if &**s == "=" => {},
+                    t => unexpected_token!(Some(t), self)
+                }
                 let ty = self.parse_type();
                 read_token!(self, Token::SemiColon);
                 self.symbols.types.insert(name.clone(), ty.clone());
@@ -845,7 +891,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     #[allow(clippy::cognitive_complexity)]
     fn parse_expression_(&mut self, precedence: usize) -> Expression {
-        let expr = match self.peek() {
+        let expr = match &self.peek() {
             Some(Token::Operator(_, op)) if op.as_ref() == "@" => {
                 read_token!(self, Token::Operator);
                 self.parse_macro_expression()
@@ -864,13 +910,45 @@ impl<'a, 'b> ParseContext<'a, 'b> {
             Some(Token::Sizeof(..)) => {
                 read_token!(self, Token::Sizeof);
                 read_token!(self, Token::OpenParen);
-                let ty = self.parse_type();
+                let res = match self.parse_type_or_expression() {
+                    Ok(ty) => Expression::Sizeof(Sizeof::Type(ty)),
+                    Err(expr) => Expression::Sizeof(Sizeof::Expression(expr)),
+                };
                 read_token!(self, Token::CloseParen);
-                Expression::Sizeof(Sizeof::Type(Box::new(ty)))
+                res
             }
             _ => Expression::PrimaryExpression(self.parse_primary_expression()),
         };
         self.parse_expression__(expr, precedence)
+    }
+
+    fn parse_type_or_expression(&mut self) -> Result<Box<TypeSignature>, Box<Expression>> {
+        // remove stuff until the first identifier, then push the stuff back, and parse
+        let mut buf = Vec::new();
+        let ident;
+
+        loop {
+            match self.next() {
+                None => panic!(),
+                Some(t@Token::Identifier(..)) => {
+                    buf.push(t.clone());
+                    ident = t;
+                    break;
+                }
+                Some(t) => buf.push(t)
+            }
+        }
+
+        let mut new_iter = VecDeque::new();
+        std::mem::swap(&mut self.iter, &mut new_iter);
+
+        self.iter = buf.into_iter()
+            .chain(new_iter.into_iter()).collect();
+
+        match &ident {
+            Token::Identifier(_, s) if self.symbols.types.contains_key(s) => Ok(Box::new(self.parse_type())),
+            _ => Err(Box::new(self.parse_expression())),
+        }
     }
 
     #[allow(clippy::cognitive_complexity)]
@@ -896,7 +974,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 Some(Token::OpenParen(..)) => {
                     expr = Expression::Call(Box::new(expr), self.parse_args())
                 }
-                Some(Token::Operator(_, op)) => match self.operators.infix.get(op).cloned() {
+                Some(Token::Operator(_, op)) => match self.operators.infix.get(&op).cloned() {
                     Some(ref n) if precedence <= n.precedence => {
                         let mut left = vec![expr];
                         read_token!(self, Token::Operator);
@@ -915,7 +993,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                         }
                     }
                     Some(_) => break,
-                    None => match self.operators.postfix.get(op) {
+                    None => match self.operators.postfix.get(&op) {
                         Some(_) => {
                             read_token!(self, Token::Operator);
                             expr = Expression::PostFix(Box::new(expr), op.clone());
@@ -990,10 +1068,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                 }
             }
             Some(Token::Identifier(_, s)) => {
-                if self.symbols.imported_macros.0.contains(s) {
+                if self.symbols.imported_macros.0.contains(&s) {
                     let s = read_identifier_str!(self);
                     (self.expand)(s.to_string(), tys)
-                } else if self.symbols.imported_macros.1.contains(s) {
+                } else if self.symbols.imported_macros.1.contains(&s) {
                     let s = read_identifier_str!(self);
                     let args = self.parse_args();
 
@@ -1009,10 +1087,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn parse_primary_expression(&mut self) -> PrimaryExpression {
         match self.peek() {
             Some(Token::Identifier(_, s)) => {
-                if self.starts_c_macro(s) {
+                if self.starts_c_macro(&s) {
                     PrimaryExpression::Expression(Box::new(self.parse_macro_expression()))
                 } else {
-                    let t = self.next().identifier_s().unwrap().clone();
+                    let t = self.next().as_ref().identifier_s().unwrap().clone();
                     let ty = self.get_ty(&t).cloned();
                     match self.peek() {
                         Some(Token::OpenBrace(..))
@@ -1060,14 +1138,14 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     fn parse_lambda(&mut self) -> (Vec<LambdaParam>, TypeSignature, Block) {
         let params = self.parse_lambda_param_list();
-        let return_type = match self.peek() {
+        let return_type = match &self.peek() {
             Some(Token::Operator(_, t)) if &**t == "->" => {
                 read_token!(self, Token::Operator);
                 self.parse_type()
             }
             _ => self.get_inferred_type(),
         };
-        let block = match self.peek() {
+        let block = match &self.peek() {
             Some(Token::Operator(_, t)) if &**t == "=>" => {
                 read_token!(self, Token::Operator);
                 let expr = self.parse_expression();
@@ -1088,7 +1166,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
     fn parse_lambda_param(&mut self) -> Option<LambdaParam> {
         match self.peek() {
             Some(Token::Identifier(..)) => {
-                let ident = self.next().identifier_s().unwrap().clone();
+                let ident = self.next().as_ref().identifier_s().unwrap().clone();
                 match self.peek() {
                     Some(Token::Colon(_)) => {
                         read_token!(self, Token::Colon);
@@ -1306,12 +1384,12 @@ impl<'a, 'b> ParseContext<'a, 'b> {
 
     #[allow(unreachable_patterns)]
     fn parse_statement(&mut self, semi: bool) -> Statement {
-        match self.peek().cloned() {
+        match &self.peek() {
             Some(Token::Operator(_, op)) if op.as_ref() == "@" => {
                 read_token!(self, Token::Operator);
                 return self.parse_macro_as_statement();
             }
-            Some(Token::Identifier(_, ident)) if self.starts_c_macro(&ident) => {
+            Some(Token::Identifier(_, ident)) if self.starts_c_macro(ident) => {
                 return self.parse_macro_as_statement()
             }
             _ => {}
@@ -1428,7 +1506,7 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                                     Box::new(expr),
                                 ));
                             } else {
-                                unexpected_token!(Some(&Token::Colon(*i)), self);
+                                unexpected_token!(Some(&Token::Colon(i)), self);
                             }
 
                             match self.peek() {
@@ -1450,6 +1528,10 @@ impl<'a, 'b> ParseContext<'a, 'b> {
                             read_token!(self, Token::Comma);
                         }
                         Some(Token::CloseBrace(..)) => {
+                            fields.push(StructInitializationField::StructInitializationField(
+                                None,
+                                Box::new(expr),
+                            ));
                             read_token!(self, Token::CloseBrace);
                             break;
                         }
@@ -1565,7 +1647,7 @@ mod tests {
             symbols: Symbols::default(),
             current_identifiers: vec![HashSet::new()],
 
-            iter: &mut vec.iter().peekable(),
+            iter: From::from(vec),
             fragment: &FragmentIterator::new("", ""),
             sources: &Vec::new(),
 
@@ -1605,7 +1687,7 @@ mod tests {
 
     fn test_parse(list: Vec<Token>) -> S {
         parse(
-            &mut list.iter().peekable(),
+            From::from(list),
             &vec![],
             &FragmentIterator::new("", ""),
             "",

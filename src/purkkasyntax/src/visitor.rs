@@ -201,6 +201,7 @@ pub fn walk_ty<T: ASTVisitor + ?Sized>(
         TypeSignature::Vector(..) => Ok(visitor.ok()),
         TypeSignature::Complex(..) => Ok(visitor.ok()),
         TypeSignature::Pointer { ty, .. } => visitor.visit_ty(ty.deref_mut()),
+        TypeSignature::Attribute(ty, _) => visitor.visit_ty(ty.deref_mut()),
         TypeSignature::Struct(_, ref mut fields) => {
             visitor.fold(fields, ASTVisitor::visit_struct_field)
         }

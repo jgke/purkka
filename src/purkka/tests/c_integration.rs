@@ -281,7 +281,7 @@ fn expressions() {
     assert_eq!(parse("char foo = 'b';").c_content, "char foo = 'b';\n");
     assert_eq!(
         parse("int foo = sizeof(\"foo\");").c_content,
-        "int foo = sizeof(\"foo\");\n"
+        "int foo = sizeof((\"foo\"));\n"
     );
     assert_eq!(
         parse("int foo = sizeof(char[]);").c_content,
@@ -333,11 +333,11 @@ fn sizeofs() {
     );
     assert_eq!(
         parse("int a = sizeof foo;").c_content,
-        "int a = sizeof foo;\n"
+        "int a = sizeof(foo);\n"
     );
     assert_eq!(
         parse("int a = sizeof(*foo);").c_content,
-        "int a = sizeof(*foo);\n"
+        "int a = sizeof((*foo));\n"
     );
 }
 

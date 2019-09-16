@@ -35,13 +35,11 @@ fn test_convert_parse_file(s: &str) -> S {
 #[test]
 fn parse_simple() {
     parse(
-        &mut vec![
+        From::from(vec![
             Token::Let(0),
             Token::Identifier(1, From::from("foo")),
             Token::SemiColon(2),
-        ]
-        .iter()
-        .peekable(),
+        ]),
         &vec![],
         &FragmentIterator::new("", ""),
         "",

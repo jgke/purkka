@@ -751,20 +751,24 @@ impl TypeInferrer<'_> {
                     .types
                     .get(ident)
                     .unwrap_or_else(|| &self.context.symbols.imported_types[ident]);
-                if let TypeSignature::Vector(plain) = vec_ty {
-                    let prim = From::from(TypeSignature::Primitive(*plain));
-                    let mut ret_tys = Vec::new();
-                    for expr in fields {
-                        let (e_ty, mut ret) = self.get_type(expr)?;
-                        ret_tys.append(&mut ret);
-                        self.make_equal(&prim, &e_ty)?;
+                match vec_ty {
+                    TypeSignature::Vector(plain)
+                        | TypeSignature::Attribute(box TypeSignature::Vector(plain), _) => {
+                            let prim = From::from(TypeSignature::Primitive(*plain));
+                            let mut ret_tys = Vec::new();
+                            for expr in fields {
+                                let (e_ty, mut ret) = self.get_type(expr)?;
+                                ret_tys.append(&mut ret);
+                                self.make_equal(&prim, &e_ty)?;
+                            }
+                            Ok((From::from(TypeSignature::Plain(ident.clone())), ret_tys))
+                        }
+                    _ => {
+                        panic!(
+                            "Cannot instantiate non-vector type {:?} as a vector",
+                            vec_ty
+                            );
                     }
-                    Ok((From::from(TypeSignature::Plain(ident.clone())), ret_tys))
-                } else {
-                    panic!(
-                        "Cannot instantiate non-vector type {:?} as a vector",
-                        vec_ty
-                    );
                 }
             }
             PrimaryExpression::BlockExpression(block) => {
@@ -831,7 +835,9 @@ impl TypeInferrer<'_> {
                 }
             }
             TypeSignature::Primitive(prim) => panic!("Cannot index into type {}", prim),
-            TypeSignature::Vector(prim) => Ok(From::from(TypeSignature::Primitive(*prim))),
+            TypeSignature::Vector(plain)
+                | TypeSignature::Attribute(box TypeSignature::Vector(plain), _) =>
+                Ok(From::from(TypeSignature::Primitive(*plain))),
             TypeSignature::Tuple(list) => {
                 let lit = index_expr
                     .eval(&HashMap::new())
@@ -1097,6 +1103,7 @@ impl TypeInferrer<'_> {
                 Ok(From::from(*return_type.clone()))
             }
             TypeSignature::Infer(_infer) => not_impl!(ty),
+            TypeSignature::Attribute(ty, attrs) => not_impl!(ty, attrs),
         }
     }
 
@@ -1197,7 +1204,11 @@ impl TypeInferrer<'_> {
             (IntermediateNumber::Indeterminate, TypeSignature::Vector(t))
             | (IntermediateNumber::Float, TypeSignature::Vector(t @ Primitive::Float))
             | (IntermediateNumber::Float, TypeSignature::Vector(t @ Primitive::Double))
-            | (IntermediateNumber::Double, TypeSignature::Vector(t @ Primitive::Double)) => {
+            | (IntermediateNumber::Double, TypeSignature::Vector(t @ Primitive::Double)) 
+            | (IntermediateNumber::Indeterminate, TypeSignature::Attribute(box TypeSignature::Vector(t), _))
+            | (IntermediateNumber::Float, TypeSignature::Attribute(box TypeSignature::Vector(t @ Primitive::Float), _))
+            | (IntermediateNumber::Float, TypeSignature::Attribute(box TypeSignature::Vector(t @ Primitive::Double), _))
+            | (IntermediateNumber::Double, TypeSignature::Attribute(box TypeSignature::Vector(t @ Primitive::Double), _)) => {
                 TypeSignature::Vector(*t)
             }
             (IntermediateNumber::Indeterminate, TypeSignature::Pointer {..})
@@ -1297,9 +1308,11 @@ impl TypeInferrer<'_> {
             }
             TypeSignature::Primitive(prim)
             | TypeSignature::Vector(prim)
+            | TypeSignature::Attribute(box TypeSignature::Vector(prim), _)
             | TypeSignature::Complex(prim) => {
                 if let TypeSignature::Primitive(r_prim)
                 | TypeSignature::Vector(r_prim)
+                | TypeSignature::Attribute(box TypeSignature::Vector(r_prim), _)
                 | TypeSignature::Complex(r_prim) = rvalue
                 {
                     self.unify_primitives(prim, r_prim)
@@ -1363,6 +1376,7 @@ impl TypeInferrer<'_> {
                 _otherwise => not_impl!(lvalue, rvalue),
             },
             TypeSignature::Infer(infer) => self.unify_with_infer(infer, rvalue),
+            TypeSignature::Attribute(ty, attrs) => not_impl!(ty, attrs)
         }
     }
 

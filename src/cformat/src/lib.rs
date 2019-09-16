@@ -697,7 +697,9 @@ impl Context {
             }
             UnaryExpression::SizeofExpr(e) => {
                 self.push("sizeof");
+                self.push_token(&Token::OpenParen(0));
                 self.unary_expression(&**e);
+                self.push_token(&Token::CloseParen(0));
             }
             UnaryExpression::SizeofTy(e) => {
                 self.push("sizeof");

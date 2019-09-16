@@ -1049,6 +1049,7 @@ impl PurkkaToC {
             }
             pp::PrimaryExpression::Lambda(..) => unreachable!(),
             pp::PrimaryExpression::StructInitialization(ident, fields) => {
+                dbg!(&ident, &fields);
                 cp::PrimaryExpression::StructValue(
                     Box::new(
                         self.type_to_type_name(pp::TypeSignature::Struct(Some(ident), Vec::new())),

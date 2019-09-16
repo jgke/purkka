@@ -417,6 +417,13 @@ pub enum TypeSignature {
 
     Function(Vec<Param>, Box<TypeSignature>),
     Infer(IntermediateType),
+    Attribute(Box<TypeSignature>, Vec<Attribute>)
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Attribute {
+    Vector(Expression),
+    Other(Vec<Token>)
 }
 
 impl TypeSignature {
