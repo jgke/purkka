@@ -8,7 +8,6 @@ use crate::traits::TreeTransformer;
 use crate::PurkkaToC;
 use purkkasyntax::visitor::*;
 use purkkasyntax::*;
-use purkkatoken::token::Token;
 
 #[derive(Debug)]
 pub struct TypeInferrer<'a> {
@@ -568,7 +567,7 @@ impl TypeInferrer<'_> {
             IntermediateType::Exact(box TypeSignature::Pointer { ty, .. }) => {
                 let ret_val = self.struct_ty_access(e, From::from(*ty.clone()), ident)?;
                 let mut new_e = Expression::PrimaryExpression(PrimaryExpression::Literal(
-                    Literal::Integer(Token::Integer(0, 0)),
+                    Literal::Integer(0),
                 ));
                 std::mem::swap(&mut new_e, e);
                 *e = Expression::Unary(From::from("*"), ExprList::List(vec![new_e]));
@@ -843,7 +842,7 @@ impl TypeInferrer<'_> {
                     .eval(&HashMap::new())
                     .expect("Tuple index must be a constant expression");
                 let index = match lit {
-                    Literal::Integer(Token::Integer(_, i)) => i,
+                    Literal::Integer(i) => i,
                     otherwise => panic!(
                         "Tuple index must be a integer constant expression (got {:?})",
                         otherwise

@@ -196,6 +196,13 @@ grammar! {
         | #Token::Float
         | #Token::StringLiteral
         | #Token::Char
+        @ #[derive(Clone, Debug, PartialEq)]
+        pub enum Literal {
+            Integer(i128),
+            Float(Rc<str>),
+            StringLiteral(Rc<str>),
+            Char(char),
+        }
         ;
 
     PrimaryExpression
@@ -785,9 +792,9 @@ impl Add for Literal {
     fn add(self, other: Literal) -> Literal {
         match (self, other) {
             (
-                Literal::Integer(Token::Integer(i, left)),
-                Literal::Integer(Token::Integer(_, right)),
-            ) => Literal::Integer(Token::Integer(i, left + right)),
+                Literal::Integer(left),
+                Literal::Integer(right),
+            ) => Literal::Integer(left + right),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
@@ -799,9 +806,9 @@ impl Mul for Literal {
     fn mul(self, other: Literal) -> Literal {
         match (self, other) {
             (
-                Literal::Integer(Token::Integer(i, left)),
-                Literal::Integer(Token::Integer(_, right)),
-            ) => Literal::Integer(Token::Integer(i, left * right)),
+                Literal::Integer(left),
+                Literal::Integer(right),
+            ) => Literal::Integer(left * right),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
@@ -813,9 +820,9 @@ impl Sub for Literal {
     fn sub(self, other: Literal) -> Literal {
         match (self, other) {
             (
-                Literal::Integer(Token::Integer(i, left)),
-                Literal::Integer(Token::Integer(_, right)),
-            ) => Literal::Integer(Token::Integer(i, left - right)),
+                Literal::Integer(left),
+                Literal::Integer(right),
+            ) => Literal::Integer(left - right),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
@@ -827,9 +834,9 @@ impl Div for Literal {
     fn div(self, other: Literal) -> Literal {
         match (self, other) {
             (
-                Literal::Integer(Token::Integer(i, left)),
-                Literal::Integer(Token::Integer(_, right)),
-            ) => Literal::Integer(Token::Integer(i, left / right)),
+                Literal::Integer(left),
+                Literal::Integer(right),
+            ) => Literal::Integer(left / right),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }
@@ -854,7 +861,7 @@ impl Expression {
 impl PrimaryExpression {
     pub fn eval(&self, constants: &HashMap<Rc<str>, Literal>) -> Result<Literal, ()> {
         match self {
-            PrimaryExpression::Literal(lit @ Literal::Integer(Token::Integer(..))) => {
+            PrimaryExpression::Literal(lit @ Literal::Integer(..)) => {
                 Ok(lit.clone())
             }
             PrimaryExpression::Identifier(s) => constants.get(s).cloned().ok_or(()),

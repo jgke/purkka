@@ -10,7 +10,6 @@ use ctoken::token as ct;
 use purkkaparser::parser::{Operators, Symbols};
 use purkkasyntax as pp;
 use purkkasyntax::{Primitive, TypeSignature};
-use purkkatoken::token as pt;
 use shared::utils;
 
 pub mod traits;
@@ -735,10 +734,9 @@ impl PurkkaToC {
             TypeSignature::Array(ty, size) => {
                 let expr = size.map(|lit| {
                     Box::new(self.general_expression(pp::Expression::PrimaryExpression(
-                        pp::PrimaryExpression::Literal(pp::Literal::Integer(pt::Token::Integer(
-                            0,
-                            lit.try_into().unwrap(),
-                        ))),
+                        pp::PrimaryExpression::Literal(pp::Literal::Integer(
+                            lit.try_into().unwrap()
+                        )),
                     )))
                 });
                 self.format_direct_decl(cp::DirectDeclarator::Array(Box::new(decl), expr), *ty)
@@ -1097,17 +1095,16 @@ impl PurkkaToC {
 
     pub fn literal_to_primary(&mut self, k: pp::Literal) -> cp::PrimaryExpression {
         match k {
-            pp::Literal::Integer(pt::Token::Integer(_, i)) => {
+            pp::Literal::Integer(i) => {
                 cp::PrimaryExpression::Number(From::from(i.to_string()))
             }
-            pp::Literal::Float(pt::Token::Float(_, i)) => {
+            pp::Literal::Float(i) => {
                 cp::PrimaryExpression::Number(From::from(i.to_string()))
             }
-            pp::Literal::StringLiteral(pt::Token::StringLiteral(_, i)) => {
+            pp::Literal::StringLiteral(i) => {
                 cp::PrimaryExpression::StringLiteral(From::from(i.to_string()))
             }
-            pp::Literal::Char(pt::Token::Char(_, i)) => cp::PrimaryExpression::CharLiteral(i),
-            _ => unreachable!(),
+            pp::Literal::Char(i) => cp::PrimaryExpression::CharLiteral(i),
         }
     }
 }
@@ -1445,12 +1442,11 @@ impl CToPurkka {
             }
             cp::PrimaryExpression::Number(e) => {
                 if e.contains('+') || e.contains('.') || e.contains('e') || e.contains('E') {
-                    pp::PrimaryExpression::Literal(pp::Literal::Float(pt::Token::Float(0, e)))
+                    pp::PrimaryExpression::Literal(pp::Literal::Float(e))
                 } else {
-                    pp::PrimaryExpression::Literal(pp::Literal::Integer(pt::Token::Integer(
-                        0,
+                    pp::PrimaryExpression::Literal(pp::Literal::Integer(
                         utils::int_from_str(&e),
-                    )))
+                    ))
                 }
             }
             cp::PrimaryExpression::Identifier(ident) => pp::PrimaryExpression::Identifier(ident),

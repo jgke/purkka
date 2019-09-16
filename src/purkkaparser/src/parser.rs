@@ -609,7 +609,7 @@ impl<'a> ParseContext<'a> {
             _ => None,
         };
         let val = match expr.as_ref().map(|e| e.eval(&HashMap::new())) {
-            Some(Ok(Literal::Integer(Token::Integer(_, i)))) => Some(TryFrom::try_from(i).unwrap()),
+            Some(Ok(Literal::Integer(i))) => Some(TryFrom::try_from(i).unwrap()),
             Some(Err(_)) => None,
             Some(otherwise) => panic!("Not implemented: {:?}", otherwise),
             None => None,
@@ -1297,10 +1297,22 @@ impl<'a> ParseContext<'a> {
 
     fn parse_literal(&mut self) -> Literal {
         match self.peek() {
-            Some(Token::Integer(..)) => Literal::Integer(self.next().unwrap().clone()),
-            Some(Token::Float(..)) => Literal::Float(self.next().unwrap().clone()),
-            Some(Token::StringLiteral(..)) => Literal::StringLiteral(self.next().unwrap().clone()),
-            Some(Token::Char(..)) => Literal::Char(self.next().unwrap().clone()),
+            Some(Token::Integer(_, i)) => {
+                read_token!(self, Token::Integer);
+                Literal::Integer(i)
+            }
+            Some(Token::Float(_, s)) => {
+                read_token!(self, Token::Float);
+                Literal::Float(s)
+            }
+            Some(Token::StringLiteral(_, s)) => {
+                read_token!(self, Token::StringLiteral);
+                Literal::StringLiteral(s)
+            }
+            Some(Token::Char(_, c)) => {
+                read_token!(self, Token::Char);
+                Literal::Char(c)
+            }
             t => unexpected_token!(t, self),
         }
     }
@@ -1590,7 +1602,7 @@ mod tests {
     fn eval_tree(expr: &Expression) -> i128 {
         match expr {
             Expression::PrimaryExpression(PrimaryExpression::Literal(Literal::Integer(
-                Token::Integer(0, e),
+                e,
             ))) => *e,
             Expression::PrimaryExpression(_) => unreachable!(),
             Expression::Cast(..) => unreachable!(),
