@@ -759,7 +759,7 @@ impl PrimaryExpression {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Attribute {
-    Vector(usize),
+    Vector(Expression),
 }
 
 #[derive(Clone, Debug, PartialEq)]

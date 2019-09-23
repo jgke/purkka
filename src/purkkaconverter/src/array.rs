@@ -21,14 +21,14 @@ impl<'a> TreeTransformer<'a> for ArrayToPointer<'a> {
     fn transform(&mut self, s: &mut S) {
         self.visit_s(s);
         let mut context = PurkkaToC::default();
-        for decl in &mut self.context.symbols.declarations {
+        for decl in &mut self.context.symbols.declarations.0 {
             ArrayToPointer {
                 context: &mut context,
                 inside_param: false,
             }
             .visit_ty(decl.1);
         }
-        for decl in &mut self.context.symbols.imported_declarations {
+        for decl in &mut self.context.symbols.imported_declarations.0 {
             ArrayToPointer {
                 context: &mut context,
                 inside_param: false,

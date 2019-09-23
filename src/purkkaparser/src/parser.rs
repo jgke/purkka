@@ -88,7 +88,7 @@ pub struct Operator {
 }
 
 pub type OperatorMap = HashMap<Rc<str>, Operator>;
-pub type Types = HashMap<Rc<str>, TypeSignature>;
+pub type Types = (HashMap<Rc<str>, TypeSignature>, Vec<Rc<str>>);
 
 #[derive(Debug, Clone, Default)]
 pub struct Operators {
@@ -99,7 +99,7 @@ pub struct Operators {
 
 #[derive(Debug, Default, Clone)]
 pub struct Symbols {
-    pub types: Types,
+    pub types: (HashMap<Rc<str>, (TypeSignature, Option<Rc<str>>)>, Vec<Rc<str>>),
     pub declarations: Types,
     pub imported_types: Types,
     pub imported_declarations: Types,
@@ -242,7 +242,7 @@ fn default_symbols() -> Symbols {
     let mut imported_declarations = Types::default();
     insert_builtins(&mut imported_declarations);
     Symbols {
-        types: Types::default(),
+        types: (HashMap::new(), Vec::new()),
         declarations: Types::default(),
         imported_types: Types::default(),
         imported_declarations,
@@ -353,9 +353,9 @@ impl<'a> ParseContext<'a> {
 
     fn get_ty(&self, s: &str) -> Option<&TypeSignature> {
         self.symbols
-            .types
-            .get(s)
-            .or_else(|| self.symbols.imported_types.get(s))
+            .types.0
+            .get(s).as_ref().map(|t| &t.0)
+            .or_else(|| self.symbols.imported_types.0.get(s))
     }
 
     fn push_operator(
@@ -439,6 +439,7 @@ impl<'a> ParseContext<'a> {
                         inline,
                         mutable: false,
                         static_: false,
+                        typedef: false,
                     },
                     ident,
                     Box::new(TypeSignature::Function(
@@ -468,6 +469,7 @@ impl<'a> ParseContext<'a> {
             mutable,
             inline: false,
             static_: false,
+            typedef: false,
         };
 
         let res = match &self.peek() {
@@ -832,11 +834,10 @@ impl<'a> ParseContext<'a> {
             &file,
             true,
             false,
-            self.symbols
-                .types
-                .keys()
-                .chain(self.symbols.imported_types.keys())
-                .cloned()
+            self.symbols.types.1
+                .clone()
+                .into_iter()
+                .chain(self.symbols.imported_types.1.clone().into_iter())
                 .collect(),
         ));
         content
@@ -844,10 +845,11 @@ impl<'a> ParseContext<'a> {
             .unwrap()
             .into_iter()
             .for_each(|(name, decl)| {
-                self.symbols.imported_declarations.insert(name, decl);
+                self.symbols.imported_declarations.0.insert(name, decl);
             });
         for (name, ty) in content.types.unwrap() {
-            self.symbols.imported_types.insert(name.clone(), ty.clone());
+            self.symbols.imported_types.0.insert(name.clone(), ty.clone());
+            self.symbols.imported_types.1.push(name.clone());
         }
         self.symbols.imported_macros = content.c_macros;
         ImportFile::Import(file, ffi)
@@ -861,10 +863,11 @@ impl<'a> ParseContext<'a> {
                 read_token!(self, Token::OpenBrace);
                 let fields = self.parse_struct_list();
                 read_token!(self, Token::CloseBrace);
-                self.symbols.types.insert(
+                self.symbols.types.0.insert(
                     name.clone(),
-                    TypeSignature::Struct(Some(name.clone()), fields.clone()),
+                    (TypeSignature::Struct(Some(name.clone()), fields.clone()), None),
                 );
+                self.symbols.types.1.push(name.clone());
                 Typedef::Struct(name, fields)
             }
             Some(Token::Enum(..)) => unimplemented!(),
@@ -878,7 +881,8 @@ impl<'a> ParseContext<'a> {
                 }
                 let ty = self.parse_type();
                 read_token!(self, Token::SemiColon);
-                self.symbols.types.insert(name.clone(), ty.clone());
+                self.symbols.types.0.insert(name.clone(), (ty.clone(), Some(name.clone())));
+                self.symbols.types.1.push(name.clone());
                 Typedef::Alias(true, name, Box::new(ty))
             }
             _ => unexpected_token!(self.peek(), self),
@@ -946,7 +950,7 @@ impl<'a> ParseContext<'a> {
             .chain(new_iter.into_iter()).collect();
 
         match &ident {
-            Token::Identifier(_, s) if self.symbols.types.contains_key(s) => Ok(Box::new(self.parse_type())),
+            Token::Identifier(_, s) if self.symbols.types.0.contains_key(s) => Ok(Box::new(self.parse_type())),
             _ => Err(Box::new(self.parse_expression())),
         }
     }
@@ -1041,7 +1045,8 @@ impl<'a> ParseContext<'a> {
                     },
                     MacroExpansion::Typedef(typedef) => {
                         if let Typedef::Alias(_, name, ty) = typedef.clone() {
-                            self.symbols.types.insert(name.clone(), *ty);
+                            self.symbols.types.0.insert(name.clone(), (*ty, Some(name.clone())));
+                            self.symbols.types.1.push(name.clone());
                         }
                         Some(Unit::Typedef(Box::new(typedef)))
                     }
@@ -1052,12 +1057,8 @@ impl<'a> ParseContext<'a> {
     }
 
     fn parse_macro(&mut self) -> Vec<MacroExpansion> {
-        let tys = self
-            .symbols
-            .types
-            .keys()
-            .chain(self.symbols.imported_types.keys())
-            .cloned()
+        let tys = self.symbols.types.1.clone().into_iter()
+            .chain(self.symbols.imported_types.1.clone().into_iter())
             .collect();
         match self.peek() {
             Some(Token::StringLiteral(..)) => {
@@ -1488,7 +1489,7 @@ impl<'a> ParseContext<'a> {
 
     #[allow(clippy::cognitive_complexity)]
     fn parse_initialization_fields(&mut self, ty: &Rc<str>) -> Vec<StructInitializationField> {
-        if let TypeSignature::Struct(..) = &self.symbols.types[ty] {
+        if let TypeSignature::Struct(..) = &self.symbols.types.0[ty].0 {
         } else {
             panic!("Cannot instantiate non-struct type {} as struct", ty);
         };
@@ -1892,7 +1893,8 @@ mod tests {
                         public: false,
                         inline: false,
                         mutable: true,
-                        static_: false
+                        static_: false,
+                        typedef: false
                     },
                     From::from("bar"),
                     Box::new(TypeSignature::Pointer {

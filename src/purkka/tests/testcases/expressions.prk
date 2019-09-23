@@ -19,5 +19,10 @@ pub fun main() {
     let g: [i32] = [1, 2, 3];
     g as void;
 
+    let h: double = 1.23e+12;
+    let i: double = 1e-12;
+    h as void;
+    i as void;
+
     return a + *b + *c + *d + e;
 }

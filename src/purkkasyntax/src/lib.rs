@@ -391,6 +391,7 @@ pub struct DeclarationFlags {
     pub public: bool,
     pub inline: bool,
     pub static_: bool,
+    pub typedef: bool,
 }
 
 impl Default for DeclarationFlags {
@@ -400,6 +401,7 @@ impl Default for DeclarationFlags {
             public: true,
             inline: false,
             static_: false,
+            typedef: false,
         }
     }
 }
@@ -809,6 +811,13 @@ impl Mul for Literal {
                 Literal::Integer(left),
                 Literal::Integer(right),
             ) => Literal::Integer(left * right),
+            (Literal::Integer(i), Literal::Float(f))
+                | (Literal::Float(f), Literal::Integer(i))
+                => Literal::Float(From::from((i as f64 * f.parse::<f64>().unwrap()).to_string())),
+            (
+                Literal::Float(left),
+                Literal::Float(right),
+            ) => Literal::Float(From::from((left.parse::<f64>().unwrap() * right.parse::<f64>().unwrap()).to_string())),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }

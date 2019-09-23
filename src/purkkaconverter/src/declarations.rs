@@ -31,11 +31,7 @@ impl ASTVisitor for FetchDeclarations {
         Ok(())
     }
     fn visit_typedef(&mut self, e: &mut Typedef) -> Result<(), ()> {
-        match e {
-            Typedef::Struct(..) => self.types.push(e.clone()),
-            Typedef::Enum(..) => self.types.push(e.clone()),
-            Typedef::Alias(..) => {}
-        }
+        self.types.push(e.clone());
         Ok(())
     }
 }

@@ -3,6 +3,10 @@ struct Foo {
     baz: i32
 }
 
+struct Bar {
+    foo: Foo
+}
+
 pub fun main() {
     let a = Foo { bar: 0, baz: 1 };
     let b = &a;
@@ -16,4 +20,9 @@ pub fun ternary() {
     let b = &a;
 
     return b.bar ? b.bar : b.bar;
+}
+
+pub fun nested() {
+    let a = Bar { foo: Foo { bar: 2, baz: 1 }};
+    a as void;
 }

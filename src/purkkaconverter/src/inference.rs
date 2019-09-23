@@ -181,7 +181,7 @@ impl TypeInferrer<'_> {
                 return Some(ty.clone());
             }
         }
-        if let Some(ty) = self.context.symbols.imported_declarations.get(t) {
+        if let Some(ty) = self.context.symbols.imported_declarations.0.get(t) {
             Some(From::from(ty.clone()))
         } else {
             None
@@ -191,9 +191,10 @@ impl TypeInferrer<'_> {
     fn get_ident_ty(&self, name: &str) -> Option<TypeSignature> {
         self.context
             .symbols
-            .types
+            .types.0
             .get(name)
-            .or_else(|| self.context.symbols.imported_types.get(name))
+            .map(|t| &t.0)
+            .or_else(|| self.context.symbols.imported_types.0.get(name))
             .cloned()
     }
 
@@ -653,9 +654,10 @@ impl TypeInferrer<'_> {
                 let struct_ty = self
                     .context
                     .symbols
-                    .types
+                    .types.0
                     .get(ident)
-                    .unwrap_or_else(|| &self.context.symbols.imported_types[ident]);
+                    .map(|t| &t.0)
+                    .unwrap_or_else(|| &self.context.symbols.imported_types.0[ident]);
                 if let TypeSignature::Struct(struct_name, struct_fields) = struct_ty {
                     let mut used_names: HashSet<Rc<str>> = HashSet::new();
                     let mut remaining_names: Vec<Rc<str>> = struct_fields
@@ -747,9 +749,10 @@ impl TypeInferrer<'_> {
                 let vec_ty = self
                     .context
                     .symbols
-                    .types
+                    .types.0
                     .get(ident)
-                    .unwrap_or_else(|| &self.context.symbols.imported_types[ident]);
+                    .map(|t| &t.0)
+                    .unwrap_or_else(|| &self.context.symbols.imported_types.0[ident]);
                 match vec_ty {
                     TypeSignature::Vector(plain)
                         | TypeSignature::Attribute(box TypeSignature::Vector(plain), _) => {

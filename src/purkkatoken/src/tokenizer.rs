@@ -82,15 +82,27 @@ fn read_number(
         }
         _ => 10,
     };
-    let (content_str, source) = iter.collect_while(|c| match c {
-        '0'..='9' | 'a'..='f' | 'A'..='F' | '_' | '.' => true,
-        _ => false,
-    });
+    let mut has_exponent = false;
+    let (content_str, source) = iter.collect_while(
+        |c| if has_exponent {
+            has_exponent = false;
+            match c {
+                '+' | '-' => true,
+                c => panic!("Unexpected character in floating point literal: {}", c)
+            }
+        } else {
+            match c {
+                '0'..='9' | '_' | '.' => true,
+                'a'..='f' | 'A'..='F' if radix == 16 => true,
+                'e' => { has_exponent = true; true } 
+                _ => false,
+            }
+        });
     let content = content_str
         .chars()
         .filter(|c| *c != '_')
         .collect::<String>();
-    if !content.contains('.') {
+    if !content.contains('.') && !content.contains('e') {
         (
             Token::Integer(num, i128::from_str_radix(&content, radix).unwrap()),
             source,

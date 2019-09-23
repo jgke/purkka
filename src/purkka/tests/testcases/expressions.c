@@ -14,5 +14,9 @@ int main() {
     (void)f;
     int g[] = { 1, 2, 3, };
     (void)g;
+    double h = 1.23e+12;
+    double i = 1e-12;
+    (void)h;
+    (void)i;
     return a + *b + *c + *d + e;
 }

@@ -1855,11 +1855,14 @@ where
                             {
                                 read_token!(self, Token::Identifier);
                                 read_token!(self, Token::OpenParen);
-                                let size = read_token!(self, Token::Number)
-                                    .get_ident_str()
-                                    .parse()
-                                    .unwrap();
-                                attrs.push(Attribute::Vector(size));
+                                attrs.push(Attribute::Vector(
+                                        Expression::Expression(
+                                            vec![
+                                            AssignmentExpression::TernaryExpression(
+                                                TernaryExpression::GeneralExpression(
+                                                    *self.parse_general_expression().0
+                                                    ))
+                                            ])));
                                 read_token!(self, Token::CloseParen);
                             }
                             Some(Token::Identifier(..)) => {

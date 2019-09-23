@@ -46,5 +46,5 @@ pub fn get_declarations(tree: &S) -> (Declarations, Declarations)  {
             }
         })
         .unzip();
-    (decls.into_iter().flatten().collect(), types.into_iter().flatten().collect())
+    (decls.into_iter().flatten().collect(), types.iter().cloned().flatten().collect())
 }

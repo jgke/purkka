@@ -31,16 +31,19 @@ pub fn format_c<H: std::hash::BuildHasher>(tree: &S, includes: HashSet<Rc<str>, 
     };
 
     let S::TranslationUnit(TranslationUnit::Units(units)) = tree;
+
     for unit in units {
         if let ExternalDeclaration::Declaration(decl) = unit {
             match &**decl {
-                Declaration::Declaration(_, list, _) if list.is_empty() => {
-                    context.declaration(&**decl);
-                }
+                Declaration::Declaration(box DeclarationSpecifiers::DeclarationSpecifiers(spec, _), list, _)
+                    if spec.0.typedef || list.is_empty() => {
+                        context.declaration(&**decl);
+                    }
                 _ => {}
             }
         }
     }
+
     context.s(tree);
     context.buf
 }
@@ -288,8 +291,8 @@ impl Context {
     fn external_declaration(&mut self, tree: &ExternalDeclaration) {
         match tree {
             // rendered already in format_c()
-            ExternalDeclaration::Declaration(box Declaration::Declaration(_, list, _))
-                if list.is_empty() => {}
+            ExternalDeclaration::Declaration(box Declaration::Declaration(box DeclarationSpecifiers::DeclarationSpecifiers(spec, _), list, _))
+                if spec.0.typedef || list.is_empty() => {}
             ExternalDeclaration::Declaration(decl) => self.declaration(decl),
             ExternalDeclaration::FunctionDefinition(def) => self.function_definition(def),
             f => panic!("Not implemented.: {:?}", f),
@@ -298,16 +301,42 @@ impl Context {
 
     fn declaration(&mut self, tree: &Declaration) {
         match tree {
-            Declaration::Declaration(decl, list, _) => {
+            Declaration::Declaration(decl, list, attrs) => {
                 self.declaration_specifiers(decl);
                 self.init_declarator_list(list);
                 self.whitespace = false;
                 self.newline = false;
+                attrs.as_ref().map(|a| self.attributes(&a));
                 self.push(";");
                 self.newline = true;
             }
             Declaration::Pragma(pragma) => {
                 self.pragma(pragma);
+            }
+        }
+    }
+
+    fn attributes(&mut self, attrs: &[Attribute]) {
+        if attrs.len() > 0 {
+            self.whitespace = true;
+            self.push("__attribute__((");
+            if let Some((first, rest)) = attrs.split_first() {
+                self.attribute(first);
+                for attr in rest {
+                    self.push_token(&Token::Comma(0));
+                    self.attribute(attr);
+                }
+            }
+            self.push("))");
+        }
+    }
+
+    fn attribute(&mut self, attr: &Attribute) {
+        match attr {
+            Attribute::Vector(e) => {
+                self.push("vector_size(");
+                self.expression(e);
+                self.push(")");
             }
         }
     }
