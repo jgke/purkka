@@ -582,6 +582,10 @@ impl PurkkaToC {
                 pp::Expression::PrimaryExpression(pp::PrimaryExpression::ArrayLiteral(exprs)) => {
                     cp::AssignmentOrInitializerList::Initializers(self.exprs_to_initializer(exprs))
                 }
+                pp::Expression::PrimaryExpression(pp::PrimaryExpression::StructInitialization(_, exprs))
+                    => {
+                    cp::AssignmentOrInitializerList::Initializers(self.exprs_to_struct_initializer(exprs))
+                }
                 e => cp::AssignmentOrInitializerList::AssignmentExpression(
                     self.assignment_expression(e),
                 ),
@@ -595,8 +599,13 @@ impl PurkkaToC {
         let mut res = Vec::new();
         for expr in k {
             let (name, res_expr) = match expr {
-                pp::StructInitializationField::StructInitializationField(name, box pp::Expression::PrimaryExpression(pp::PrimaryExpression::StructInitialization(_, exprs))) => {
+                pp::StructInitializationField::StructInitializationField(name, box pp::Expression::PrimaryExpression(pp::PrimaryExpression::StructInitialization(_, exprs)))
+                    => {
                     (name, cp::AssignmentOrInitializerList::Initializers(self.exprs_to_struct_initializer(exprs)))
+                }
+
+                    pp::StructInitializationField::StructInitializationField(name, box pp::Expression::PrimaryExpression(pp::PrimaryExpression::VectorInitialization(_, exprs))) => {
+                    (name, cp::AssignmentOrInitializerList::Initializers(self.exprs_to_initializer(exprs)))
                 }
                 pp::StructInitializationField::StructInitializationField(name, e) => (name, cp::AssignmentOrInitializerList::AssignmentExpression(
                     self.assignment_expression(*e),

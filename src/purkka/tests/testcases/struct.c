@@ -7,6 +7,7 @@ struct Foo {
 struct Bar {
     struct Foo foo;
 };
+static struct Foo global[1] = { {.bar = 0,.baz = 3, }, };
 int main() {
     struct Foo a = {.bar = 0,.baz = 1, };
     struct Foo *b = &a;

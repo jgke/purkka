@@ -1,6 +1,7 @@
 /// Evaluate const expressions
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::ops::DerefMut;
 
 use crate::traits::TreeTransformer;
 use crate::PurkkaToC;
@@ -39,8 +40,9 @@ impl ASTVisitor for EvalConstExprs<'_> {
             Declaration::Declaration(_flags, name, ty, assignment) => vec![
                 self.visit_ty(ty)?,
                 self.fold_o(assignment, |v, a| {
-                    let e = v.eval_expression(a)?;
-                    v.exprs.insert(name.clone(), e);
+                    if let Ok(e) = v.eval_expression(a) {
+                        v.exprs.insert(name.clone(), e);
+                    }
                     Ok(())
                 })?,
             ]
@@ -58,7 +60,11 @@ impl EvalConstExprs<'_> {
                 "*" => Ok(self.eval_expression(&mut args[0])? * self.eval_expression(&mut args[1])?),
                 _ => unimplemented!("{}", op),
             },
-            Expression::Unary(_op, _args) => unimplemented!(),
+            Expression::Unary(op, ExprList::List(args)) => match op.as_ref() {
+                "+" => Ok(self.eval_expression(&mut args[0])?),
+                "-" => Ok(-self.eval_expression(&mut args[0])?),
+                _ => unimplemented!("{}", op),
+            },
             Expression::PostFix(_arg, _op) => unimplemented!(),
             Expression::Cast(_expr, _ty) => unimplemented!(),
             Expression::Call(_expr, _args) => unimplemented!(),
@@ -70,12 +76,34 @@ impl EvalConstExprs<'_> {
         Ok(lit)
     }
 
+    #[allow(unused_must_use)]
     fn eval_primary_expression(&self, e: &mut PrimaryExpression) -> Result<Literal, String> {
         match e {
             PrimaryExpression::Identifier(ident) => Ok(self.exprs[ident].clone()),
-            PrimaryExpression::StructInitialization(_struct_name, _fields) => unimplemented!(),
-            PrimaryExpression::VectorInitialization(_vector_name, _fields) => unimplemented!(),
-            PrimaryExpression::ArrayLiteral(_cells) => unimplemented!(),
+            PrimaryExpression::StructInitialization(_struct_name, fields) => {
+                for StructInitializationField::StructInitializationField(_, ref mut e) in fields.iter_mut() {
+                    if let Ok(new_e) = self.eval_expression(e.deref_mut()) {
+                        *e = Box::new(Expression::PrimaryExpression(PrimaryExpression::Literal(new_e)));
+                    }
+                }
+                Err("Cannot use structs as literals".to_string())
+            }
+            PrimaryExpression::VectorInitialization(_vector_name, exprs) => {
+                for ref mut e in exprs.iter_mut() {
+                    if let Ok(new_e) = self.eval_expression(e.deref_mut()) {
+                        **e = Expression::PrimaryExpression(PrimaryExpression::Literal(new_e));
+                    }
+                }
+                Err("Not implemented".to_string())
+            }
+            PrimaryExpression::ArrayLiteral(exprs) => {
+                for ref mut e in exprs.iter_mut() {
+                    if let Ok(new_e) = self.eval_expression(e.deref_mut()) {
+                        **e = Expression::PrimaryExpression(PrimaryExpression::Literal(new_e));
+                    }
+                }
+                Err("Not implemented".to_string())
+            }
             PrimaryExpression::Literal(lit) => Ok(lit.clone()),
             PrimaryExpression::BlockExpression(_block) => unimplemented!(),
             PrimaryExpression::Expression(expr) => self.eval_expression(expr),

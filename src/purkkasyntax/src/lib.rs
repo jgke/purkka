@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 
 use std::rc::Rc;
 
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, Div, Mul, Sub, Neg};
 
 use purkkatoken::token::Token;
 
@@ -797,6 +797,18 @@ impl Add for Literal {
                 Literal::Integer(left),
                 Literal::Integer(right),
             ) => Literal::Integer(left + right),
+            otherwise => panic!("Not implemented: {:?}", otherwise),
+        }
+    }
+}
+
+impl Neg for Literal {
+    type Output = Literal;
+
+    fn neg(self) -> Literal {
+        match self {
+            Literal::Integer(left) => Literal::Integer(-left),
+            Literal::Float(left) => Literal::Float(From::from((-left.parse::<f64>().unwrap()).to_string())),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
     }

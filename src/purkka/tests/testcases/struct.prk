@@ -7,6 +7,8 @@ struct Bar {
     foo: Foo
 }
 
+let global = [Foo { bar: 0, baz: 1 + 2 }];
+
 pub fun main() {
     let a = Foo { bar: 0, baz: 1 };
     let b = &a;
