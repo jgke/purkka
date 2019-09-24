@@ -1,15 +1,9 @@
-use smallvec::SmallVec;
-use syntax::ast;
-use syntax::ext::base::{ExtCtxt, MacEager, MacResult};
-use syntax::parse;
-use syntax::ptr::P;
-use syntax::source_map::respan;
-use syntax_pos::symbol;
-use syntax_pos::{FileName, Span};
-
 use std::collections::{HashMap, HashSet};
 
 use crate::types::{Component, Index, Rule, RuleTranslationMap, Terminal};
+use syn::{ItemEnum, Ident, Type, Item, Result};
+use proc_macro2::{TokenStream, Span};
+use quote::quote;
 
 pub fn first(
     tm: &RuleTranslationMap,
@@ -70,117 +64,64 @@ fn first_loop(
     has_e
 }
 
-struct AstBuilderCx<'a, 'c> {
-    cx: &'a ExtCtxt<'c>,
+struct AstBuilderCx<'a> {
     span: Span,
     tm: &'a RuleTranslationMap,
     special_rules: &'a HashMap<String, String>,
 }
 
-impl<'a, 'c> AstBuilderCx<'a, 'c> {
-    fn ty_ident(&self, s: &str) -> P<ast::Ty> {
-        self.cx.ty_ident(self.span, self.cx.ident_of(s))
-    }
-
-    fn item_derive(&self, span: Span, ident: ast::Ident, kind: ast::ItemKind) -> P<ast::Item> {
-        let derive = self.cx.attribute(self.cx.meta_list(
-            span,
-            symbol::Symbol::intern("derive"),
-            vec![
-                    self.cx
-                        .meta_list_item_word(span, symbol::Symbol::intern("Clone")),
-                    self.cx
-                        .meta_list_item_word(span, symbol::Symbol::intern("Debug")),
-                    self.cx
-                        .meta_list_item_word(span, symbol::Symbol::intern("PartialEq")),
-                ],
-        ));
-        let mut item = self.cx.item(span, ident, vec![derive], kind);
-        item.vis = respan(span.shrink_to_lo(), ast::VisibilityKind::Public);
-        item
-    }
-    fn item_enum_derive(
-        &self,
-        span: Span,
-        ident: ast::Ident,
-        enumdef: ast::EnumDef,
-    ) -> P<ast::Item> {
-        self.item_derive(
-            span,
-            ident,
-            ast::ItemKind::Enum(enumdef, ast::Generics::default()),
-        )
-    }
-    fn boxed(&self, ty: P<ast::Ty>) -> P<ast::Ty> {
-        self.cx.ty_path(self.cx.path_all(
-            self.span,
-            true,
-            vec![
-                self.cx.ident_of("std"),
-                self.cx.ident_of("boxed"),
-                self.cx.ident_of("Box"),
-            ],
-            vec![ast::GenericArg::Type(ty)],
-            Vec::new(),
-        ))
-    }
-
-    fn get_plain_variant(&self, span: Span, ty: &str) -> ast::Variant {
-        self.cx
-            .variant(span, self.cx.ident_of(ty), vec![self.ty_ident(ty)])
-    }
-
-    fn get_enum_item(&self, rule: &Rule) -> P<ast::Item> {
+impl<'a> AstBuilderCx<'a> {
+    fn get_enum_item(&self, rule: &Rule) -> TokenStream {
         let enum_name = &rule.identifier;
-        let enumdef = ast::EnumDef {
-            variants: rule
-                .data
-                .clone()
-                .into_iter()
-                .map(
-                    |Component {
-                         real_name, rules, ..
-                     }| {
-                        let total_span = rules.get(0).unwrap().span;
+        let enum_ident = Ident::new(&rule.identifier, rule.span);
+        let variants: TokenStream = rule
+            .data
+            .clone()
+            .into_iter()
+            .map(
+                |Component {
+                     real_name, rules, ..
+                 }| {
+                    let total_span = rules.get(0).unwrap().span;
 
-                        let vals = rules
-                            .clone()
-                            .into_iter()
-                            .filter(|r| r.identifier != "Epsilon")
-                            .map(|item| {
-                                let ident_arr = item.full_path.rsplitn(2, "::");
-                                let ident_str = ident_arr.last().unwrap();
-                                let ident_ty = self.ty_ident(ident_str);
-                                match self.special_rules.get(ident_str) {
-                                    Some(_) => self.ty_ident("Token"),
-                                    None => {
-                                        if item.indirect || &item.identifier == enum_name {
-                                            self.boxed(ident_ty)
-                                        } else {
-                                            ident_ty
-                                        }
+                    let vals: TokenStream = rules
+                        .clone()
+                        .into_iter()
+                        .filter(|r| r.identifier != "Epsilon")
+                        .map(|item| {
+                            let ident_arr = item.full_path.rsplitn(2, "::");
+                            let ident_str = ident_arr.last().unwrap();
+                            let ident = Ident::new(ident_str, item.span);
+                            match self.special_rules.get(ident_str) {
+                                Some(_) => (quote! {#ident}),
+                                None => {
+                                    if item.indirect || &item.identifier == enum_name {
+                                        (quote! {Box<#ident>})
+                                    } else {
+                                        (quote! {#ident})
                                     }
                                 }
-                            })
-                            .collect::<Vec<_>>();
-                        let is_empty = vals.is_empty();
-                        let mut variant =
-                            self.cx
-                                .variant(total_span, self.cx.ident_of(&real_name), vals);
-                        if is_empty {
-                            variant.data = ast::VariantData::Tuple(Vec::new(), ast::DUMMY_NODE_ID);
-                        }
-                        variant
-                    },
-                )
-                .collect(),
-        };
+                            }
+                        })
+                        .collect();
+                    let is_empty = vals.is_empty();
+                    let real_ident = Ident::new(&real_name, rules[0].span);
+                    quote! {
+                        #real_ident(#vals),
+                    }
+                },
+            )
+            .collect();
 
-        let ident = self.cx.ident_of(enum_name);
-        self.item_enum_derive(rule.span, ident, enumdef)
+        quote! {
+            #[derive(Clone, Debug, PartialEq)]
+            pub enum #enum_ident {
+                #variants
+            }
+        }
     }
 
-    pub fn get_first_fn(&self, rules: &[Rule]) -> P<ast::Item> {
+    pub fn get_first_fn(&self, rules: &[Rule]) -> TokenStream {
         let header = r#"
     #[macro_export]
     macro_rules! match_first {
@@ -232,20 +173,16 @@ impl<'a, 'c> AstBuilderCx<'a, 'c> {
         }
         result += tail;
 
-        let session = self.cx.parse_sess();
-        let filename = FileName::Custom("lalr_first_macro".to_string());
-        let tmp = parse::new_parser_from_source_str(session, filename, result).parse_item();
-        tmp.unwrap().unwrap()
+        result.parse().unwrap()
     }
 }
 
 pub fn output_parser(
-    cx: &ExtCtxt,
     span: Span,
     tm: &RuleTranslationMap,
     rules: &[Rule],
     terminals: &HashSet<Terminal>,
-) -> Box<dyn MacResult + 'static> {
+) -> Result<TokenStream> {
     let special_rules: HashMap<String, String> = terminals
         .iter()
         .filter(|term| term.conversion_fn.is_some())
@@ -271,54 +208,54 @@ pub fn output_parser(
     }
 
     let builder = AstBuilderCx {
-        cx,
         span,
         tm,
         special_rules: &special_rules,
     };
 
-    let mut items: SmallVec<[P<ast::Item>; 1]> = rules
+    let mut items: TokenStream = rules
         .iter()
         .filter(|item| item.identifier != "Epsilon")
         .filter(|item| item.identifier != "$")
-        .map(|item| {
+        .map(|item|
             item.enumdef
                 .clone()
-                .unwrap_or_else(|| builder.get_enum_item(item))
-        })
+                .unwrap_or_else(|| builder.get_enum_item(item)))
         .collect();
 
-    let all_structs_enum = ast::EnumDef {
-        variants: rules
-            .iter()
-            .filter(|item| item.identifier != "$")
-            .map(|rule| builder.get_plain_variant(span, &rule.identifier))
-            .chain(terminals.iter().map(|term| {
-                cx.variant(
-                    span,
-                    cx.ident_of(&term.identifier),
-                    vec![cx.ty_path(cx.path(
-                        span,
-                        vec![
-                            cx.ident_of("Token"),
-                            //cx.ident_of(name),
-                        ],
-                    ))],
-                )
-            }))
-            .collect(),
+    let all_structs_enum: TokenStream = rules
+        .iter()
+        .filter(|item| item.identifier != "$")
+        .map(|rule| {
+            let ident = Ident::new(&rule.identifier, rule.span);
+            (quote! { #ident(#ident), })
+        })
+        .chain(terminals.iter().map(|term| {
+            let ident = Ident::new(&term.identifier, term.span);
+            let var = quote! {
+                #ident(Token),
+            };
+            var
+        }))
+        .collect();
+
+    let epsilon = quote! {
+        #[derive(Clone, Debug, PartialEq)]
+        pub enum Epsilon {
+            Epsilon()
+        }
     };
 
-    items.push(builder.item_enum_derive(
-        span,
-        cx.ident_of("Epsilon"),
-        ast::EnumDef {
-            variants: vec![cx.variant(span, cx.ident_of("Epsilon"), vec![])],
-        },
-    ));
+    let all_data = quote! {
+        #[derive(Clone, Debug, PartialEq)]
+        pub enum _Data {
+            #all_structs_enum
+        }
+    };
 
-    items.push(builder.item_enum_derive(span, cx.ident_of("_Data"), all_structs_enum));
-    items.push(builder.get_first_fn(rules));
+    let first_fn = builder.get_first_fn(rules);
 
-    MacEager::items(items)
+    println!("{}", all_data);
+
+    Ok(items.into_iter().chain(epsilon).chain(all_data).chain(first_fn).collect())
 }

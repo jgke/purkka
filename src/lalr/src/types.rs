@@ -1,12 +1,10 @@
 #![allow(dead_code)]
 
-use syntax::{ast, ptr::P};
-use syntax_pos::Span;
-
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use proc_macro2::{Span, TokenStream};
 
 #[derive(Debug, Clone)]
 pub struct RuleData {
@@ -18,12 +16,12 @@ pub struct RuleData {
     pub conversion_fn: Option<(String, String)>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Rule {
     pub identifier: String,
     pub span: Span,
     pub data: Vec<Component>,
-    pub enumdef: Option<P<ast::Item>>,
+    pub enumdef: Option<TokenStream>,
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +40,7 @@ pub struct Terminal {
     pub conversion_fn: Option<(String, String)>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct RuleTranslationMap {
     pub rules: HashMap<Index, Rule>,
     pub indices: HashMap<String, usize>,

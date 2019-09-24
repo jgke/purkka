@@ -1,7 +1,9 @@
-#![feature(plugin, box_patterns)]
-#![plugin(lalr)]
+#![feature(box_patterns)]
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
+#![feature(proc_macro_hygiene)]
+
+use lalr::grammar;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
