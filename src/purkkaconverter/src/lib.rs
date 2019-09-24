@@ -783,6 +783,7 @@ impl PurkkaToC {
                 cp::TypeQualifiers::default(),
                 self.ty_to_pointer(*ty),
             ))),
+            TypeSignature::Array(ty, ..) => self.ty_to_pointer(*ty),
             _ => None,
         }
     }
