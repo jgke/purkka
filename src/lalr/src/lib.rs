@@ -37,141 +37,23 @@ fn expand_enums(iter: ParseStream) -> Result<TokenStream> {
         tm.push_rule(rule.identifier.clone(), rule.clone());
     }
 
-    loop {
-        if iter.peek(Token![!]) {
-            terminals.insert(parse_special(sp, iter));
-        } else if !iter.is_empty() {
-            let item = parse_item(sp, iter, &mut tm)?;
-            item.data.iter().for_each(|rules| {
-                rules.rules.iter().filter(|x| x.terminal).for_each(|x| {
-                    terminals.insert(Terminal {
-                        identifier: x.identifier.clone(),
-                        full_path: x.full_path.clone(),
-                        span: sp,
-                        conversion_fn: None,
-                    });
-                })
-            });
+    while !iter.is_empty() {
+        let item = parse_item(sp, iter, &mut tm)?;
+        item.data.iter().for_each(|rules| {
+            rules.rules.iter().filter(|x| x.terminal).for_each(|x| {
+                terminals.insert(Terminal {
+                    identifier: x.identifier.clone(),
+                    full_path: x.full_path.clone(),
+                    span: sp,
+                    conversion_fn: None,
+                });
+            })
+        });
 
-            items.push(item);
-        } else {
-            break
-        }
+        items.push(item);
     }
 
-    output_parser(sp, &tm, &items, &terminals)
-}
-
-fn parse_special(
-    outer_span: Span,
-    iter: ParseStream,
-) -> Terminal {
-    panic!("69")
-}
-
-/*
-fn parse_special(
-    outer_span: Span,
-    iter: ParseStream,
-) -> Terminal {
-    let mut rsp = outer_span;
-    let s = match iter.next() {
-        Some(token) => token.span,
-        tt => return parse_failure(outer_span, tt),
-    };
-    let rule_name = match iter.next() {
-        Some(token::Token {
-            kind: token::Ident(t, _),
-            ..
-        }) => t,
-        tt => return parse_failure(s, tt),
-    };
-    match iter.next() {
-        Some(token::Token {
-            kind: token::RArrow,
-            ..
-        }) => {}
-        Some(token) => {
-            panic!()
-            //let s: Span = token.span;
-            //cx.span_err(s, "Special rule name must be followed by ->");
-            //return Err(Some(s));
-        }
-        tt => return parse_failure(cx, s, tt),
-    }
-
-    let function_name = match iter.next() {
-        Some(token::Token {
-            kind: token::Ident(tt, _),
-            ..
-        }) => tt.to_string(),
-        tt => return parse_failure(cx, s, tt),
-    };
-
-    match iter.next() {
-        Some(token::Token {
-            kind: token::Pound, ..
-        }) => {}
-        tt => return parse_failure(cx, s, tt),
-    };
-
-    let mut special_component = match iter.next() {
-        Some(token::Token {
-            kind: token::Ident(tt, _),
-            ..
-        }) => {
-            rsp = s;
-            Terminal {
-                identifier: tt.to_string(),
-                full_path: tt.to_string(),
-                span: s.to(rsp),
-                conversion_fn: None,
-            }
-        }
-        tt => return parse_failure(cx, s.to(rsp), tt),
-    };
-
-    while !is_semi(iter.peek()) {
-        match iter.next() {
-            Some(token::Token {
-                kind: token::ModSep,
-                ..
-            }) => {
-                rsp = s;
-                match iter.next() {
-                    Some(token::Token {
-                        kind: token::Ident(tt, _),
-                        ..
-                    }) => {
-                        rsp = s;
-                        let right = tt.to_string();
-                        special_component.full_path.push_str("::");
-                        special_component.full_path.push_str(&right);
-                        special_component.identifier = right;
-                        special_component.span = special_component.span.to(s);
-                    }
-                    tt => return parse_failure(cx, s.to(rsp), tt),
-                }
-            }
-            tt => return parse_failure(cx, s.to(rsp), tt),
-        }
-    }
-
-    special_component.conversion_fn = Some((function_name, special_component.full_path));
-    special_component.identifier = rule_name.to_string();
-    special_component.full_path = rule_name.to_string();
-
-    assert!(is_semi_r(iter.next()));
-
-    Ok(special_component)
-}
-*/
-
-fn parse_enumdef(
-    iter: ParseStream,
-    sp: Span,
-) -> Item {
-    panic!("174")
+    output_parser(&tm, &items, &terminals)
 }
 
 fn parse_item(
@@ -223,7 +105,7 @@ fn parse_item(
             terminal = false;
             indirect = false;
         } else if iter.peek(Token![::]) {
-            rsp = iter.parse::<Token![::]>()?.span();
+            iter.parse::<Token![::]>()?.span();
             if let Some(mut data) = current_components.pop() {
                 let tt = iter.parse::<Ident>()?;
                 rsp = tt.span();

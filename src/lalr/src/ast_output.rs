@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::types::{Component, Index, Rule, RuleTranslationMap, Terminal};
-use syn::{ItemEnum, Ident, Type, Item, Result};
-use proc_macro2::{TokenStream, Span};
+use syn::{Ident, Result};
+use proc_macro2::TokenStream;
 use quote::quote;
 
 pub fn first(
@@ -65,7 +65,6 @@ fn first_loop(
 }
 
 struct AstBuilderCx<'a> {
-    span: Span,
     tm: &'a RuleTranslationMap,
     special_rules: &'a HashMap<String, String>,
 }
@@ -82,8 +81,6 @@ impl<'a> AstBuilderCx<'a> {
                 |Component {
                      real_name, rules, ..
                  }| {
-                    let total_span = rules.get(0).unwrap().span;
-
                     let vals: TokenStream = rules
                         .clone()
                         .into_iter()
@@ -104,7 +101,6 @@ impl<'a> AstBuilderCx<'a> {
                             }
                         })
                         .collect();
-                    let is_empty = vals.is_empty();
                     let real_ident = Ident::new(&real_name, rules[0].span);
                     quote! {
                         #real_ident(#vals),
@@ -178,7 +174,6 @@ impl<'a> AstBuilderCx<'a> {
 }
 
 pub fn output_parser(
-    span: Span,
     tm: &RuleTranslationMap,
     rules: &[Rule],
     terminals: &HashSet<Terminal>,
@@ -208,12 +203,11 @@ pub fn output_parser(
     }
 
     let builder = AstBuilderCx {
-        span,
         tm,
         special_rules: &special_rules,
     };
 
-    let mut items: TokenStream = rules
+    let items: TokenStream = rules
         .iter()
         .filter(|item| item.identifier != "Epsilon")
         .filter(|item| item.identifier != "$")
