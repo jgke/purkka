@@ -1,6 +1,5 @@
 #![feature(box_patterns)]
 
-use std::collections::HashSet;
 use std::rc::Rc;
 
 use cparser::grammar::*;
@@ -14,10 +13,16 @@ struct Context {
     buf: String,
 }
 
-pub fn format_c<H: std::hash::BuildHasher>(tree: &S, includes: HashSet<Rc<str>, H>) -> String {
+pub fn format_c(tree: &S, includes: Vec<(Option<String>, Rc<str>)>) -> String {
     let mut buf = includes
         .into_iter()
-        .map(|t| format!("#include \"{}\"\n", t))
+        .map(|(macros, t)| {
+            if let Some(m) = macros {
+                format!("{}\n#include \"{}\"\n", m, t)
+            } else {
+                format!("#include \"{}\"\n", t)
+            }
+        })
         .collect::<Vec<_>>()
         .join("");
     if !buf.is_empty() {

@@ -1,8 +1,10 @@
+#define CONDITIONAL 1
 #include "dependencies/macro.h"
 
 struct foo {
     int a;
 };
+static int macro_int = 1;
 int main() {
     return(1 + 1);
 }

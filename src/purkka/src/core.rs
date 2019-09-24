@@ -127,7 +127,7 @@ pub fn get_file_cb<'a>(
                     debug_p(Core, "Parsing as C");
                     let parsed = cparser::parse(output, iter, req.types).unwrap();
                     debug_p(Core, "Formatting output as C");
-                    let formatted = cformat::format_c(&parsed, HashSet::new());
+                    let formatted = cformat::format_c(&parsed, Vec::new());
                     //let converted = purkkaconverter::to_purkka(parsed);
                     //let (declarations, types) = purkkaparser::get_declarations(&converted);
                     let (declarations, types) = cparser::get_declarations(&parsed);

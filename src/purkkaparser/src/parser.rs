@@ -275,6 +275,7 @@ pub fn parse(
         get_file,
         expand,
         expand_call,
+        define_buf: String::new(),
     };
     let tu = S::TranslationUnit(context.parse_translation_unit());
     (tu, context.operators, context.symbols)
@@ -332,6 +333,8 @@ struct ParseContext<'a> {
     get_file: &'a dyn Fn(FileQuery) -> ResolveResult,
     expand: &'a dyn Fn(String, HashSet<Rc<str>>) -> Vec<MacroExpansion>,
     expand_call: &'a dyn Fn(String, Vec<Expression>, HashSet<Rc<str>>) -> Vec<MacroExpansion>,
+
+    define_buf: String
 }
 
 impl<'a> ParseContext<'a> {
@@ -418,7 +421,7 @@ impl<'a> ParseContext<'a> {
 
                 Declaration => Unit::Declaration(Box::new(self.parse_declaration(true))),
                 OperatorOverload => Unit::OperatorOverload(Box::new(self.parse_new_operator())),
-                ImportFile => Unit::ImportFile(Box::new(self.parse_include())),
+                ImportFile => Unit::ImportFile(Box::new(self.parse_import())),
                 Typedef => Unit::Typedef(Box::new(self.parse_typedef())),
             )],
         }
@@ -809,7 +812,7 @@ impl<'a> ParseContext<'a> {
         OperatorOverload::OperatorOverload(op, Box::new(ty), Box::new(body))
     }
 
-    fn parse_include(&mut self) -> ImportFile {
+    fn parse_import(&mut self) -> ImportFile {
         read_token!(self, Token::Import);
         let ffi = match self.peek() {
             Some(Token::OpenParen(..)) => {
@@ -852,7 +855,9 @@ impl<'a> ParseContext<'a> {
             self.symbols.imported_types.1.push(name.clone());
         }
         self.symbols.imported_macros = content.c_macros;
-        ImportFile::Import(file, ffi)
+        let mut buf = String::new();
+        std::mem::swap(&mut buf, &mut self.define_buf);
+        ImportFile::Import(file, ffi, buf)
     }
 
     fn parse_typedef(&mut self) -> Typedef {
@@ -950,7 +955,7 @@ impl<'a> ParseContext<'a> {
             .chain(new_iter.into_iter()).collect();
 
         match &ident {
-            Token::Identifier(_, s) if self.symbols.types.0.contains_key(s) => Ok(Box::new(self.parse_type())),
+            Token::Identifier(_, s) if self.symbols.types.0.contains_key(s) || s.as_ref() == "char" => Ok(Box::new(self.parse_type())),
             _ => Err(Box::new(self.parse_expression())),
         }
     }
@@ -1063,6 +1068,9 @@ impl<'a> ParseContext<'a> {
         match self.peek() {
             Some(Token::StringLiteral(..)) => {
                 if let Token::StringLiteral(_, s) = read_token!(self, Token::StringLiteral) {
+                    if s.contains("#define") {
+                        self.define_buf.push_str(&s);
+                    }
                     (self.expand)(s.to_string(), tys)
                 } else {
                     unreachable!();
@@ -1668,6 +1676,8 @@ mod tests {
             get_file: &|_| panic!(),
             expand: &|_, _| panic!(),
             expand_call: &|_, _, _| panic!(),
+
+            define_buf: String::new()
         };
         let result = eval_tree(&context.parse_expression());
         println!("{} = {} (expected: {})", expr, result, expected);

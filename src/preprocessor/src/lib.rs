@@ -55,6 +55,7 @@ pub fn preprocess_str<CB>(
 where
     CB: Fn(FileQuery) -> ResolveResult,
 {
+    dbg!(&content);
     let context = ctx.get_or_insert_with(|| {
         let mut context = MacroContext::new();
         context.add_definitions(&options.definitions, &get_file);

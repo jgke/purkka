@@ -169,7 +169,7 @@ grammar! {
         | FFI. #Token::Import #Token::OpenParen #Token::Identifier #Token::CloseParen Path
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum ImportFile {
-            Import(Rc<str>, Option<Rc<str>>)
+            Import(Rc<str>, Option<Rc<str>>, String)
         }
         ;
 

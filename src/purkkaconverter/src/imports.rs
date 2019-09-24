@@ -34,15 +34,20 @@ impl ASTVisitor for StripImports<'_> {
                         }
                     })
                     .for_each(|t| match t {
-                        Unit::ImportFile(box ImportFile::Import(file, None)) => {
+                        Unit::ImportFile(box ImportFile::Import(file, None, define_buf)) => {
                             if file.ends_with(".prk") {
                                 self.context
                                     .local_includes
-                                    .insert(From::from(format!("{}.h", &file[..file.len() - 4])));
+                                    .push((None, From::from(format!("{}.h", &file[..file.len() - 4]))));
                             } else {
+                                let buf = if define_buf.len() > 0 {
+                                    Some(define_buf.clone())
+                                } else {
+                                    None
+                                };
                                 self.context
                                     .local_includes
-                                    .insert(From::from(format!("{}", file)));
+                                    .push((buf, From::from(format!("{}", file))));
                             }
                         }
                         otherwise => panic!("Not implemented: {:?}", otherwise),

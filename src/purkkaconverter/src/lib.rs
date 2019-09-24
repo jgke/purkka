@@ -38,7 +38,7 @@ use private_to_static::PrivateToStatic;
 pub struct PurkkaToC {
     pub functions: Vec<(Rc<str>, pp::Lambda, pp::DeclarationFlags)>,
     pub global_includes: HashSet<Rc<str>>,
-    pub local_includes: HashSet<Rc<str>>,
+    pub local_includes: Vec<(Option<String>, Rc<str>)>,
     pub operators: Operators,
     pub symbols: Symbols,
 }
@@ -94,7 +94,7 @@ impl PurkkaToC {
         PurkkaToC {
             functions: Vec::new(),
             global_includes: HashSet::new(),
-            local_includes: HashSet::new(),
+            local_includes: Vec::new(),
             operators,
             symbols
         }
@@ -907,6 +907,11 @@ impl PurkkaToC {
             TypeSignature::Function(params, _ret_ty) => self.abstract_function_pointer_from_params(
                 params.into_iter().map(From::from).collect(),
                 None,
+            ),
+            TypeSignature::Array(ty, size) => cp::DirectAbstractDeclarator::Array(
+                Box::new(self.format_abstract_direct_decl(*ty)),
+                size.map(|e| Box::new(self.general_expression(pp::Expression::PrimaryExpression(pp::PrimaryExpression::Literal(
+                               pp::Literal::Integer(e as i128)))))),
             ),
             other => panic!("Not implemented: {:?}", other),
         }
