@@ -262,6 +262,7 @@ impl Context {
         // note: C standard doesn't require the source character set to contain '$', '@', '`' nor
         // '|', but we just print them here
         match c {
+            '\\' => self.push("\\\\"),
             '\'' => self.push("\\'"),
             '\"' => self.push("\\\""),
             '!'..='~' | ' ' => self.push(&c.to_string()),

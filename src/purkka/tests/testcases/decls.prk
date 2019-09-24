@@ -4,7 +4,7 @@ pub fun foo() {
 
     let b = [
         "foo",
-        "bar"
+        "bar \n \\"
     ];
     b as void;
 }
