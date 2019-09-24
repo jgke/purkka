@@ -66,7 +66,7 @@ fn parse_special(
     outer_span: Span,
     iter: ParseStream,
 ) -> Terminal {
-    panic!("s")
+    panic!("69")
 }
 
 /*
@@ -171,85 +171,14 @@ fn parse_enumdef(
     iter: ParseStream,
     sp: Span,
 ) -> Item {
-    panic!("e")
+    panic!("174")
 }
-
-/*
-fn parse_enumdef(
-    cx: &mut ExtCtxt,
-    iter: &mut Peekable<Iter<'_, TokenTree>>,
-    sp: Span,
-) -> ParseResult<P<Item>> {
-    let mut res = Vec::new();
-    let mut break_next = false;
-
-    loop {
-        match iter.next() {
-            /*Some(t @ TokenTree::Delimited(..)) => {
-                res.push(t.clone());
-                if break_next {
-                    break;
-                }
-                if let Some(
-                    t @ TokenTree::Token(token::Token {
-                        kind: token::Semi, ..
-                    }),
-                ) = iter.peek()
-                {
-                    res.push((*t).clone());
-                    break;
-                }
-            }*/
-            Some(
-                t @ token::Token {
-                    kind: token::Ident(..),
-                    ..
-                },
-            ) => {
-                res.push(t.clone());
-                if let token::Token {
-                    kind: token::Ident(ident, _),
-                    ..
-                } = t
-                {
-                    if ident.as_str() == "enum" || ident.as_str() == "struct" {
-                        break_next = true;
-                    }
-                }
-                if !break_next {
-                    // enable constructs like @ type TypeName = Foo
-                    if let Some(
-                        t @ token::Token {
-                            kind: token::Semi, ..
-                        },
-                    ) = iter.peek()
-                    {
-                        res.push((*t).clone());
-                        break;
-                    }
-                }
-            }
-            Some(t) => res.push(t.clone()),
-            None => {
-                return parse_failure(
-                    cx,
-                    res.last()
-                        .and_then(|t| t.span)
-                        .unwrap_or(sp),
-                    None,
-                )
-            }
-        }
-    }
-
-    Ok(res)
-}
-*/
 
 fn parse_item(
     outer_span: Span,
     iter: ParseStream,
     tm: &mut RuleTranslationMap) -> Result<Rule> {
+
     let mut rsp = outer_span;
     let mut terminal = false;
     let mut indirect = false;
@@ -267,6 +196,7 @@ fn parse_item(
         if iter.peek(LitInt) {
             let new_prio: LitInt = iter.parse()?;
             priority = if iter.peek(Token![:]) {
+                iter.parse::<Token![:]>()?;
                 Some((new_prio.base10_parse()?, true))
             } else {
                 let ident: Ident = iter.parse()?;
@@ -274,7 +204,7 @@ fn parse_item(
                 match ident.to_string().as_ref() {
                     "l" => Some((new_prio.to_string().parse().unwrap(), true)),
                     "r" => Some((new_prio.to_string().parse().unwrap(), false)),
-                    _ => panic!()
+                    _ => panic!("Not l/r")
                 }
             };
         } else if iter.peek(Token![!]) {
@@ -304,7 +234,7 @@ fn parse_item(
                 data.span = data.span.join(s).unwrap_or(data.span);
                 current_components.push(data);
             } else {
-                panic!()
+                panic!("307")
             }
         } else if iter.peek(Token![#]) {
             rsp = iter.parse::<Token![#]>()?.span;
@@ -331,13 +261,14 @@ fn parse_item(
             if let Some(data) = current_components.pop() {
                 real_name = Some(data.identifier);
             } else {
-                panic!()
+                panic!("334")
             }
         } else if iter.peek(Token![@]) {
-            //enumdef = Some(parse_enumdef(cx, iter, *span)?);
-            unimplemented!()
+            iter.parse::<Token![@]>()?;
+            enumdef = Some(iter.parse::<Item>()?.into_token_stream());
+            break;
         } else {
-            panic!()
+            panic!("340")
         }
     }
     if !current_components.is_empty() {
@@ -351,7 +282,9 @@ fn parse_item(
         });
     }
 
-    iter.parse::<Token![;]>()?;
+    if iter.peek(Token![;])  {
+        iter.parse::<Token![;]>()?;
+    }
 
     let identifier = t.to_string();
     let span = s.join(rsp).unwrap_or(s);
@@ -367,7 +300,7 @@ fn parse_item(
         .push_rule(rule.identifier.clone(), rule.clone())
         .is_none()
     {
-        panic!()
+        panic!(370)
         //cx.span_err(
         //    s.to(rsp),
         //    "Duplicate rule (Hint: Mark the expression A -> B; A -> C; with A -> B | C;)",

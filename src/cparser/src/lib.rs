@@ -1,6 +1,5 @@
 #![recursion_limit = "100"]
-#![feature(plugin, box_patterns)]
-#![plugin(lalr)]
+#![feature(box_patterns, proc_macro_hygiene)]
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 

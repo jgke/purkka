@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use ctoken::token::Token;
+use lalr::*;
 
 grammar! {
     S -> TranslationUnit;

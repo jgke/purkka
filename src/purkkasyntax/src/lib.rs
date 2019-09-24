@@ -1,13 +1,14 @@
 #![recursion_limit = "100"]
-#![feature(plugin, box_patterns)]
-#![plugin(lalr)]
-#![plugin(purkkasyntax_procmacros)]
+#![feature(proc_macro_hygiene)]
+#![feature(box_patterns)]
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 #![feature(associated_type_defaults)]
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
+use lalr::grammar;
+use purkkasyntax_procmacros::*;
 
 use std::rc::Rc;
 

@@ -93,12 +93,12 @@ impl<'a> AstBuilderCx<'a> {
                             let ident_str = ident_arr.last().unwrap();
                             let ident = Ident::new(ident_str, item.span);
                             match self.special_rules.get(ident_str) {
-                                Some(_) => (quote! {#ident}),
+                                Some(_) => (quote! {#ident,}),
                                 None => {
                                     if item.indirect || &item.identifier == enum_name {
-                                        (quote! {Box<#ident>})
+                                        (quote! {Box<#ident>,})
                                     } else {
-                                        (quote! {#ident})
+                                        (quote! {#ident,})
                                     }
                                 }
                             }
@@ -232,9 +232,7 @@ pub fn output_parser(
         })
         .chain(terminals.iter().map(|term| {
             let ident = Ident::new(&term.identifier, term.span);
-            let var = quote! {
-                #ident(Token),
-            };
+            let var = quote! { #ident(Token), };
             var
         }))
         .collect();
@@ -255,7 +253,9 @@ pub fn output_parser(
 
     let first_fn = builder.get_first_fn(rules);
 
-    println!("{}", all_data);
+    let res = items.into_iter().chain(epsilon).chain(all_data).chain(first_fn).collect();
 
-    Ok(items.into_iter().chain(epsilon).chain(all_data).chain(first_fn).collect())
+    //println!("{}", res);
+
+    Ok(res)
 }
