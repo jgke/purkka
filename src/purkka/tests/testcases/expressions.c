@@ -18,5 +18,7 @@ int main() {
     double i = 1e-12;
     (void)h;
     (void)i;
+    (void)sizeof(char *[5]);
+    (void)sizeof(char[3]);
     return a + *b + *c + *d + e;
 }
