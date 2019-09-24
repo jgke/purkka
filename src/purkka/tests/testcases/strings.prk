@@ -1,0 +1,7 @@
+fun replace(pattern: [char], replacement: [char]) {
+}
+
+pub fun main() {
+    replace(">.*\\n|\\n", "");
+    return 0;
+}

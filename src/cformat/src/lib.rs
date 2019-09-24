@@ -222,6 +222,7 @@ impl Context {
                                     for c in s.chars() {
                                         self.format_char(c);
                                     }
+                                    self.whitespace = false;
                                     self.push("\"");
                                     return;
                                 }
@@ -834,6 +835,7 @@ impl Context {
                 for c in s.chars() {
                     self.format_char(c);
                 }
+                self.whitespace = false;
                 self.push("\"");
             }
             PrimaryExpression::CharLiteral(s) => {

@@ -20,5 +20,6 @@ int main() {
     (void)i;
     (void)sizeof(char *[5]);
     (void)sizeof(char[3]);
+    (void)"";
     return a + *b + *c + *d + e;
 }

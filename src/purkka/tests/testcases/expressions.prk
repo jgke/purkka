@@ -26,6 +26,7 @@ pub fun main() {
 
     sizeof([&char;5]) as void;
     sizeof([char;3]) as void;
+    "" as void;
 
     return a + *b + *c + *d + e;
 }
