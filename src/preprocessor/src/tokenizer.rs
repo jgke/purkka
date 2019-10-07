@@ -460,11 +460,7 @@ where
                     };
                     (Some(token), false)
                 }
-                Some(' ') => {
-                    iter.next();
-                    (None, parse_macro)
-                }
-                Some('\t') => {
+                Some(' ') | Some('\t') | Some('\x0C') | Some('\x0D') => {
                     iter.next();
                     (None, parse_macro)
                 }
@@ -530,7 +526,7 @@ where
                 i.next();
                 None
             }
-            '\t' => Some(vec![' ']),
+            '\t' | '\x0C' | '\x0D' => Some(vec![' ']),
             c => {
                 if c == '/' && parse_comments {
                     let next = i.peek_n(2);
@@ -769,7 +765,7 @@ where
     fn flush_whitespace(&mut self, iter: &mut FragmentIterator) {
         loop {
             match iter.peek() {
-                Some(' ') | Some('\t') => iter.next(),
+                Some(' ') | Some('\t') | Some('\x0C') | Some('\x0D') => iter.next(),
                 _ => break,
             };
         }
@@ -866,7 +862,7 @@ where
             MacroType::Include(next) => {
                 loop {
                     match sub_iter.peek() {
-                        Some(' ') | Some('\t') => sub_iter.next(),
+                        Some(' ') | Some('\t') | Some('\x0C') | Some('\x0D') => sub_iter.next(),
                         _ => break,
                     };
                 }
@@ -969,7 +965,7 @@ where
             .iter()
             .map(|(_, c)| *c)
             .skip(1) // '#'
-            .skip_while(|c| *c == ' ' || *c == '\t')
+            .skip_while(|c| *c == ' ' || *c == '\t' || *c == '\x0C' || *c == '\x0D')
             .take(6)
             .map(|c| if c == '\t' { ' ' } else { c })
             .collect::<String>();
@@ -1079,7 +1075,7 @@ where
     ) {
         loop {
             match sub_iter.peek() {
-                Some(' ') | Some('\t') => sub_iter.next(),
+                Some(' ') | Some('\t') | Some('\x0C') | Some('\x0D') => sub_iter.next(),
                 _ => break,
             };
         }
@@ -1100,7 +1096,7 @@ where
         'outer: loop {
             match iter.peek() {
                 Some('#') | Some('\n') => return,
-                Some(' ') | Some('\t') => {
+                Some(' ') | Some('\t') | Some('\x0C') | Some('\x0D') => {
                     iter.next();
                     continue 'outer;
                 }

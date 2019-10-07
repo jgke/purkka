@@ -444,27 +444,14 @@ impl<'a> ParseContext<'a> {
                         static_: false,
                         typedef: false,
                     },
-                    ident,
                     Box::new(TypeSignature::Function(
                         params.iter().cloned().map(From::from).collect(),
                         Box::new(return_type.clone()),
                     )),
-                    Some(Box::new(self.lambda_to_expr(params, return_type, block))),
+                    vec![(ident, Some(Box::new(self.lambda_to_expr(params, return_type, block))))],
                 );
             }
             t => unexpected_token!(t, self),
-        };
-        let ident = match self.next() {
-            Some(Token::Identifier(_, s)) => s.clone(),
-            t => unexpected_token!(t, self),
-        };
-        self.push_identifier(ident.clone());
-        let ty = match self.peek() {
-            Some(Token::Colon(_)) => {
-                read_token!(self, Token::Colon);
-                Box::new(self.parse_type())
-            }
-            _ => Box::new(self.get_inferred_type()),
         };
 
         let flags = DeclarationFlags {
@@ -475,14 +462,48 @@ impl<'a> ParseContext<'a> {
             typedef: false,
         };
 
-        let res = match &self.peek() {
-            Some(Token::Operator(_, t)) if &**t == "=" => {
-                read_token!(self, Token::Operator);
-                let expr = Box::new(self.parse_expression());
-                Declaration::Declaration(flags, ident, ty, Some(expr))
+        let mut decls = Vec::new();
+        loop {
+            let ident = read_identifier_str!(self).clone();
+            self.push_identifier(ident.clone());
+
+            if decls.len() == 0 && maybe_read_token!(self, Token::Colon).is_some() {
+                let ty = Box::new(self.parse_type());
+                let expr = match &self.peek() {
+                    Some(Token::Operator(_, t)) if &**t == "=" => {
+                        read_token!(self, Token::Operator);
+                        Some(Box::new(self.parse_expression()))
+                    }
+                    _ => None,
+                };
+                let res = Declaration::Declaration(flags, ty, vec![(ident, expr)]);
+
+                if semi {
+                    read_token!(self, Token::SemiColon);
+                }
+                return res;
             }
-            _ => Declaration::Declaration(flags, ident, ty, None),
+
+            let expr = match &self.peek() {
+                Some(Token::Operator(_, t)) if &**t == "=" => {
+                    read_token!(self, Token::Operator);
+                    Some(Box::new(self.parse_expression()))
+                }
+                _ => None,
+            };
+            decls.push((ident, expr));
+            if maybe_read_token!(self, Token::Comma).is_none() {
+                break;
+            }
+        }
+        let ty = match self.peek() {
+            Some(Token::Colon(_)) => {
+                read_token!(self, Token::Colon);
+                Box::new(self.parse_type())
+            }
+            _ => Box::new(self.get_inferred_type()),
         };
+        let res = Declaration::Declaration(flags, ty, decls);
 
         if semi {
             read_token!(self, Token::SemiColon);
@@ -1599,6 +1620,32 @@ mod tests {
             .unwrap_or_else(|| Token::Integer(0, s.parse().unwrap()))
     }
 
+    fn get_decl_ident(tree: &S) -> Rc<str> {
+        Some(tree)
+            .translation_unit()
+            .units()
+            .and_then(|t| t.get(0))
+            .declaration()
+            .map(|Declaration::Declaration(_, _, decls)| {
+                assert_eq!(decls.len(), 1);
+                decls[0].0.clone()
+            })
+            .unwrap()
+    }
+
+    fn get_decl_expr(tree: &S) -> Expression {
+        Some(tree)
+            .translation_unit()
+            .units()
+            .and_then(|t| t.get(0))
+            .declaration()
+            .map(|Declaration::Declaration(_, _, decls)| {
+                 assert_eq!(decls.len(), 1);
+                 *decls[0].1.as_ref().unwrap().clone()
+            })
+            .unwrap()
+    }
+
     macro_rules! eval_bin {
         ($list:ident, $op:tt) => {
             {
@@ -1732,25 +1779,10 @@ mod tests {
             Token::CloseParen(5),
             Token::SemiColon(6),
         ]);
+        assert_eq!(get_decl_ident(&s), From::from("bar"));
         assert_eq!(
-            Some(&s)
-                .translation_unit()
-                .units()
-                .and_then(|t| t.get(0))
-                .declaration()
-                .identifier()
-                .unwrap(),
-            &From::from("bar")
-        );
-        assert_eq!(
-            Some(&s)
-                .translation_unit()
-                .units()
-                .and_then(|t| t.get(0))
-                .declaration()
-                .expr()
-                .unwrap(),
-            &Expression::Call(
+            get_decl_expr(&s),
+            Expression::Call(
                 Box::new(Expression::PrimaryExpression(From::from("foo"))),
                 vec![]
             )
@@ -1769,25 +1801,10 @@ mod tests {
             Token::CloseParen(6),
             Token::SemiColon(7),
         ]);
+        assert_eq!(get_decl_ident(&s), From::from("bar"));
         assert_eq!(
-            Some(&s)
-                .translation_unit()
-                .units()
-                .and_then(|t| t.get(0))
-                .declaration()
-                .identifier()
-                .unwrap(),
-            &From::from("bar")
-        );
-        assert_eq!(
-            Some(&s)
-                .translation_unit()
-                .units()
-                .and_then(|t| t.get(0))
-                .declaration()
-                .expr()
-                .unwrap(),
-            &Expression::Call(
+            get_decl_expr(&s),
+            Expression::Call(
                 Box::new(Expression::PrimaryExpression(From::from("foo"))),
                 vec![Expression::PrimaryExpression(
                     PrimaryExpression::Identifier(From::from("asd"))
@@ -1810,25 +1827,10 @@ mod tests {
             Token::CloseParen(8),
             Token::SemiColon(9),
         ]);
+        assert_eq!(get_decl_ident(&s), From::from("bar"));
         assert_eq!(
-            Some(&s)
-                .translation_unit()
-                .units()
-                .and_then(|t| t.get(0))
-                .declaration()
-                .identifier()
-                .unwrap(),
-            &From::from("bar")
-        );
-        assert_eq!(
-            Some(&s)
-                .translation_unit()
-                .units()
-                .and_then(|t| t.get(0))
-                .declaration()
-                .expr()
-                .unwrap(),
-            &Expression::Call(
+            get_decl_expr(&s),
+            Expression::Call(
                 Box::new(Expression::PrimaryExpression(From::from("foo"))),
                 vec![
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("asd"))),
@@ -1854,25 +1856,10 @@ mod tests {
             Token::CloseParen(11),
             Token::SemiColon(12),
         ]);
+        assert_eq!(get_decl_ident(&s), From::from("bar"));
         assert_eq!(
-            Some(&s)
-                .translation_unit()
-                .units()
-                .and_then(|t| t.get(0))
-                .declaration()
-                .identifier()
-                .unwrap(),
-            &From::from("bar")
-        );
-        assert_eq!(
-            Some(&s)
-                .translation_unit()
-                .units()
-                .and_then(|t| t.get(0))
-                .declaration()
-                .expr()
-                .unwrap(),
-            &Expression::Call(
+            get_decl_expr(&s),
+            Expression::Call(
                 Box::new(Expression::PrimaryExpression(From::from("foo"))),
                 vec![
                     Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("asd"))),
@@ -1906,12 +1893,11 @@ mod tests {
                         static_: false,
                         typedef: false
                     },
-                    From::from("bar"),
                     Box::new(TypeSignature::Pointer {
                         nullable: false,
                         ty: Box::new(TypeSignature::Primitive(Primitive::Int(32)))
                     },),
-                    None
+                    vec![(From::from("bar"), None)]
                 )
             ))]))
         );

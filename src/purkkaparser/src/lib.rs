@@ -35,15 +35,18 @@ pub fn get_declarations(tree: &S) -> (Declarations, Declarations)  {
     let S::TranslationUnit(u) = tree;
     let TranslationUnit::Units(list) = u;
     let (decls, types): (Vec<_>, Vec<_>) = list.iter()
-        .map(|unit| {
-            match unit {
-                Unit::Declaration(box Declaration::Declaration(_, ident, ty, _)) => {
-                    (Some((ident.clone(), *ty.clone())), None)
+        .flat_map(|unit| {
+            let decl: Option<(Vec<_>, _)> = match unit {
+                Unit::Declaration(box Declaration::Declaration(_, ty, decls)) => {
+                    Some((decls.iter().map(|(ident, _) | ident.clone()).collect(), ty))
                 }
                 // XXX: fix
-                _ => (None, None)
+                _ => None
                 //t => unimplemented!("{:?}", t)
-            }
+            };
+
+            decl.into_iter().flat_map(|(idents, ty)|
+                                      idents.into_iter().map(move |ident| (Some((ident, *ty.clone())), None)))
         })
         .unzip();
     (decls.into_iter().flatten().collect(), types.iter().cloned().flatten().collect())

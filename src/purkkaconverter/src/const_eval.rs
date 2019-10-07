@@ -37,14 +37,17 @@ impl ASTVisitor for EvalConstExprs<'_> {
             return Ok(());
         }
         match s {
-            Declaration::Declaration(_flags, name, ty, assignment) => vec![
+            Declaration::Declaration(_flags, ty, decls) => vec![
                 self.visit_ty(ty)?,
-                self.fold_o(assignment, |v, a| {
-                    if let Ok(e) = v.eval_expression(a) {
-                        v.exprs.insert(name.clone(), e);
-                    }
-                    Ok(())
-                })?,
+                self.fold(
+                    decls,
+                    |v, (name, e)|
+                    v.fold_o(e, |v, a| {
+                        if let Ok(e) = v.eval_expression(a) {
+                            v.exprs.insert(name.clone(), e);
+                        }
+                        Ok(())
+                    }))?
             ]
             .flatten(self),
         }
@@ -57,6 +60,7 @@ impl EvalConstExprs<'_> {
             Expression::PrimaryExpression(p) => self.eval_primary_expression(p),
             Expression::Op(op, ExprList::List(args)) => match op.as_ref() {
                 "+" => Ok(self.eval_expression(&mut args[0])? + self.eval_expression(&mut args[1])?),
+                "-" => Ok(self.eval_expression(&mut args[0])? - self.eval_expression(&mut args[1])?),
                 "*" => Ok(self.eval_expression(&mut args[0])? * self.eval_expression(&mut args[1])?),
                 _ => unimplemented!("{}", op),
             },

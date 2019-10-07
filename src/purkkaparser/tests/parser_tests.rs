@@ -1,3 +1,5 @@
+#![feature(box_patterns)]
+
 extern crate purkkaconverter;
 
 use fragment::fragment::FragmentIterator;
@@ -72,7 +74,7 @@ fn get_ty(s: &S) -> Option<&TypeSignature> {
         .units()
         .and_then(|t| t.get(0))
         .declaration()
-        .ty()
+        .map(|Declaration::Declaration(_, ty, _)| &**ty)
 }
 
 #[test]
@@ -186,4 +188,31 @@ fn parse_assignment() {
 #[test]
 fn parse_complex_expressions() {
     test_parse_file("let a = 1 + (2 & 3++);");
+}
+
+#[test]
+fn parse_multiple_decls() {
+    let decls = Some(&test_parse_file("let a = 1, b = 2;"))
+        .translation_unit()
+        .units()
+        .and_then(|t| t.get(0))
+        .declaration()
+        .map(|Declaration::Declaration(_, _, decls)| {
+            decls.clone()
+        })
+        .unwrap();
+    assert_eq!(decls.len(), 2);
+    assert_eq!(decls[0].0, From::from("a"));
+    assert_eq!(decls[1].0, From::from("b"));
+
+    if let Some(box Expression::PrimaryExpression(PrimaryExpression::Literal(Literal::Integer(v)))) = decls[0].1 {
+        assert_eq!(v, 1);
+    } else {
+        unreachable!();
+    }
+    if let Some(box Expression::PrimaryExpression(PrimaryExpression::Literal(Literal::Integer(v)))) = decls[1].1 {
+        assert_eq!(v, 2);
+    } else {
+        unreachable!();
+    }
 }

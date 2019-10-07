@@ -78,9 +78,9 @@ pub fn fetch_identifiers_from_prk(tree: &mut pp::S) -> HashMap<Rc<str>, pp::Decl
     decls
         .declarations
         .into_iter()
-        .map(|decl| {
-            let pp::Declaration::Declaration(_flags, name, _, _) = &decl;
-            (name.clone(), decl)
+        .flat_map(|decl| {
+            let pp::Declaration::Declaration(_flags, _, decls) = &decl;
+            decls.iter().cloned().map(|(name, _)| (name.clone(), decl.clone())).collect::<Vec<_>>().into_iter()
         })
         .collect()
 }
@@ -617,91 +617,51 @@ impl PurkkaToC {
     }
 
     pub fn convert_declaration(&mut self, k: pp::Declaration) -> cp::Declaration {
-        match k {
-            pp::Declaration::Declaration(
-                flags,
-                name,
-                ty,
-                Some(box pp::Expression::PrimaryExpression(pp::PrimaryExpression::ArrayLiteral(
-                    exprs,
-                ))),
-            ) => {
-                    let attrs = if let TypeSignature::Attribute(_, attrs) = &*ty  {
-                        Some(attrs.iter().cloned().map(|a| self.attribute(a)).collect())
-                    } else {
-                        None
-                    };
-                    cp::Declaration::Declaration(
-                    Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags)),
-                    vec![cp::InitDeclarator::Assign(
-                        Box::new(self.format_decl(name, *ty)),
-                        ct::Token::Assign(0),
-                        Box::new(cp::AssignmentOrInitializerList::Initializers(
-                            self.exprs_to_initializer(exprs),
-                        )),
-                    )],
-                    attrs,
+        let pp::Declaration::Declaration(flags, ty, decls) = k;
+        let attrs = if let TypeSignature::Attribute(_, attrs) = &*ty  {
+            Some(attrs.iter().cloned().map(|a| self.attribute(a)).collect())
+        } else {
+            None
+        };
+        let spec = Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags));
+        let c_decls = decls.into_iter().map(|k| match k {
+            (name, Some(box pp::Expression::PrimaryExpression(
+                        pp::PrimaryExpression::ArrayLiteral(exprs)))) => {
+                cp::InitDeclarator::Assign(
+                    Box::new(self.format_decl(name, *ty.clone())),
+                    ct::Token::Assign(0),
+                    Box::new(cp::AssignmentOrInitializerList::Initializers(
+                        self.exprs_to_initializer(exprs),
+                    )),
                 )
             }
-            pp::Declaration::Declaration(
-                flags,
-                name,
-                ty,
-                Some(box pp::Expression::PrimaryExpression(pp::PrimaryExpression::StructInitialization(
-                    _,
-                    exprs,
-                ))),
-            ) => {
-                    let attrs = if let TypeSignature::Attribute(_, attrs) = &*ty  {
-                        Some(attrs.iter().cloned().map(|a| self.attribute(a)).collect())
-                    } else {
-                        None
-                    };
-                    cp::Declaration::Declaration(
-                    Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags)),
-                    vec![cp::InitDeclarator::Assign(
-                        Box::new(self.format_decl(name, *ty)),
-                        ct::Token::Assign(0),
-                        Box::new(cp::AssignmentOrInitializerList::Initializers(
-                            self.exprs_to_struct_initializer(exprs),
-                        )),
-                    )],
-                    attrs,
+            (name, Some(box pp::Expression::PrimaryExpression(
+                        pp::PrimaryExpression::StructInitialization(_, exprs)))) => {
+                cp::InitDeclarator::Assign(
+                    Box::new(self.format_decl(name, *ty.clone())),
+                    ct::Token::Assign(0),
+                    Box::new(cp::AssignmentOrInitializerList::Initializers(
+                        self.exprs_to_struct_initializer(exprs),
+                    )),
                 )
             }
-            pp::Declaration::Declaration(flags, name, ty, Some(expr)) => {
-                let attrs = if let TypeSignature::Attribute(_, attrs) = &*ty  {
-                    Some(attrs.iter().cloned().map(|a| self.attribute(a)).collect())
-                } else {
-                    None
-                };
-                cp::Declaration::Declaration(
-                    Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags)),
-                    vec![cp::InitDeclarator::Assign(
-                        Box::new(self.format_decl(name, *ty)),
-                        ct::Token::Assign(0),
-                        Box::new(cp::AssignmentOrInitializerList::AssignmentExpression(
-                            self.assignment_expression(*expr),
-                        )),
-                    )],
-                    attrs,
+            (name, Some(expr)) => {
+                cp::InitDeclarator::Assign(
+                    Box::new(self.format_decl(name, *ty.clone())),
+                    ct::Token::Assign(0),
+                    Box::new(cp::AssignmentOrInitializerList::AssignmentExpression(
+                        self.assignment_expression(*expr),
+                    )),
                 )
             }
-            pp::Declaration::Declaration(flags, name, ty, None) => {
-                let attrs = if let TypeSignature::Attribute(_, attrs) = &*ty  {
-                    Some(attrs.iter().cloned().map(|a| self.attribute(a)).collect())
-                } else {
-                    None
-                };
-                cp::Declaration::Declaration(
-                    Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags)),
-                    vec![cp::InitDeclarator::Declarator(Box::new(
-                        self.format_decl(name, *ty),
-                    ))],
-                    attrs,
-                )
+            (name, None) => {
+                cp::InitDeclarator::Declarator(Box::new(
+                    self.format_decl(name, *ty.clone()),
+                ))
             }
-        }
+        }).collect();
+
+        cp::Declaration::Declaration(spec, c_decls, attrs)
     }
 
     pub fn type_to_declaration_specifiers(
@@ -919,25 +879,42 @@ impl PurkkaToC {
         }
     }
 
-    /* Expression handling */
+    pub fn maybe_block(&mut self, expr: pp::BlockExpression) -> Option<cp::Expression> {
+        match expr {
+            pp::BlockExpression::Block(block) => {
+                let pp::Block::Statements(stmts) = block;
+                let exprs = stmts
+                    .into_iter()
+                    .map(|t| match t {
+                        pp::Statement::Expression(e) => Some(self.assignment_expression(*e)),
+                        _ => None
+                    })
+                .collect::<Option<Vec<_>>>()?;
+                Some(cp::Expression::Expression(exprs))
+            }
+            other => panic!("Not implemented: {:?}", other),
+        }
+    }
 
     pub fn expression(&mut self, expr: pp::Expression) -> cp::Expression {
         match expr {
             pp::Expression::PrimaryExpression(pp::PrimaryExpression::BlockExpression(block)) => {
-                match *block {
-                    pp::BlockExpression::Block(block) => {
-                        let pp::Block::Statements(stmts) = block;
-                        let exprs = stmts
-                            .into_iter()
-                            .map(|t| match t {
-                                pp::Statement::Expression(e) => self.assignment_expression(*e),
-                                other => panic!("Not implemented: {:?}", other),
-                            })
-                            .collect();
-                        cp::Expression::Expression(exprs)
-                    }
-                    other => panic!("Not implemented: {:?}", other),
-                }
+                self.maybe_block(*block.clone())
+                    .unwrap_or_else(|| cp::Expression::Expression(
+                            vec![
+                            cp::AssignmentExpression::TernaryExpression(
+                                cp::TernaryExpression::GeneralExpression(
+                                cp::GeneralExpression::CastExpression(
+                                Box::new(cp::CastExpression::UnaryExpression(
+                                    cp::UnaryExpression::PostfixExpression(
+                                        Box::new(cp::PostfixExpression::PrimaryExpression(
+                                            cp::PrimaryExpression::Statement(
+                                                Box::new(self.block_expression_to_compound_statement(*block))
+                                            )
+                                        ))
+                                    )
+                                )))
+                            ))]))
             }
             e => cp::Expression::Expression(vec![self.assignment_expression(e)]),
         }
@@ -1581,6 +1558,14 @@ impl CToPurkka {
                         .collect(),
                 )
             }
+            cp::PrimaryExpression::CharLiteral(c) => {
+                pp::PrimaryExpression::Literal(pp::Literal::Char(c))
+            }
+            cp::PrimaryExpression::Statement(c) => {
+                pp::PrimaryExpression::BlockExpression(
+                    Box::new(pp::BlockExpression::Block(self.block(*c)))
+                )
+            }
             other => panic!("Not implemented: {:?}", other),
         }
     }
@@ -1667,9 +1652,8 @@ impl CToPurkka {
                             let (name, ty) = self.declarator_to_type(&decl, spec_ty);
                             pp::Declaration::Declaration(
                                 pp::DeclarationFlags::default(),
-                                name,
                                 Box::new(ty),
-                                None,
+                                vec![(name, None)],
                             )
                         }
                         cp::InitDeclarator::Asm(..) => unimplemented!(),
@@ -1678,14 +1662,14 @@ impl CToPurkka {
                             let (name, ty) = self.declarator_to_type(&decl, spec_ty);
                             pp::Declaration::Declaration(
                                 pp::DeclarationFlags::default(),
-                                name,
                                 Box::new(ty),
+                                vec![(name,
                                 match *initializer {
                                     cp::AssignmentOrInitializerList::AssignmentExpression(expr) => {
                                         Some(Box::new(self.assignment_expression(expr)))
                                     }
                                     cp::AssignmentOrInitializerList::Initializers(..) => unimplemented!(),
-                                },
+                                })]
                             )
                         }
                     };
@@ -1710,15 +1694,15 @@ impl CToPurkka {
         flags.mutable = false;
         pp::Declaration::Declaration(
             flags,
-            name,
             Box::new(ty),
+            vec![(name,
             Some(Box::new(pp::Expression::PrimaryExpression(
                 pp::PrimaryExpression::Lambda(pp::Lambda::Lambda(
                     self.declarator_to_params(&*decl),
                     *ret_ty,
                     self.block(*stmt),
                 )),
-            ))),
+            ))))],
         )
     }
 

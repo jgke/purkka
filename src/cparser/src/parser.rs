@@ -27,7 +27,8 @@ macro_rules! maybe_read_token {
 macro_rules! unexpected_token {
     ($token:expr, $iter:expr) => {
         match $token {
-            None => panic!("Unexpected end of file"),
+            None => panic!("Unexpected end of file\n{}",
+                           $iter.fragment.source_to_str(&$iter.sources[$iter.prev_t.as_ref().unwrap().get_num()])),
             Some(t) => {
                 let as_s = format!("{:?}", t);
                 let num = t.get_num();
@@ -44,7 +45,8 @@ macro_rules! unexpected_token {
 macro_rules! unexpected_token_expected_one {
     ($token:expr, $iter:expr, $expected:path) => {
         match $token {
-            None => panic!("Unexpected end of file, expected {}", stringify!($expected)),
+            None => panic!("Unexpected end of file, expected {}\n{}", stringify!($expected),
+                           $iter.fragment.source_to_str(&$iter.sources[$iter.prev_t.as_ref().unwrap().get_num()])),
             Some(t) => {
                 let as_s = format!("{:?}", t);
                 let expected = stringify!($expected);
@@ -178,6 +180,7 @@ where
     pub iter: MultiPeek<I>,
     pub fragment: &'a FragmentIterator,
     pub sources: &'a [Source],
+    pub prev_t: Option<Token>
 }
 
 fn default_types(mut types: HashSet<Rc<str>>) -> ScopedState {
@@ -204,6 +207,7 @@ where
         vals: HashMap::new(),
         iter: multipeek(iter),
         fragment: fragment_iter,
+        prev_t: None,
         sources,
     };
     let context_mut = std::sync::Mutex::new(context);
@@ -235,6 +239,7 @@ where
         iter: multipeek(iter),
         fragment: fragment_iter,
         sources,
+        prev_t: None,
     };
     let context_mut = std::sync::Mutex::new(context);
 
@@ -267,7 +272,11 @@ where
             Some(Token::CloseBrace(..)) => self.pop_scope(),
             _ => {}
         }
-        self.iter.next()
+        let next = self.iter.next();
+        if let Some(t) = next {
+            self.prev_t = Some(t.clone());
+        }
+        next
     }
     fn peek(&mut self) -> Option<&&'a Token> {
         self.iter.peek()
@@ -2257,7 +2266,9 @@ impl DeclarationContext {
                     .map(|b| usize::try_from(b.value().unwrap()).unwrap());
 
                 let (name, ty) = match decl {
-                    EitherDeclarator::Anonymous(_) => unimplemented!(),
+                    EitherDeclarator::Anonymous(decl) => {
+                       (From::from(""), self.abstract_declarator_to_type(decl, spec_ty.clone()))
+                    }
                     EitherDeclarator::Declarator(decl) => {
                         self.declarator_to_type(decl, spec_ty.clone())
                     }

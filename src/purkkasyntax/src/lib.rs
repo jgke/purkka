@@ -47,7 +47,7 @@ grammar! {
         | Definition. Visibility Mutability #Token::Identifier MaybeType #Token::Operator Expression #Token::SemiColon
         | Function. Visibility Inline_ #Token::Fun #Token::Identifier Function
         @ #[derive(Clone, Debug, PartialEq)]
-        pub enum Declaration { Declaration(DeclarationFlags, Rc<str>, Box<TypeSignature>, Option<Box<Expression>>) }
+        pub enum Declaration { Declaration(DeclarationFlags, Box<TypeSignature>, Vec<(Rc<str>, Option<Box<Expression>>)>) }
         ;
 
     Function
@@ -380,9 +380,6 @@ grammar! {
 impl_enter!(S, TranslationUnit, TranslationUnit, translation_unit, 1);
 impl_enter!(TranslationUnit, Units, "Vec<Unit>", units, 1);
 impl_enter!(Unit, Declaration, Declaration, declaration, 1);
-impl_enter_unbox!(Declaration, Declaration, TypeSignature, ty, 3);
-impl_enter_unbox_fmap!(Declaration, Declaration, Expression, expr, 4);
-impl_enter!(Declaration, Declaration, "Rc<str>", identifier, 2);
 
 impl_enter!(Token, Identifier, "Rc<str>", identifier_s, 2);
 
@@ -765,23 +762,25 @@ impl From<Param> for TypeSignature {
 
 impl Declaration {
     pub fn is_fn(&self) -> bool {
-        if let Declaration::Declaration(
-            flags,
-            _name,
-            _ty,
-            Some(box Expression::PrimaryExpression(PrimaryExpression::Lambda(..))),
-        ) = self
-        {
-            !flags.mutable
-        } else {
-            false
+        let Declaration::Declaration(flags, _ty, decls) = self;
+        for decl in decls {
+            if let (_, Some(box Expression::PrimaryExpression(PrimaryExpression::Lambda(..)))) = decl {
+            } else {
+                return false;
+            }
         }
+        !flags.mutable
     }
 
     pub fn is_fn_ty(&self) -> bool {
-        if let Declaration::Declaration(_flags, _name, box TypeSignature::Function(..), Some(_)) =
-            self
-        {
+        let Declaration::Declaration(_flags, ty, decls) = self;
+        if let TypeSignature::Function(..) = &**ty {
+            for decl in decls {
+                if let (_, Some(_)) = decl {
+                } else {
+                    return false;
+                }
+            }
             true
         } else {
             false

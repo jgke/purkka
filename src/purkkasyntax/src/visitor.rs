@@ -183,11 +183,11 @@ pub fn walk_declaration<T: ASTVisitor + ?Sized>(
     s: &mut Declaration,
 ) -> Result<T::Succ, T::Err> {
     match s {
-        Declaration::Declaration(_flags, _name, ty, assignment) => vec![
+        Declaration::Declaration(_flags, ty, decls) => vec![
             visitor.visit_ty(ty)?,
-            visitor.fold_o(assignment, |v, a| v.visit_expression(a))?,
-        ]
-        .flatten(visitor),
+            visitor.fold(decls, |v, (_, e)|
+                         v.fold_o(e, |v, e| v.visit_expression(e)))?
+        ].flatten(visitor)
     }
 }
 

@@ -226,6 +226,8 @@ fn statements() {
             case 3 ... 4: baz(); qux(); break;
             default: panic();
         }
+        do bar(); while(1);
+        do { bar(); } while(1);
     }"
     )
     .is_ok());

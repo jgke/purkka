@@ -77,27 +77,30 @@ impl ASTVisitor for TypeInferrer<'_> {
     type Err = String;
 
     fn visit_declaration(&mut self, tree: &mut Declaration) -> Result<(), String> {
-        match tree {
-            Declaration::Declaration(_flags, name, exact_ty, Some(e)) => {
-                self.current_function = name.to_string();
-                self.push_symbol(name.clone(), From::from(*exact_ty.clone()));
-                let ty = self.get_type(e)?;
-                let intermediate: IntermediateType = From::from(*exact_ty.clone());
-                if !ty.1.is_empty() {
-                    match &**exact_ty {
-                        TypeSignature::Function(_, ret) => {
-                            for ret_ty in ty.1 {
-                                self.make_equal(&ret_ty, &From::from(*ret.clone()))?;
+        let Declaration::Declaration(_flags, exact_ty, decls) = tree;
+        for (name, expr) in decls { 
+            match expr {
+                Some(e) => {
+                    self.current_function = name.to_string();
+                    self.push_symbol(name.clone(), From::from(*exact_ty.clone()));
+                    let ty = self.get_type(e)?;
+                    let intermediate: IntermediateType = From::from(*exact_ty.clone());
+                    if !ty.1.is_empty() {
+                        match &**exact_ty {
+                            TypeSignature::Function(_, ret) => {
+                                for ret_ty in ty.1 {
+                                    self.make_equal(&ret_ty, &From::from(*ret.clone()))?;
+                                }
                             }
+                            otherwise => return not_impl!(otherwise),
                         }
-                        otherwise => return not_impl!(otherwise),
                     }
+                    self.make_equal(&ty.0, &intermediate)?;
+                    self.push_symbol(name.clone(), intermediate);
                 }
-                self.make_equal(&ty.0, &intermediate)?;
-                self.push_symbol(name.clone(), intermediate);
-            }
-            Declaration::Declaration(_flags, name, ty, None) => {
-                self.push_symbol(name.clone(), From::from(*ty.clone()));
+                None => {
+                    self.push_symbol(name.clone(), From::from(*exact_ty.clone()));
+                }
             }
         }
         walk_declaration(self, tree)

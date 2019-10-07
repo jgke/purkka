@@ -34,17 +34,17 @@ impl ASTVisitor for StripLambda<'_> {
                         }
                     })
                     .for_each(|t| {
-                        if let Unit::Declaration(box Declaration::Declaration(
-                            flags,
-                            name,
-                            _,
-                            Some(box Expression::PrimaryExpression(PrimaryExpression::Lambda(
-                                mut lambda,
-                            ))),
-                        )) = t
-                        {
-                            self.visit_lambda(&mut lambda).unwrap();
-                            self.context.push_function(name, lambda, flags);
+                        if let Unit::Declaration(box Declaration::Declaration(flags, _, decls)) = t {
+                            for decl in decls {
+                                if let (name, Some(box Expression::PrimaryExpression(PrimaryExpression::Lambda(
+                                        mut lambda,
+                                        )))) = decl {
+                                    self.visit_lambda(&mut lambda).unwrap();
+                                    self.context.push_function(name, lambda, flags);
+                                } else {
+                                    unreachable!()
+                                }
+                            }
                         } else {
                             unreachable!()
                         }
