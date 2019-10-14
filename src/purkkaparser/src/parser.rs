@@ -435,6 +435,7 @@ impl<'a> ParseContext<'a> {
             Some(Token::Fun(..)) => {
                 let inline = maybe_read_token!(self, Token::Inline).is_some();
                 let ident = read_identifier_str!(self);
+                self.push_identifier(ident.clone());
                 let (params, return_type, block) = self.parse_lambda();
                 return Declaration::Declaration(
                     DeclarationFlags {
