@@ -206,28 +206,6 @@ grammar! {
         }
         ;
 
-    PrimaryExpression
-       -> #Token::Identifier
-        | Literal
-        | StructInitialization. #Token::Identifier /* ident:typename & struct */ #Token::OpenBrace InitializationFields #Token::CloseBrace
-        | VectorInitialization. #Token::Identifier /* ident:typename & vector */ #Token::OpenBrace InitializationFields #Token::CloseBrace
-        | ArrayLiteral
-        | BlockExpression
-        | Expression. #Token::OpenParen Expression #Token::CloseParen
-        | Lambda
-        @ #[derive(Clone, Debug, PartialEq)]
-        pub enum PrimaryExpression {
-            Identifier(Rc<str>),
-            StructInitialization(Rc<str>, Vec<StructInitializationField>),
-            VectorInitialization(Rc<str>, Vec<Expression>),
-            ArrayLiteral(Vec<Expression>),
-            Literal(Literal),
-            BlockExpression(Box<BlockExpression>),
-            Expression(Box<Expression>),
-            Lambda(Lambda),
-        }
-        ;
-
     InitializationFields
        -> Epsilon
         | StructInitializationField TrailingComma
@@ -293,19 +271,25 @@ grammar! {
         ;
 
     Expression
-       -> PrimaryExpression
-        | Op. #Token::Operator ExprList
+       -> Op. #Token::Operator ExprList
         | Unary. #Token::Operator ExprList
         | PostFix. Expression #Token::Operator
         | Cast. Expression #Token::As TypeSignature
-        | Call. &PrimaryExpression ArgList
-        | ArrayAccess. &PrimaryExpression #Token::OpenBracket &Expression #Token::CloseBracket
-        | StructAccess. PrimaryExpression #Token::Dot #Token::Identifier
-        | SizeofExpression. #Token::Sizeof #Token::OpenParen &Expression #Token::CloseParen
+        | Call. Expression ArgList
+        | ArrayAccess. Expression #Token::OpenBracket Expression #Token::CloseBracket
+        | StructAccess. Expression #Token::Dot #Token::Identifier
+        | SizeofExpression. #Token::Sizeof #Token::OpenParen Expression #Token::CloseParen
         | SizeofType. #Token::Sizeof #Token::OpenParen &TypeSignature #Token::CloseParen
+        | #Token::Identifier
+        | Literal
+        | StructInitialization. #Token::Identifier /* ident:typename & struct */ #Token::OpenBrace InitializationFields #Token::CloseBrace
+        | VectorInitialization. #Token::Identifier /* ident:typename & vector */ #Token::OpenBrace InitializationFields #Token::CloseBrace
+        | ArrayLiteral
+        | BlockExpression
+        | Expression. #Token::OpenParen Expression #Token::CloseParen
+        | Lambda
         @ #[derive(Clone, Debug, PartialEq)]
         pub enum Expression {
-            PrimaryExpression(PrimaryExpression),
             Op(Rc<str>, ExprList),
             Unary(Rc<str>, ExprList),
             PostFix(Box<Expression>, Rc<str>),
@@ -314,6 +298,15 @@ grammar! {
             ArrayAccess(Box<Expression>, Box<Expression>),
             StructAccess(Box<Expression>, Rc<str>),
             Sizeof(Sizeof),
+
+            Identifier(Rc<str>),
+            StructInitialization(Rc<str>, Vec<StructInitializationField>),
+            VectorInitialization(Rc<str>, Vec<Expression>),
+            ArrayLiteral(Vec<Expression>),
+            Literal(Literal),
+            BlockExpression(Box<BlockExpression>),
+            Expression(Box<Expression>),
+            Lambda(Lambda),
         }
         ;
 
@@ -764,7 +757,7 @@ impl Declaration {
     pub fn is_fn(&self) -> bool {
         let Declaration::Declaration(flags, _ty, decls) = self;
         for decl in decls {
-            if let (_, Some(box Expression::PrimaryExpression(PrimaryExpression::Lambda(..)))) = decl {
+            if let (_, Some(box Expression::Lambda(..))) = decl {
             } else {
                 return false;
             }
@@ -866,7 +859,6 @@ impl Div for Literal {
 impl Expression {
     pub fn eval(&self, constants: &HashMap<Rc<str>, Literal>) -> Result<Literal, ()> {
         match self {
-            Expression::PrimaryExpression(e) => e.eval(constants),
             Expression::Op(op, ExprList::List(list)) => match op.as_ref() {
                 "+" => Ok(list[0].eval(constants)? + list[1].eval(constants)?),
                 "-" => Ok(list[0].eval(constants)? - list[1].eval(constants)?),
@@ -874,33 +866,13 @@ impl Expression {
                 "/" => Ok(list[0].eval(constants)? / list[1].eval(constants)?),
                 otherwise => panic!("Not implemented: {:?}", otherwise),
             },
-            otherwise => panic!("Not implemented: {:?}", otherwise),
-        }
-    }
-}
-
-impl PrimaryExpression {
-    pub fn eval(&self, constants: &HashMap<Rc<str>, Literal>) -> Result<Literal, ()> {
-        match self {
-            PrimaryExpression::Literal(lit @ Literal::Integer(..)) => {
+            Expression::Literal(lit @ Literal::Integer(..)) => {
                 Ok(lit.clone())
             }
-            PrimaryExpression::Identifier(s) => constants.get(s).cloned().ok_or(()),
-            PrimaryExpression::Expression(e) => e.eval(constants),
+            Expression::Identifier(s) => constants.get(s).cloned().ok_or(()),
+            Expression::Expression(e) => e.eval(constants),
             otherwise => panic!("Not implemented: {:?}", otherwise),
         }
-    }
-}
-
-impl From<&str> for PrimaryExpression {
-    fn from(ty: &str) -> Self {
-        PrimaryExpression::Identifier(From::from(ty))
-    }
-}
-
-impl From<&str> for Box<PrimaryExpression> {
-    fn from(ty: &str) -> Self {
-        Box::new(PrimaryExpression::Identifier(From::from(ty)))
     }
 }
 

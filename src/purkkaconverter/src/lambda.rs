@@ -36,9 +36,9 @@ impl ASTVisitor for StripLambda<'_> {
                     .for_each(|t| {
                         if let Unit::Declaration(box Declaration::Declaration(flags, _, decls)) = t {
                             for decl in decls {
-                                if let (name, Some(box Expression::PrimaryExpression(PrimaryExpression::Lambda(
+                                if let (name, Some(box Expression::Lambda(
                                         mut lambda,
-                                        )))) = decl {
+                                        ))) = decl {
                                     self.visit_lambda(&mut lambda).unwrap();
                                     self.context.push_function(name, lambda, flags);
                                 } else {
@@ -54,21 +54,21 @@ impl ASTVisitor for StripLambda<'_> {
         walk_translation_unit(self, e)
     }
 
-    fn visit_primary_expression(&mut self, e: &mut PrimaryExpression) -> Result<(), ()> {
-        if let PrimaryExpression::Lambda(_) = e {
-            let mut ident_expr = PrimaryExpression::Identifier(From::from(""));
+    fn visit_expression(&mut self, e: &mut Expression) -> Result<(), ()> {
+        if let Expression::Lambda(_) = e {
+            let mut ident_expr = Expression::Identifier(From::from(""));
             std::mem::swap(&mut ident_expr, e);
-            if let PrimaryExpression::Lambda(mut lambda) = ident_expr {
+            if let Expression::Lambda(mut lambda) = ident_expr {
                 let res = walk_lambda(self, &mut lambda);
                 let name = self.context.push_anonymous_function(lambda);
-                let mut actual_ident_expr = PrimaryExpression::Identifier(name);
+                let mut actual_ident_expr = Expression::Identifier(name);
                 std::mem::swap(&mut actual_ident_expr, e);
                 res
             } else {
                 unreachable!();
             }
         } else {
-            walk_primary_expression(self, e)
+            walk_expression(self, e)
         }
     }
 }

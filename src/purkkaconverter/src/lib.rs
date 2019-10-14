@@ -388,7 +388,7 @@ impl PurkkaToC {
         match expr {
             pp::Statement::Expression(e) => self.expression(*e),
             pp::Statement::BlockExpression(e) => self.expression(
-                pp::Expression::PrimaryExpression(pp::PrimaryExpression::BlockExpression(e)),
+                pp::Expression::BlockExpression(e),
             ),
             other => panic!("Not implemented: {:?}", other),
         }
@@ -579,10 +579,10 @@ impl PurkkaToC {
         let mut res = Vec::new();
         for expr in k {
             let res_expr = match expr {
-                pp::Expression::PrimaryExpression(pp::PrimaryExpression::ArrayLiteral(exprs)) => {
+                pp::Expression::ArrayLiteral(exprs) => {
                     cp::AssignmentOrInitializerList::Initializers(self.exprs_to_initializer(exprs))
                 }
-                pp::Expression::PrimaryExpression(pp::PrimaryExpression::StructInitialization(_, exprs))
+                pp::Expression::StructInitialization(_, exprs)
                     => {
                     cp::AssignmentOrInitializerList::Initializers(self.exprs_to_struct_initializer(exprs))
                 }
@@ -599,12 +599,12 @@ impl PurkkaToC {
         let mut res = Vec::new();
         for expr in k {
             let (name, res_expr) = match expr {
-                pp::StructInitializationField::StructInitializationField(name, box pp::Expression::PrimaryExpression(pp::PrimaryExpression::StructInitialization(_, exprs)))
+                pp::StructInitializationField::StructInitializationField(name, box pp::Expression::StructInitialization(_, exprs))
                     => {
                     (name, cp::AssignmentOrInitializerList::Initializers(self.exprs_to_struct_initializer(exprs)))
                 }
 
-                    pp::StructInitializationField::StructInitializationField(name, box pp::Expression::PrimaryExpression(pp::PrimaryExpression::VectorInitialization(_, exprs))) => {
+                    pp::StructInitializationField::StructInitializationField(name, box pp::Expression::VectorInitialization(_, exprs)) => {
                     (name, cp::AssignmentOrInitializerList::Initializers(self.exprs_to_initializer(exprs)))
                 }
                 pp::StructInitializationField::StructInitializationField(name, e) => (name, cp::AssignmentOrInitializerList::AssignmentExpression(
@@ -625,8 +625,7 @@ impl PurkkaToC {
         };
         let spec = Box::new(self.type_to_declaration_specifiers(*ty.clone(), flags));
         let c_decls = decls.into_iter().map(|k| match k {
-            (name, Some(box pp::Expression::PrimaryExpression(
-                        pp::PrimaryExpression::ArrayLiteral(exprs)))) => {
+            (name, Some(box pp::Expression::ArrayLiteral(exprs))) => {
                 cp::InitDeclarator::Assign(
                     Box::new(self.format_decl(name, *ty.clone())),
                     ct::Token::Assign(0),
@@ -635,8 +634,7 @@ impl PurkkaToC {
                     )),
                 )
             }
-            (name, Some(box pp::Expression::PrimaryExpression(
-                        pp::PrimaryExpression::StructInitialization(_, exprs)))) => {
+            (name, Some(box pp::Expression::StructInitialization(_, exprs))) => {
                 cp::InitDeclarator::Assign(
                     Box::new(self.format_decl(name, *ty.clone())),
                     ct::Token::Assign(0),
@@ -811,10 +809,9 @@ impl PurkkaToC {
             ),
             TypeSignature::Array(ty, size) => {
                 let expr = size.map(|lit| {
-                    Box::new(self.general_expression(pp::Expression::PrimaryExpression(
-                        pp::PrimaryExpression::Literal(pp::Literal::Integer(
+                    Box::new(self.general_expression(pp::Expression::Literal(pp::Literal::Integer(
                             lit.try_into().unwrap()
-                        )),
+                        ),
                     )))
                 });
                 self.format_direct_decl(cp::DirectDeclarator::Array(Box::new(decl), expr), *ty)
@@ -872,8 +869,8 @@ impl PurkkaToC {
             ),
             TypeSignature::Array(ty, size) => cp::DirectAbstractDeclarator::Array(
                 Box::new(self.format_abstract_direct_decl(*ty)),
-                size.map(|e| Box::new(self.general_expression(pp::Expression::PrimaryExpression(pp::PrimaryExpression::Literal(
-                               pp::Literal::Integer(e as i128)))))),
+                size.map(|e| Box::new(self.general_expression(pp::Expression::Literal(
+                               pp::Literal::Integer(e as i128))))),
             ),
             other => panic!("Not implemented: {:?}", other),
         }
@@ -898,7 +895,7 @@ impl PurkkaToC {
 
     pub fn expression(&mut self, expr: pp::Expression) -> cp::Expression {
         match expr {
-            pp::Expression::PrimaryExpression(pp::PrimaryExpression::BlockExpression(block)) => {
+            pp::Expression::BlockExpression(block) => {
                 self.maybe_block(*block.clone())
                     .unwrap_or_else(|| cp::Expression::Expression(
                             vec![
@@ -1129,24 +1126,16 @@ impl PurkkaToC {
     pub fn primary_expression(&mut self, k: pp::Expression) -> cp::PrimaryExpression {
         match k {
             // add parens to block expressions if converted here
-            pp::Expression::PrimaryExpression(pp::PrimaryExpression::BlockExpression(_)) => {
+            pp::Expression::BlockExpression(_) => {
                 cp::PrimaryExpression::Expression(Box::new(self.expression(k)))
             }
-            pp::Expression::PrimaryExpression(primary) => self.primary_to_primary(primary),
-            _ => cp::PrimaryExpression::Expression(Box::new(self.expression(k))),
-        }
-    }
-
-    pub fn primary_to_primary(&mut self, k: pp::PrimaryExpression) -> cp::PrimaryExpression {
-        match k {
-            pp::PrimaryExpression::Identifier(ident) => cp::PrimaryExpression::Identifier(ident),
-            pp::PrimaryExpression::Literal(literal) => self.literal_to_primary(literal),
-            pp::PrimaryExpression::BlockExpression(_) => unreachable!(),
-            pp::PrimaryExpression::Expression(expr) => {
+            pp::Expression::Identifier(ident) => cp::PrimaryExpression::Identifier(ident),
+            pp::Expression::Literal(literal) => self.literal_to_primary(literal),
+            pp::Expression::Expression(expr) => {
                 cp::PrimaryExpression::Expression(Box::new(self.expression(*expr)))
             }
-            pp::PrimaryExpression::Lambda(..) => unreachable!(),
-            pp::PrimaryExpression::StructInitialization(ident, fields) => {
+            pp::Expression::Lambda(..) => unreachable!(),
+            pp::Expression::StructInitialization(ident, fields) => {
                 cp::PrimaryExpression::StructValue(
                     Box::new(
                         self.type_to_type_name(pp::TypeSignature::Struct(Some(ident), Vec::new())),
@@ -1171,7 +1160,7 @@ impl PurkkaToC {
                 .collect(),
                 )
             }
-            pp::PrimaryExpression::VectorInitialization(ident, fields) => {
+            pp::Expression::VectorInitialization(ident, fields) => {
                 cp::PrimaryExpression::StructValue(
                     Box::new(self.type_to_type_name(pp::TypeSignature::Plain(ident))),
                     fields
@@ -1188,7 +1177,8 @@ impl PurkkaToC {
                         .collect(),
                 )
             }
-            pp::PrimaryExpression::ArrayLiteral(..) => unreachable!(),
+            pp::Expression::ArrayLiteral(..) => unreachable!(),
+            _ => cp::PrimaryExpression::Expression(Box::new(self.expression(k))),
         }
     }
 
@@ -1379,7 +1369,7 @@ impl CToPurkka {
                 if exprs.len() == 1 {
                     self.assignment_expression(exprs.remove(0))
                 } else {
-                    pp::Expression::PrimaryExpression(pp::PrimaryExpression::BlockExpression(
+                    pp::Expression::BlockExpression(
                         Box::new(pp::BlockExpression::Block(pp::Block::Statements(
                             exprs
                                 .into_iter()
@@ -1390,7 +1380,7 @@ impl CToPurkka {
                                 })
                                 .collect(),
                         ))),
-                    ))
+                    )
                 }
             }
         }
@@ -1501,7 +1491,7 @@ impl CToPurkka {
     fn postfix_expression(&self, e: cp::PostfixExpression) -> pp::Expression {
         match e {
             cp::PostfixExpression::PrimaryExpression(e) => {
-                pp::Expression::PrimaryExpression(self.primary_expression(e))
+                self.primary_expression(e)
             }
             cp::PostfixExpression::Call(e, _, cp::ArgumentExpressionList::List(arglist), _) => {
                 pp::Expression::Call(
@@ -1534,23 +1524,23 @@ impl CToPurkka {
         }
     }
 
-    fn primary_expression(&self, e: cp::PrimaryExpression) -> pp::PrimaryExpression {
+    fn primary_expression(&self, e: cp::PrimaryExpression) -> pp::Expression {
         match e {
             cp::PrimaryExpression::Expression(e) => {
-                pp::PrimaryExpression::Expression(Box::new(self.expression(*e)))
+                pp::Expression::Expression(Box::new(self.expression(*e)))
             }
             cp::PrimaryExpression::Number(e) => {
                 if e.contains('+') || e.contains('.') || e.contains('e') || e.contains('E') {
-                    pp::PrimaryExpression::Literal(pp::Literal::Float(e))
+                    pp::Expression::Literal(pp::Literal::Float(e))
                 } else {
-                    pp::PrimaryExpression::Literal(pp::Literal::Integer(
+                    pp::Expression::Literal(pp::Literal::Integer(
                         utils::int_from_str(&e),
                     ))
                 }
             }
-            cp::PrimaryExpression::Identifier(ident) => pp::PrimaryExpression::Identifier(ident),
+            cp::PrimaryExpression::Identifier(ident) => pp::Expression::Identifier(ident),
             cp::PrimaryExpression::StructValue(type_name, initializers) => {
-                pp::PrimaryExpression::StructInitialization(
+                pp::Expression::StructInitialization(
                     self.str_from_type_name(*type_name),
                     initializers
                         .into_iter()
@@ -1559,10 +1549,10 @@ impl CToPurkka {
                 )
             }
             cp::PrimaryExpression::CharLiteral(c) => {
-                pp::PrimaryExpression::Literal(pp::Literal::Char(c))
+                pp::Expression::Literal(pp::Literal::Char(c))
             }
             cp::PrimaryExpression::Statement(c) => {
-                pp::PrimaryExpression::BlockExpression(
+                pp::Expression::BlockExpression(
                     Box::new(pp::BlockExpression::Block(self.block(*c)))
                 )
             }
@@ -1696,13 +1686,13 @@ impl CToPurkka {
             flags,
             Box::new(ty),
             vec![(name,
-            Some(Box::new(pp::Expression::PrimaryExpression(
-                pp::PrimaryExpression::Lambda(pp::Lambda::Lambda(
+            Some(Box::new(
+                pp::Expression::Lambda(pp::Lambda::Lambda(
                     self.declarator_to_params(&*decl),
                     *ret_ty,
                     self.block(*stmt),
                 )),
-            ))))],
+            )))],
         )
     }
 

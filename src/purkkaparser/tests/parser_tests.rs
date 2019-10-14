@@ -205,12 +205,12 @@ fn parse_multiple_decls() {
     assert_eq!(decls[0].0, From::from("a"));
     assert_eq!(decls[1].0, From::from("b"));
 
-    if let Some(box Expression::PrimaryExpression(PrimaryExpression::Literal(Literal::Integer(v)))) = decls[0].1 {
+    if let Some(box Expression::Literal(Literal::Integer(v))) = decls[0].1 {
         assert_eq!(v, 1);
     } else {
         unreachable!();
     }
-    if let Some(box Expression::PrimaryExpression(PrimaryExpression::Literal(Literal::Integer(v)))) = decls[1].1 {
+    if let Some(box Expression::Literal(Literal::Integer(v))) = decls[1].1 {
         assert_eq!(v, 2);
     } else {
         unreachable!();

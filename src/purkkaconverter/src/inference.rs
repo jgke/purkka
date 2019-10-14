@@ -139,9 +139,9 @@ impl ASTVisitor for TypeInferrer<'_> {
         res
     }
 
-    fn visit_primary_expression(&mut self, e: &mut PrimaryExpression) -> Result<(), String> {
+    fn visit_expression(&mut self, e: &mut Expression) -> Result<(), String> {
         self.push_block();
-        if let PrimaryExpression::Lambda(Lambda::Lambda(params, _, _)) = e {
+        if let Expression::Lambda(Lambda::Lambda(params, _, _)) = e {
             for param in params {
                 match param {
                     LambdaParam::LambdaParam(name, ty) => {
@@ -151,7 +151,7 @@ impl ASTVisitor for TypeInferrer<'_> {
                 }
             }
         }
-        let res = walk_primary_expression(self, e);
+        let res = walk_expression(self, e);
         self.pop_block();
         res
     }
@@ -327,7 +327,6 @@ impl TypeInferrer<'_> {
         self.current_expression = format!("{:?}", expression);
         //println!("{:?}\n", expression);
         let mut ty = match expression {
-            Expression::PrimaryExpression(expr) => self.get_primary_expr_type(expr)?,
             Expression::Op(op, ExprList::List(list)) => {
                 /*
                  * We special case handling for '+', '-' and '?' here, because they're, well,
@@ -515,109 +514,32 @@ impl TypeInferrer<'_> {
 
                 (From::from(TypeSignature::size_t()), Vec::new())
             }
-        };
 
-        loop {
-            match ty.0 {
-                IntermediateType::Any(id) if self.infer_map.contains_key(&id) => {
-                    ty.0 = self.infer_map[&id].clone()
-                }
-                _ => break,
-            }
-        }
-
-        Ok(ty)
-    }
-
-    fn struct_access(
-        &mut self,
-        expr: &mut Expression,
-        ident: &Rc<str>,
-    ) -> Result<(IntermediateType, Vec<IntermediateType>), String> {
-        let (struct_ty, ret_ty) = self.get_type(expr)?;
-        Ok((self.struct_ty_access(expr, struct_ty, ident)?, ret_ty))
-    }
-
-    fn struct_ty_access(
-        &mut self,
-        e: &mut Expression,
-        mut struct_ty: IntermediateType,
-        ident: &Rc<str>,
-    ) -> Result<IntermediateType, String> {
-        while let IntermediateType::Exact(box TypeSignature::Plain(name)) = &struct_ty {
-            if let Some(ty) = self.get_ident_ty(name) {
-                struct_ty = From::from(ty);
-            } else {
-                panic!("Cannot access field {} from type {}", ident, name)
-            }
-        }
-        match struct_ty {
-            IntermediateType::Exact(box TypeSignature::Struct(s, fields)) => {
-                for StructField { name, ty, .. } in &fields {
-                    if name.as_ref() == ident.as_ref() {
-                        return Ok(From::from(*ty.clone()));
-                    }
-                }
-                if let Some(s) = s {
-                    panic!("Field {} not found in struct {}", ident, s);
-                } else {
-                    panic!(
-                        "Field {} not found in anonymous struct {:?}",
-                        ident,
-                        TypeSignature::Struct(s, fields)
-                    );
-                }
-            }
-            IntermediateType::Exact(box TypeSignature::Pointer { ty, .. }) => {
-                let ret_val = self.struct_ty_access(e, From::from(*ty.clone()), ident)?;
-                let mut new_e = Expression::PrimaryExpression(PrimaryExpression::Literal(
-                    Literal::Integer(0),
-                ));
-                std::mem::swap(&mut new_e, e);
-                *e = Expression::Unary(From::from("*"), ExprList::List(vec![new_e]));
-                Ok(ret_val)
-            }
-            IntermediateType::Any(id) => {
-                if let Some(ty) = self.infer_map.get(&id).cloned() {
-                    self.struct_ty_access(e, ty, ident)
-                } else {
-                    panic!("Cannot access field {} in {:?}", ident, struct_ty);
-                }
-            }
-            _ => panic!("Cannot access field {} in {:?}", ident, struct_ty),
-        }
-    }
-
-    fn get_primary_expr_type(
-        &mut self,
-        expr: &mut PrimaryExpression,
-    ) -> Result<(IntermediateType, Vec<IntermediateType>), String> {
-        match expr {
-            PrimaryExpression::Identifier(t) => {
+            Expression::Identifier(t) => {
                 let sym_ty = self
                     .get_symbol_ty(t.as_ref())
                     .unwrap_or_else(|| panic!("Unknown identifier: {}", t));
-                Ok((sym_ty, Vec::new()))
+                (sym_ty, Vec::new())
             }
-            PrimaryExpression::Literal(lit) => match lit {
-                Literal::Integer(..) => Ok((self.get_number_ty(), Vec::new())),
-                Literal::Float(..) => Ok((
+            Expression::Literal(lit) => match lit {
+                Literal::Integer(..) => (self.get_number_ty(), Vec::new()),
+                Literal::Float(..) => (
                     IntermediateType::new_number(IntermediateNumber::Float),
                     Vec::new(),
-                )),
-                Literal::StringLiteral(..) => Ok((
+                ),
+                Literal::StringLiteral(..) => (
                     IntermediateType::Exact(Box::new(TypeSignature::Pointer {
                         nullable: false,
                         ty: Box::new(TypeSignature::Primitive(Primitive::Char)),
                     })),
                     Vec::new(),
-                )),
-                Literal::Char(..) => Ok((
+                ),
+                Literal::Char(..) => (
                     IntermediateType::Exact(Box::new(TypeSignature::Primitive(Primitive::Char))),
                     Vec::new(),
-                )),
+                ),
             },
-            PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block)) => {
+            Expression::Lambda(Lambda::Lambda(params, return_type, block)) => {
                 self.push_block();
                 for param in params.iter() {
                     match param {
@@ -650,10 +572,10 @@ impl TypeInferrer<'_> {
                     Box::new(From::from(ret_ty)),
                 ));
                 self.pop_block();
-                Ok((ty, Vec::new()))
+                (ty, Vec::new())
             }
-            PrimaryExpression::Expression(expr) => self.get_type(expr),
-            PrimaryExpression::StructInitialization(ident, fields) => {
+            Expression::Expression(expr) => self.get_type(expr)?,
+            Expression::StructInitialization(ident, fields) => {
                 let struct_ty = self
                     .context
                     .symbols
@@ -740,7 +662,7 @@ impl TypeInferrer<'_> {
                         self.make_equal(&From::from(*struct_field_ty.deref().clone()), &e_ty)?;
                         ret_tys.append(&mut ret_ty);
                     }
-                    Ok((From::from(TypeSignature::Plain(ident.clone())), ret_tys))
+                    (From::from(TypeSignature::Plain(ident.clone())), ret_tys)
                 } else {
                     panic!(
                         "Cannot instantiate non-struct type {:?} as a struct",
@@ -748,7 +670,7 @@ impl TypeInferrer<'_> {
                     );
                 }
             }
-            PrimaryExpression::VectorInitialization(ident, fields) => {
+            Expression::VectorInitialization(ident, fields) => {
                 let vec_ty = self
                     .context
                     .symbols
@@ -766,7 +688,7 @@ impl TypeInferrer<'_> {
                                 ret_tys.append(&mut ret);
                                 self.make_equal(&prim, &e_ty)?;
                             }
-                            Ok((From::from(TypeSignature::Plain(ident.clone())), ret_tys))
+                            (From::from(TypeSignature::Plain(ident.clone())), ret_tys)
                         }
                     _ => {
                         panic!(
@@ -776,24 +698,94 @@ impl TypeInferrer<'_> {
                     }
                 }
             }
-            PrimaryExpression::BlockExpression(block) => {
+            Expression::BlockExpression(block) => {
                 let (l, r) = self.get_block_expr_type(block)?;
-                Ok((l.unwrap_or_else(|| From::from(TypeSignature::void())), r))
+                (l.unwrap_or_else(|| From::from(TypeSignature::void())), r)
             }
-            PrimaryExpression::ArrayLiteral(exprs) => {
+            Expression::ArrayLiteral(exprs) => {
                 let (l, r) = if let Some((l, r)) = self.fold_expr_list(exprs)? {
                     (l, r)
                 } else {
                     (IntermediateType::new_any(), Vec::new())
                 };
-                Ok((
+                (
                     From::from(TypeSignature::Array(
                         Box::new(From::from(l)),
                         Some(exprs.len()),
                     )),
                     r,
-                ))
+                )
             }
+        };
+
+        loop {
+            match ty.0 {
+                IntermediateType::Any(id) if self.infer_map.contains_key(&id) => {
+                    ty.0 = self.infer_map[&id].clone()
+                }
+                _ => break,
+            }
+        }
+
+        Ok(ty)
+    }
+
+    fn struct_access(
+        &mut self,
+        expr: &mut Expression,
+        ident: &Rc<str>,
+    ) -> Result<(IntermediateType, Vec<IntermediateType>), String> {
+        let (struct_ty, ret_ty) = self.get_type(expr)?;
+        Ok((self.struct_ty_access(expr, struct_ty, ident)?, ret_ty))
+    }
+
+    fn struct_ty_access(
+        &mut self,
+        e: &mut Expression,
+        mut struct_ty: IntermediateType,
+        ident: &Rc<str>,
+    ) -> Result<IntermediateType, String> {
+        while let IntermediateType::Exact(box TypeSignature::Plain(name)) = &struct_ty {
+            if let Some(ty) = self.get_ident_ty(name) {
+                struct_ty = From::from(ty);
+            } else {
+                panic!("Cannot access field {} from type {}", ident, name)
+            }
+        }
+        match struct_ty {
+            IntermediateType::Exact(box TypeSignature::Struct(s, fields)) => {
+                for StructField { name, ty, .. } in &fields {
+                    if name.as_ref() == ident.as_ref() {
+                        return Ok(From::from(*ty.clone()));
+                    }
+                }
+                if let Some(s) = s {
+                    panic!("Field {} not found in struct {}", ident, s);
+                } else {
+                    panic!(
+                        "Field {} not found in anonymous struct {:?}",
+                        ident,
+                        TypeSignature::Struct(s, fields)
+                    );
+                }
+            }
+            IntermediateType::Exact(box TypeSignature::Pointer { ty, .. }) => {
+                let ret_val = self.struct_ty_access(e, From::from(*ty.clone()), ident)?;
+                let mut new_e = Expression::Literal(
+                    Literal::Integer(0),
+                );
+                std::mem::swap(&mut new_e, e);
+                *e = Expression::Unary(From::from("*"), ExprList::List(vec![new_e]));
+                Ok(ret_val)
+            }
+            IntermediateType::Any(id) => {
+                if let Some(ty) = self.infer_map.get(&id).cloned() {
+                    self.struct_ty_access(e, ty, ident)
+                } else {
+                    panic!("Cannot access field {} in {:?}", ident, struct_ty);
+                }
+            }
+            _ => panic!("Cannot access field {} in {:?}", ident, struct_ty),
         }
     }
 

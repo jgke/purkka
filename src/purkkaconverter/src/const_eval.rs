@@ -57,7 +57,6 @@ impl ASTVisitor for EvalConstExprs<'_> {
 impl EvalConstExprs<'_> {
     fn eval_expression(&self, e: &mut Expression) -> Result<Literal, String> {
         let lit = match e {
-            Expression::PrimaryExpression(p) => self.eval_primary_expression(p),
             Expression::Op(op, ExprList::List(args)) => match op.as_ref() {
                 "+" => Ok(self.eval_expression(&mut args[0])? + self.eval_expression(&mut args[1])?),
                 "-" => Ok(self.eval_expression(&mut args[0])? - self.eval_expression(&mut args[1])?),
@@ -75,45 +74,40 @@ impl EvalConstExprs<'_> {
             Expression::ArrayAccess(_arr_expr, _index_expr) => unimplemented!(),
             Expression::StructAccess(_struct_expr, _index) => unimplemented!(),
             Expression::Sizeof(_sizeof_expr) => unimplemented!(),
-        }?;
-        *e = Expression::PrimaryExpression(PrimaryExpression::Literal(lit.clone()));
-        Ok(lit)
-    }
 
-    #[allow(unused_must_use)]
-    fn eval_primary_expression(&self, e: &mut PrimaryExpression) -> Result<Literal, String> {
-        match e {
-            PrimaryExpression::Identifier(ident) => Ok(self.exprs[ident].clone()),
-            PrimaryExpression::StructInitialization(_struct_name, fields) => {
+            Expression::Identifier(ident) => Ok(self.exprs[ident].clone()),
+            Expression::StructInitialization(_struct_name, fields) => {
                 for StructInitializationField::StructInitializationField(_, ref mut e) in fields.iter_mut() {
                     if let Ok(new_e) = self.eval_expression(e.deref_mut()) {
-                        *e = Box::new(Expression::PrimaryExpression(PrimaryExpression::Literal(new_e)));
+                        *e = Box::new(Expression::Literal(new_e));
                     }
                 }
                 Err("Cannot use structs as literals".to_string())
             }
-            PrimaryExpression::VectorInitialization(_vector_name, exprs) => {
+            Expression::VectorInitialization(_vector_name, exprs) => {
                 for ref mut e in exprs.iter_mut() {
                     if let Ok(new_e) = self.eval_expression(e.deref_mut()) {
-                        **e = Expression::PrimaryExpression(PrimaryExpression::Literal(new_e));
+                        **e = Expression::Literal(new_e);
                     }
                 }
                 Err("Not implemented".to_string())
             }
-            PrimaryExpression::ArrayLiteral(exprs) => {
+            Expression::ArrayLiteral(exprs) => {
                 for ref mut e in exprs.iter_mut() {
                     if let Ok(new_e) = self.eval_expression(e.deref_mut()) {
-                        **e = Expression::PrimaryExpression(PrimaryExpression::Literal(new_e));
+                        **e = Expression::Literal(new_e);
                     }
                 }
                 Err("Not implemented".to_string())
             }
-            PrimaryExpression::Literal(lit) => Ok(lit.clone()),
-            PrimaryExpression::BlockExpression(_block) => unimplemented!(),
-            PrimaryExpression::Expression(expr) => self.eval_expression(expr),
-            PrimaryExpression::Lambda(_lambda) => {
+            Expression::Literal(lit) => Ok(lit.clone()),
+            Expression::BlockExpression(_block) => unimplemented!(),
+            Expression::Expression(expr) => self.eval_expression(expr),
+            Expression::Lambda(_lambda) => {
                 Err("Cannot evaluate lambdas without calling them".to_string())
             }
-        }
+        }?;
+        *e = Expression::Literal(lit.clone());
+        Ok(lit)
     }
 }

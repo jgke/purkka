@@ -48,12 +48,6 @@ pub trait ASTVisitor {
     fn visit_expression(&mut self, s: &mut Expression) -> Result<Self::Succ, Self::Err> {
         walk_expression(self, s)
     }
-    fn visit_primary_expression(
-        &mut self,
-        s: &mut PrimaryExpression,
-    ) -> Result<Self::Succ, Self::Err> {
-        walk_primary_expression(self, s)
-    }
     fn visit_literal(&mut self, _s: &mut Literal) -> Result<Self::Succ, Self::Err> {
         Ok(self.ok())
     }
@@ -261,7 +255,6 @@ pub fn walk_expression<T: ASTVisitor + ?Sized>(
     s: &mut Expression,
 ) -> Result<T::Succ, T::Err> {
     match s {
-        Expression::PrimaryExpression(expr) => visitor.visit_primary_expression(expr),
         Expression::Op(_op, ExprList::List(exprs)) => {
             visitor.fold(exprs, ASTVisitor::visit_expression)
         }
@@ -285,31 +278,23 @@ pub fn walk_expression<T: ASTVisitor + ?Sized>(
         Expression::StructAccess(expr, _ident) => visitor.visit_expression(expr.deref_mut()),
         Expression::Sizeof(Sizeof::Expression(e)) => visitor.visit_expression(e),
         Expression::Sizeof(Sizeof::Type(t)) => visitor.visit_ty(t),
-    }
-}
-
-pub fn walk_primary_expression<T: ASTVisitor + ?Sized>(
-    visitor: &mut T,
-    s: &mut PrimaryExpression,
-) -> Result<T::Succ, T::Err> {
-    match s {
-        PrimaryExpression::Identifier(_ident) => Ok(visitor.ok()),
-        PrimaryExpression::Literal(literal) => visitor.visit_literal(literal),
-        PrimaryExpression::BlockExpression(block) => {
+        Expression::Identifier(_ident) => Ok(visitor.ok()),
+        Expression::Literal(literal) => visitor.visit_literal(literal),
+        Expression::BlockExpression(block) => {
             visitor.visit_block_expression(block.deref_mut())
         }
-        PrimaryExpression::Expression(expr) => visitor.visit_expression(expr.deref_mut()),
-        PrimaryExpression::Lambda(lambda) => visitor.visit_lambda(lambda),
-        PrimaryExpression::StructInitialization(_ident, list) => visitor.fold(
+        Expression::Expression(expr) => visitor.visit_expression(expr.deref_mut()),
+        Expression::Lambda(lambda) => visitor.visit_lambda(lambda),
+        Expression::StructInitialization(_ident, list) => visitor.fold(
             list,
             |v, StructInitializationField::StructInitializationField(_, e)| {
                 v.visit_expression(e.deref_mut())
             },
         ),
-        PrimaryExpression::VectorInitialization(_ident, list) => {
+        Expression::VectorInitialization(_ident, list) => {
             visitor.fold(list, ASTVisitor::visit_expression)
         }
-        PrimaryExpression::ArrayLiteral(list) => visitor.fold(list, ASTVisitor::visit_expression),
+        Expression::ArrayLiteral(list) => visitor.fold(list, ASTVisitor::visit_expression),
     }
 }
 

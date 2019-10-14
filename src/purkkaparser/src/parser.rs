@@ -948,7 +948,53 @@ impl<'a> ParseContext<'a> {
                 read_token!(self, Token::CloseParen);
                 res
             }
-            _ => Expression::PrimaryExpression(self.parse_primary_expression()),
+            Some(Token::Identifier(_, s)) => {
+                if self.starts_c_macro(&s) {
+                    self.parse_macro_expression()
+                } else {
+                    let t = self.next().as_ref().identifier_s().unwrap().clone();
+                    let ty = self.get_ty(&t).cloned();
+                    match self.peek() {
+                        Some(Token::OpenBrace(..))
+                            if ty.as_ref().map(|t| t.is_compound(&HashMap::new()))
+                                == Some(true) =>
+                        {
+                            let fields = self.parse_initialization_fields(&t);
+                            Expression::StructInitialization(t, fields)
+                        }
+                        Some(Token::OpenBrace(..)) if ty.is_some() => {
+                            let fields = self.parse_vector_initialization_fields();
+                            Expression::VectorInitialization(t, fields)
+                        }
+                        _ => Expression::Identifier(t),
+                    }
+                }
+            }
+            Some(Token::Integer(..))
+            | Some(Token::Float(..))
+            | Some(Token::StringLiteral(..))
+            | Some(Token::Char(..)) => Expression::Literal(self.parse_literal()),
+            Some(Token::If(..)) | Some(Token::While(..)) | Some(Token::Do(..)) => {
+                Expression::BlockExpression(Box::new(self.parse_block_expression()))
+            }
+            Some(Token::OpenParen(..)) => {
+                read_token!(self, Token::OpenParen);
+                let expr = Expression::Expression(Box::new(self.parse_expression()));
+                read_token!(self, Token::CloseParen);
+                expr
+            }
+            Some(Token::OpenBrace(..)) => {
+                Expression::BlockExpression(Box::new(self.parse_block_expression()))
+            }
+            Some(Token::OpenBracket(..)) => {
+                Expression::ArrayLiteral(self.parse_array_literal())
+            }
+            Some(Token::Fun(..)) => {
+                read_token!(self, Token::Fun);
+                let (params, return_type, block) = self.parse_lambda();
+                Expression::Lambda(Lambda::Lambda(params, return_type, block))
+            }
+            t => unexpected_token!(t, self),
         };
         self.parse_expression__(expr, precedence)
     }
@@ -1115,58 +1161,6 @@ impl<'a> ParseContext<'a> {
         }
     }
 
-    fn parse_primary_expression(&mut self) -> PrimaryExpression {
-        match self.peek() {
-            Some(Token::Identifier(_, s)) => {
-                if self.starts_c_macro(&s) {
-                    PrimaryExpression::Expression(Box::new(self.parse_macro_expression()))
-                } else {
-                    let t = self.next().as_ref().identifier_s().unwrap().clone();
-                    let ty = self.get_ty(&t).cloned();
-                    match self.peek() {
-                        Some(Token::OpenBrace(..))
-                            if ty.as_ref().map(|t| t.is_compound(&HashMap::new()))
-                                == Some(true) =>
-                        {
-                            let fields = self.parse_initialization_fields(&t);
-                            PrimaryExpression::StructInitialization(t, fields)
-                        }
-                        Some(Token::OpenBrace(..)) if ty.is_some() => {
-                            let fields = self.parse_vector_initialization_fields();
-                            PrimaryExpression::VectorInitialization(t, fields)
-                        }
-                        _ => PrimaryExpression::Identifier(t),
-                    }
-                }
-            }
-            Some(Token::Integer(..))
-            | Some(Token::Float(..))
-            | Some(Token::StringLiteral(..))
-            | Some(Token::Char(..)) => PrimaryExpression::Literal(self.parse_literal()),
-            Some(Token::If(..)) | Some(Token::While(..)) | Some(Token::Do(..)) => {
-                PrimaryExpression::BlockExpression(Box::new(self.parse_block_expression()))
-            }
-            Some(Token::OpenParen(..)) => {
-                read_token!(self, Token::OpenParen);
-                let expr = PrimaryExpression::Expression(Box::new(self.parse_expression()));
-                read_token!(self, Token::CloseParen);
-                expr
-            }
-            Some(Token::OpenBrace(..)) => {
-                PrimaryExpression::BlockExpression(Box::new(self.parse_block_expression()))
-            }
-            Some(Token::OpenBracket(..)) => {
-                PrimaryExpression::ArrayLiteral(self.parse_array_literal())
-            }
-            Some(Token::Fun(..)) => {
-                read_token!(self, Token::Fun);
-                let (params, return_type, block) = self.parse_lambda();
-                PrimaryExpression::Lambda(Lambda::Lambda(params, return_type, block))
-            }
-            t => unexpected_token!(t, self),
-        }
-    }
-
     fn parse_lambda(&mut self) -> (Vec<LambdaParam>, TypeSignature, Block) {
         let params = self.parse_lambda_param_list();
         let return_type = match &self.peek() {
@@ -1220,11 +1214,11 @@ impl<'a> ParseContext<'a> {
         return_type: TypeSignature,
         block: Block,
     ) -> Expression {
-        Expression::PrimaryExpression(PrimaryExpression::Lambda(Lambda::Lambda(
+        Expression::Lambda(Lambda::Lambda(
             params,
             return_type,
             block,
-        )))
+        ))
     }
 
     fn parse_block_expression(&mut self) -> BlockExpression {
@@ -1537,9 +1531,7 @@ impl<'a> ParseContext<'a> {
                     let expr = self.parse_expression();
                     match self.peek() {
                         Some(Token::Colon(i)) => {
-                            if let Expression::PrimaryExpression(PrimaryExpression::Identifier(
-                                ident,
-                            )) = expr
+                            if let Expression::Identifier(ident) = expr
                             {
                                 read_token!(self, Token::Colon);
                                 let expr = self.parse_expression();
@@ -1658,10 +1650,9 @@ mod tests {
 
     fn eval_tree(expr: &Expression) -> i128 {
         match expr {
-            Expression::PrimaryExpression(PrimaryExpression::Literal(Literal::Integer(
+            Expression::Literal(Literal::Integer(
                 e,
-            ))) => *e,
-            Expression::PrimaryExpression(_) => unreachable!(),
+            )) => *e,
             Expression::Cast(..) => unreachable!(),
             Expression::Op(op, ExprList::List(list)) => match op.as_ref() {
                 "+" => eval_bin!(list, +),
@@ -1690,10 +1681,7 @@ mod tests {
                 "++" => eval_tree(&expr),
                 _ => unreachable!(),
             },
-            Expression::Call(..) => unreachable!(),
-            Expression::ArrayAccess(..) => unreachable!(),
-            Expression::StructAccess(..) => unreachable!(),
-            Expression::Sizeof(..) => unreachable!(),
+            _ => unreachable!(),
         }
     }
 
@@ -1784,7 +1772,7 @@ mod tests {
         assert_eq!(
             get_decl_expr(&s),
             Expression::Call(
-                Box::new(Expression::PrimaryExpression(From::from("foo"))),
+                Box::new(Expression::Identifier(From::from("foo"))),
                 vec![]
             )
         );
@@ -1806,10 +1794,8 @@ mod tests {
         assert_eq!(
             get_decl_expr(&s),
             Expression::Call(
-                Box::new(Expression::PrimaryExpression(From::from("foo"))),
-                vec![Expression::PrimaryExpression(
-                    PrimaryExpression::Identifier(From::from("asd"))
-                )]
+                Box::new(Expression::Identifier(From::from("foo"))),
+                vec![Expression::Identifier(From::from("asd"))]
             )
         );
     }
@@ -1832,10 +1818,10 @@ mod tests {
         assert_eq!(
             get_decl_expr(&s),
             Expression::Call(
-                Box::new(Expression::PrimaryExpression(From::from("foo"))),
+                Box::new(Expression::Identifier(From::from("foo"))),
                 vec![
-                    Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("asd"))),
-                    Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("qwe")))
+                    Expression::Identifier(From::from("asd")),
+                    Expression::Identifier(From::from("qwe"))
                 ]
             )
         );
@@ -1861,13 +1847,11 @@ mod tests {
         assert_eq!(
             get_decl_expr(&s),
             Expression::Call(
-                Box::new(Expression::PrimaryExpression(From::from("foo"))),
+                Box::new(Expression::Identifier(From::from("foo"))),
                 vec![
-                    Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("asd"))),
-                    Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from("qwe"))),
-                    Expression::PrimaryExpression(PrimaryExpression::Identifier(From::from(
-                        "aoeu"
-                    )))
+                    Expression::Identifier(From::from("asd")),
+                    Expression::Identifier(From::from("qwe")),
+                    Expression::Identifier(From::from("aoeu"))
                 ]
             )
         );
