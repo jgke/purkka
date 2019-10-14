@@ -4,7 +4,15 @@ rust:
 before_install:
   - cpp -v /dev/null
   - sudo apt-get install -y libc6-dev-i386 libc6-dev libgcc-5-dev
+  - curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-linux-x86_64.tar.bz2 | tar jxf -
+
 script:
-  - cargo build --verbose --release --all
+  - export CARGO_INCREMENTAL=0
+  - export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zno-landing-pads"
+  - cargo build --verbose --all
   - cargo test --verbose --all
   - cargo bench --verbose --all
+  - |
+    zip -0 ccov.zip `find . \( -name "cformat*.gc*" -o -name "cparser*.gc*" -o -name "ctoken*.gc*" -o -name "debug-*.gc*" -o -name "fragment*.gc*" -o -name "lalr*.gc*" -o -name "preprocessor*.gc*" -o -name "resolve*.gc*" -o -name "shared*.gc*" -o -name "purkka*.gc*" \) -print`;
+    ./grcov ccov.zip -s . -t lcov --llvm --branch --ignore-not-existing --ignore "/*" -o lcov.info;
+    bash <(curl -s https://codecov.io/bash) -f lcov.info;
