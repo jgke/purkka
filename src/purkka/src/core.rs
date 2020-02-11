@@ -307,7 +307,6 @@ pub fn real_main() {
 
     for file in &input {
         let result = get_file(FileQuery::new(".", file, true, false, HashSet::new()));
-        println!("{:?}", result);
         if let Some(file) = &output {
             let path = path::PathBuf::from(file);
             if File::open(path.clone()).is_ok() {
@@ -316,6 +315,8 @@ pub fn real_main() {
                 let mut file = File::create(path).unwrap();
                 file.write_all(result.c_content.as_bytes()).unwrap();
             }
+        } else {
+            println!("{}", result.c_content);
         }
     }
 }
