@@ -601,6 +601,7 @@ where
             if !is_union {
                 read_token!(self, Token::Struct);
             }
+            self.maybe_parse_attributes();
             let ident = maybe_read_token!(self, Token::Identifier);
             match self.peek() {
                 Some(Token::OpenBrace(..)) => {
